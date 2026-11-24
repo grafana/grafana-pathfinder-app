@@ -4,16 +4,25 @@
  *
  * Supported references: any `section-completed:` token in a `requirements`,
  * `objectives`, `conditions`, `verify` or `successCriteria` field that the runtime
- * resolves to this block. Ids in a compiled locale's `translation` annotation are
- * reported and the rename refused, and so is a new id a condition cannot carry
- * (a comma, or edge whitespace). Other packages and completion records are out of scope.
+ * resolves to this block. Ids in a compiled locale's `translation` annotation and
+ * `blocks.<id>` entries in `i18n/` sidecars are reported and the rename refused,
+ * and so is a new id a condition cannot carry (a comma, or edge whitespace).
+ * Other packages and completion records are out of scope.
  */
+
+import * as path from 'path';
 
 import { z } from 'zod';
 
 import { ParameterizedRequirementPrefix } from '../../types/requirements.types';
 import { defineCommand } from '../contracts';
-import { collectAllIds, findBlockById, mutateAndValidate, PackageIOError } from '../utils/package-io';
+import {
+  collectAllIds,
+  findBlockById,
+  mutateAndValidate,
+  PackageIOError,
+  readPackageSidecars,
+} from '../utils/package-io';
 import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
 const SECTION_COMPLETED = ParameterizedRequirementPrefix.SECTION_COMPLETED;
@@ -84,6 +93,20 @@ function unsafeIdReason(id: string): string | undefined {
   return undefined;
 }
 
+// Sidecars key translations by block id, and the rename writes only content.json, so an entry would be orphaned.
+function sidecarEntryRefs(dir: string, id: string): string[] {
+  const refs: string[] = [];
+  for (const result of readPackageSidecars(dir)) {
+    const file = path.relative(dir, result.filePath);
+    if (!result.ok) {
+      refs.push(`${file}: cannot read it to check for entries (${result.message})`);
+    } else if (Object.prototype.hasOwnProperty.call(result.sidecar.blocks ?? {}, id)) {
+      refs.push(`${file}: blocks.${id}: move the entry to the new id by hand`);
+    }
+  }
+  return refs;
+}
+
 function rewriteReferences(node: unknown, path: string, scan: RenameScan): void {
   if (Array.isArray(node)) {
     node.forEach((child, i) => rewriteReferences(child, `${path}[${i}]`, scan));
@@ -152,6 +175,7 @@ export async function runRenameBlock(args: RenameBlockInput): Promise<CommandOut
           }
         });
       }
+      found.unsupported.push(...sidecarEntryRefs(args.dir, args.id));
       if (found.unsupported.length > 0) {
         throw new PackageIOError({
           code: 'UNSUPPORTED_REFERENCE',

@@ -32,8 +32,20 @@ async function writePackage(blocks: unknown[], extra: Record<string, unknown> = 
   return dir;
 }
 
-function snapshot(dir: string): Record<string, string> {
-  return Object.fromEntries(fs.readdirSync(dir).map((f) => [f, fs.readFileSync(path.join(dir, f), 'utf8')]));
+function snapshot(dir: string, prefix = ''): Record<string, string> {
+  return Object.fromEntries(
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      return entry.isDirectory()
+        ? Object.entries(snapshot(full, `${prefix}${entry.name}/`))
+        : [[`${prefix}${entry.name}`, fs.readFileSync(full, 'utf8')]];
+    })
+  );
+}
+
+function writeSidecar(dir: string, tag: string, text: unknown): void {
+  fs.mkdirSync(path.join(dir, 'i18n'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'i18n', `${tag}.json`), typeof text === 'string' ? text : JSON.stringify(text));
 }
 
 describe('runRenameBlock', () => {
@@ -246,6 +258,47 @@ describe('runRenameBlock', () => {
     expect((readPackage(dir).content.blocks as any[])[0].blocks[0].id).toBe('aside');
   });
 
+  it('renames a block the sidecars have no entry for and leaves them alone', async () => {
+    const dir = await writePackage([section('setup'), { type: 'markdown', id: 'intro', content: 'Hi' }]);
+    writeSidecar(dir, 'ja', {
+      schemaVersion: '1.0.0',
+      language: 'ja',
+      blocks: { intro: { content: 'Hi', reviewed: true } },
+    });
+    const sidecarBefore = snapshot(path.join(dir, 'i18n'));
+
+    const result = await runRenameBlock({ dir, id: 'setup', newId: 'install' });
+
+    expect(result.status).toBe('ok');
+    expect((readPackage(dir).content.blocks as any[])[0].id).toBe('install');
+    expect(snapshot(path.join(dir, 'i18n'))).toEqual(sidecarBefore);
+  });
+
+  it('names the sidecar file and key path when a sidecar has an entry for the id', async () => {
+    const dir = await writePackage([section('setup')]);
+    writeSidecar(dir, 'ja', {
+      schemaVersion: '1.0.0',
+      language: 'ja',
+      blocks: { setup: { title: 'Setup', reviewed: true } },
+    });
+
+    const result = await runRenameBlock({ dir, id: 'setup', newId: 'install' });
+
+    expect(result.status === 'error' && result.code).toBe('UNSUPPORTED_REFERENCE');
+    expect(result.status === 'error' && result.message).toContain(path.join('i18n', 'ja.json') + ': blocks.setup');
+  });
+
+  it('reports every sidecar that has an entry for the id', async () => {
+    const dir = await writePackage([section('setup')]);
+    for (const tag of ['ja', 'fr']) {
+      writeSidecar(dir, tag, { schemaVersion: '1.0.0', language: tag, blocks: { setup: { title: 'x' } } });
+    }
+
+    const result = await runRenameBlock({ dir, id: 'setup', newId: 'install' });
+
+    expect(result.status === 'error' && result.message).toMatch(/fr\.json: blocks\.setup.*ja\.json: blocks\.setup/);
+  });
+
   it('reports no change when the new id equals the old one', async () => {
     const dir = await writePackage([section('setup')]);
 
@@ -297,13 +350,30 @@ describe('runRenameBlock', () => {
         code: 'UNSUPPORTED_REFERENCE',
       },
       {
+        name: 'a sidecar has an entry for the id',
+        blocks: [section('setup')],
+        sidecar: { schemaVersion: '1.0.0', language: 'ja', blocks: { setup: { title: 'Setup', reviewed: true } } },
+        newId: 'install',
+        code: 'UNSUPPORTED_REFERENCE',
+      },
+      {
+        name: 'a sidecar cannot be read',
+        blocks: [section('setup')],
+        sidecar: '{ not json',
+        newId: 'install',
+        code: 'UNSUPPORTED_REFERENCE',
+      },
+      {
         name: 'the package fails validation after the rename',
         blocks: [section('setup'), interactive({ id: 'next', requirements: ['not-a-requirement'] })],
         newId: 'install',
         code: 'SCHEMA_VALIDATION',
       },
-    ])('when $name', async ({ blocks, extra, id, newId, code }) => {
+    ])('when $name', async ({ blocks, extra, sidecar, id, newId, code }) => {
       const dir = await writePackage(blocks, extra);
+      if (sidecar) {
+        writeSidecar(dir, 'ja', sidecar);
+      }
       const before = snapshot(dir);
 
       const result = await runRenameBlock({ dir, id: id ?? 'setup', newId });
