@@ -116,27 +116,34 @@ const PLUGIN_CONFIG = {
   acceptedTermsAndConditions: true,
 };
 
-it.each(['Editor', 'Admin', 'Viewer', ''])(
-  'recommends the bundled authoring lesson only to authors (%s)',
-  async (role) => {
+it.each([
+  ['Editor', false, true],
+  ['Admin', false, true],
+  ['Viewer', true, true],
+  ['Viewer', false, false],
+  ['', false, false],
+])(
+  'recommends the bundled authoring lesson to eligible authors (%s, Grafana admin: %s)',
+  async (role, isGrafanaAdmin, expected) => {
     const index = jest.requireMock('../bundled-interactives/index.json');
     const entry = jest
       .requireActual('../bundled-interactives/index.json')
       .interactives.find((item: { id: string }) => item.id === 'create-your-first-guide');
     const user = jest.requireMock('@grafana/runtime').config.bootData.user;
     const previousRole = user.orgRole;
+    const previousAdmin = user.isGrafanaAdmin;
     index.interactives.push(entry);
     user.orgRole = role;
+    user.isGrafanaAdmin = isGrafanaAdmin;
     try {
       const recommendations = await (ContextService as any).getBundledInteractiveRecommendations(
         makeContextData({ currentPath: '/' })
       );
-      expect(recommendations.some((rec: Recommendation) => rec.url === 'bundled:create-your-first-guide')).toBe(
-        role === 'Editor' || role === 'Admin'
-      );
+      expect(recommendations.some((rec: Recommendation) => rec.url === 'bundled:create-your-first-guide')).toBe(expected);
     } finally {
       index.interactives.pop();
       user.orgRole = previousRole;
+      user.isGrafanaAdmin = previousAdmin;
     }
   }
 );

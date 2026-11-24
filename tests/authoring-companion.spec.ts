@@ -155,7 +155,6 @@ test('the bundled lesson teaches recording and preview in the real editor', asyn
       expect.objectContaining({ action: 'highlight', doIt: false }),
     ],
   });
-  await page.screenshot({ path: '/tmp/pathfinder-first-authoring-lesson.png' });
   await floating.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(editor).toBeVisible();
 });

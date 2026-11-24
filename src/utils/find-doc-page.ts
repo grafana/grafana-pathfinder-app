@@ -53,9 +53,8 @@ function findCanonicalDocPage(param: string): DocPage | null {
 
   // Case 1: Bundled interactive
   if (param.startsWith('bundled:')) {
-    const packagePath = /^bundled:([a-z0-9][a-z0-9-]*)\/content\.json$/.exec(param)?.[1];
-    if (packagePath) {
-      const content = loadBundledContent(packagePath);
+    if (param === 'bundled:create-your-first-guide/content.json') {
+      const content = loadBundledContent('create-your-first-guide');
       return content.ok ? { type: 'docs-page', url: param, title: content.data.title } : null;
     }
     try {

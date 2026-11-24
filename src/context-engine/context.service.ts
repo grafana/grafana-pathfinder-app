@@ -41,6 +41,7 @@ import {
 } from '../lib/telemetry';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { stripContentFile } from '../lib/guide-content-file';
+import { isCurrentUserEditor } from '../lib/author-role';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
   ContextData,
@@ -1647,7 +1648,7 @@ export class ContextService {
       if (indexData && indexData.interactives && Array.isArray(indexData.interactives)) {
         // Filter interactives that match the current URL/path and platform
         const relevantInteractives = indexData.interactives.filter((interactive: BundledInteractive) => {
-          if (interactive.requiresEditor && !['Editor', 'Admin'].includes(config.bootData?.user?.orgRole ?? '')) {
+          if (interactive.requiresEditor && !isCurrentUserEditor()) {
             return false;
           }
           // First check URL match
