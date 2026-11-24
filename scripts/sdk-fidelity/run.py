@@ -17,11 +17,11 @@ ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 
 
-def compare(left, right):
+def compare(left, right, fromfile='frozen baseline'):
     return list(difflib.unified_diff(
         json.dumps(left, indent=2, sort_keys=True).splitlines(),
         json.dumps(right, indent=2, sort_keys=True).splitlines(),
-        fromfile='frozen baseline', tofile='SDK', lineterm=''))
+        fromfile=fromfile, tofile='SDK', lineterm=''))
 
 
 def main():
@@ -90,7 +90,7 @@ def main():
             if not compare(achievement_goldens[name], reviewed):
                 raise RuntimeError(name + ' no longer differs from the frozen baseline; remove it from achievement-per-tier.json')
             if compare(reviewed, sdk_achievements[name]):
-                raise RuntimeError(name + ' differs from its reviewed per-tier copy: ' + '\n'.join(compare(reviewed, sdk_achievements[name])))
+                raise RuntimeError(name + ' differs from its reviewed per-tier copy: ' + '\n'.join(compare(reviewed, sdk_achievements[name], 'reviewed per-tier copy')))
             achievement_goldens[name] = reviewed
         if len(achievement_goldens) != 9 or compare(achievement_goldens, sdk_achievements):
             raise RuntimeError('achievement baseline contracts differ: ' + '\n'.join(compare(achievement_goldens, sdk_achievements)))
