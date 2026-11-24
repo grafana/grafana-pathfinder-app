@@ -19,6 +19,16 @@ it('never falls back to legacy transport without SDK registration', () => {
   );
 });
 
+it.each(['private-cdn/identity', 'private-cdn/catalogue', 'private-cdn/sign'] as const)(
+  'routes %s through the namespaced SDK backend',
+  (route) => {
+    config.namespace = 'stacks-1';
+    expect(backendRoute(route)).toBe(
+      `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-1/backend/${route}`
+    );
+  }
+);
+
 it('rejects unapproved paths even when supplied outside TypeScript', () => {
   for (const route of ['../interactiveguides', 'custom-guide?user=other', '/health', '']) {
     expect(() => backendRoute(route as Parameters<typeof backendRoute>[0])).toThrow('Unknown backend route');

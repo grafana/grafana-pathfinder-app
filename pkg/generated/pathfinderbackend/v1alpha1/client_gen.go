@@ -1,9 +1,11 @@
 package v1alpha1
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/grafana/grafana-app-sdk/resource"
@@ -403,6 +405,75 @@ func (c *CustomRouteClient) ReplaceBackendSettings(ctx context.Context, namespac
 	err = json.Unmarshal(resp, &cast)
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal response bytes into ReplaceBackendSettingsResponse: %w", err)
+	}
+	return &cast, nil
+}
+
+type GetBackendPrivateCDNCatalogueRequest struct {
+	Headers http.Header
+}
+
+func (c *CustomRouteClient) GetBackendPrivateCDNCatalogue(ctx context.Context, namespace string, request GetBackendPrivateCDNCatalogueRequest) (*GetBackendPrivateCDNCatalogueResponse, error) {
+	resp, err := c.NamespacedRequest(ctx, namespace, resource.CustomRouteRequestOptions{
+		Path:    "/backend/private-cdn/catalogue",
+		Verb:    "GET",
+		Headers: request.Headers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	cast := GetBackendPrivateCDNCatalogueResponse{}
+	err = json.Unmarshal(resp, &cast)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal response bytes into GetBackendPrivateCDNCatalogueResponse: %w", err)
+	}
+	return &cast, nil
+}
+
+type GetBackendPrivateCDNIdentityRequest struct {
+	Headers http.Header
+}
+
+func (c *CustomRouteClient) GetBackendPrivateCDNIdentity(ctx context.Context, namespace string, request GetBackendPrivateCDNIdentityRequest) (*GetBackendPrivateCDNIdentityResponse, error) {
+	resp, err := c.NamespacedRequest(ctx, namespace, resource.CustomRouteRequestOptions{
+		Path:    "/backend/private-cdn/identity",
+		Verb:    "GET",
+		Headers: request.Headers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	cast := GetBackendPrivateCDNIdentityResponse{}
+	err = json.Unmarshal(resp, &cast)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal response bytes into GetBackendPrivateCDNIdentityResponse: %w", err)
+	}
+	return &cast, nil
+}
+
+type CreateBackendPrivateCDNURLRequest struct {
+	Body    CreateBackendPrivateCDNURLRequestBody
+	Headers http.Header
+}
+
+func (c *CustomRouteClient) CreateBackendPrivateCDNURL(ctx context.Context, namespace string, request CreateBackendPrivateCDNURLRequest) (*CreateBackendPrivateCDNURLResponse, error) {
+	body, err := json.Marshal(request.Body)
+	if err != nil {
+		return nil, fmt.Errorf("unable to marshal body to JSON: %w", err)
+	}
+	resp, err := c.NamespacedRequest(ctx, namespace, resource.CustomRouteRequestOptions{
+		Path:    "/backend/private-cdn/sign",
+		Verb:    "POST",
+		Body:    io.NopCloser(bytes.NewReader(body)),
+		Headers: request.Headers,
+	})
+	if err != nil {
+		return nil, err
+	}
+	cast := CreateBackendPrivateCDNURLResponse{}
+	err = json.Unmarshal(resp, &cast)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal response bytes into CreateBackendPrivateCDNURLResponse: %w", err)
 	}
 	return &cast, nil
 }

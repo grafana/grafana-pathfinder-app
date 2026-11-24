@@ -631,13 +631,201 @@ var appManifestData = app.ManifestData{
 							},
 						},
 					},
+					"/backend/private-cdn/catalogue": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendPrivateCDNCatalogue",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	Properties: map[string]spec.Schema{
+																		"entries": {
+																			SchemaProps: spec.SchemaProps{
+																				Type: []string{"array"},
+																				Items: &spec.SchemaOrArray{
+																					Schema: &spec.Schema{
+																						SchemaProps: spec.SchemaProps{
+																							Type: []string{"object"},
+																							Properties: map[string]spec.Schema{
+																								"id": {
+																									SchemaProps: spec.SchemaProps{
+																										Type: []string{"string"},
+																									},
+																								},
+																								"source": {
+																									SchemaProps: spec.SchemaProps{
+																										Type: []string{"string"},
+																									},
+																								},
+																								"title": {
+																									SchemaProps: spec.SchemaProps{
+																										Type: []string{"string"},
+																									},
+																								},
+																							},
+																							Required: []string{
+																								"id",
+																								"title",
+																								"source",
+																							},
+																						}},
+																				},
+																			},
+																		},
+																	},
+																	Required: []string{
+																		"entries",
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/private-cdn/identity": {
+						Get: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "getBackendPrivateCDNIdentity",
+
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	Properties: map[string]spec.Schema{
+																		"namespace": {
+																			SchemaProps: spec.SchemaProps{
+																				Type: []string{"string"},
+																			},
+																		},
+																		"subject": {
+																			SchemaProps: spec.SchemaProps{
+																				Type: []string{"string"},
+																			},
+																		},
+																	},
+																	Required: []string{
+																		"subject",
+																		"namespace",
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
+					"/backend/private-cdn/sign": {
+						Post: &spec3.Operation{
+							OperationProps: spec3.OperationProps{
+
+								OperationId: "createBackendPrivateCDNURL",
+
+								RequestBody: &spec3.RequestBody{
+									RequestBodyProps: spec3.RequestBodyProps{
+
+										Required: true,
+										Content: map[string]*spec3.MediaType{
+											"application/json": {
+												MediaTypeProps: spec3.MediaTypeProps{
+													Schema: &spec.Schema{
+														SchemaProps: spec.SchemaProps{
+															Type: []string{"object"},
+															Properties: map[string]spec.Schema{
+																"asset": {
+																	SchemaProps: spec.SchemaProps{
+																		Type: []string{"string"},
+																		Enum: []interface{}{
+																			"content.json",
+																			"manifest.json",
+																		},
+																	},
+																},
+																"guide": {
+																	SchemaProps: spec.SchemaProps{
+																		Type: []string{"string"},
+																	},
+																},
+															},
+															Required: []string{
+																"guide",
+																"asset",
+															},
+														}},
+												}},
+										},
+									}},
+								Responses: &spec3.Responses{
+									ResponsesProps: spec3.ResponsesProps{
+										Default: &spec3.Response{
+											ResponseProps: spec3.ResponseProps{
+												Description: "Default OK response",
+												Content: map[string]*spec3.MediaType{
+													"application/json": {
+														MediaTypeProps: spec3.MediaTypeProps{
+															Schema: &spec.Schema{
+																SchemaProps: spec.SchemaProps{
+																	Type: []string{"object"},
+																	Properties: map[string]spec.Schema{
+																		"expiresAt": {
+																			SchemaProps: spec.SchemaProps{
+																				Type: []string{"integer"},
+																			},
+																		},
+																		"source": {
+																			SchemaProps: spec.SchemaProps{
+																				Type: []string{"string"},
+																			},
+																		},
+																		"url": {
+																			SchemaProps: spec.SchemaProps{
+																				Type: []string{"string"},
+																			},
+																		},
+																	},
+																	Required: []string{
+																		"url",
+																		"expiresAt",
+																		"source",
+																	},
+																}},
+														}},
+												},
+											},
+										},
+									}},
+							},
+						},
+					},
 				},
 				Cluster: map[string]spec3.PathProps{},
 				Schemas: map[string]spec.Schema{},
 			},
 			OpenAPI: func() app.ManifestVersionOpenAPI {
 				var openAPI app.ManifestVersionOpenAPI
-				if err := json.Unmarshal([]byte("{\"paths\":{\"/namespaces/{namespace}/backend/api/v1/achievements/definitions\":{\"get\":{\"operationId\":\"getBackendAchievementDefinitions\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/api/v1/achievements/events\":{\"post\":{\"operationId\":\"createBackendAchievementEvent\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/api/v1/achievements/my\":{\"get\":{\"operationId\":\"getBackendAchievements\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/assignments/my\":{\"get\":{\"operationId\":\"getBackendAssignments\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/completion-records\":{\"post\":{\"operationId\":\"createBackendCompletion\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/completion-records/capability\":{\"get\":{\"operationId\":\"getBackendCompletionCapability\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/completion-records/my\":{\"get\":{\"operationId\":\"getBackendCompletions\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/custom-guide\":{\"get\":{\"operationId\":\"getBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"put\":{\"operationId\":\"replaceBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"post\":{\"operationId\":\"createBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"delete\":{\"operationId\":\"deleteBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/custom-guide-repository\":{\"get\":{\"operationId\":\"getBackendCatalogue\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/health\":{\"get\":{\"operationId\":\"getBackendHealth\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/learning-insights\":{\"get\":{\"operationId\":\"getBackendLearningInsights\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/package-recommendations\":{\"get\":{\"operationId\":\"getBackendRecommendations\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/pathfinder-settings\":{\"get\":{\"operationId\":\"getBackendSettings\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"put\":{\"operationId\":\"replaceBackendSettings\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"post\":{\"operationId\":\"createBackendSettings\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]}}}"), &openAPI); err != nil {
+				if err := json.Unmarshal([]byte("{\"paths\":{\"/namespaces/{namespace}/backend/api/v1/achievements/definitions\":{\"get\":{\"operationId\":\"getBackendAchievementDefinitions\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/api/v1/achievements/events\":{\"post\":{\"operationId\":\"createBackendAchievementEvent\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/api/v1/achievements/my\":{\"get\":{\"operationId\":\"getBackendAchievements\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/assignments/my\":{\"get\":{\"operationId\":\"getBackendAssignments\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/completion-records\":{\"post\":{\"operationId\":\"createBackendCompletion\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/completion-records/capability\":{\"get\":{\"operationId\":\"getBackendCompletionCapability\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/completion-records/my\":{\"get\":{\"operationId\":\"getBackendCompletions\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/custom-guide\":{\"get\":{\"operationId\":\"getBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"put\":{\"operationId\":\"replaceBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"post\":{\"operationId\":\"createBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"delete\":{\"operationId\":\"deleteBackendGuide\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/custom-guide-repository\":{\"get\":{\"operationId\":\"getBackendCatalogue\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/health\":{\"get\":{\"operationId\":\"getBackendHealth\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/learning-insights\":{\"get\":{\"operationId\":\"getBackendLearningInsights\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/package-recommendations\":{\"get\":{\"operationId\":\"getBackendRecommendations\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/pathfinder-settings\":{\"get\":{\"operationId\":\"getBackendSettings\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"put\":{\"operationId\":\"replaceBackendSettings\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"post\":{\"operationId\":\"createBackendSettings\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"additionalProperties\":true}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/private-cdn/catalogue\":{\"get\":{\"operationId\":\"getBackendPrivateCDNCatalogue\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"required\":[\"entries\"],\"properties\":{\"entries\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"required\":[\"id\",\"title\",\"source\"],\"properties\":{\"id\":{\"type\":\"string\"},\"source\":{\"type\":\"string\",\"const\":\"private-cdn\"},\"title\":{\"type\":\"string\"}},\"additionalProperties\":false}}},\"additionalProperties\":false}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/private-cdn/identity\":{\"get\":{\"operationId\":\"getBackendPrivateCDNIdentity\",\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"required\":[\"subject\",\"namespace\"],\"properties\":{\"namespace\":{\"type\":\"string\"},\"subject\":{\"type\":\"string\"}},\"additionalProperties\":false}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]},\"/namespaces/{namespace}/backend/private-cdn/sign\":{\"post\":{\"operationId\":\"createBackendPrivateCDNURL\",\"requestBody\":{\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"required\":[\"guide\",\"asset\"],\"properties\":{\"asset\":{\"type\":\"string\",\"enum\":[\"content.json\",\"manifest.json\"]},\"guide\":{\"type\":\"string\",\"const\":\"builders-observability-foundations\"}},\"additionalProperties\":false}}},\"required\":true},\"responses\":{\"default\":{\"description\":\"Default OK response\",\"content\":{\"application/json\":{\"schema\":{\"type\":\"object\",\"required\":[\"url\",\"expiresAt\",\"source\"],\"properties\":{\"expiresAt\":{\"type\":\"integer\"},\"source\":{\"type\":\"string\",\"const\":\"private-cdn\"},\"url\":{\"type\":\"string\"}},\"additionalProperties\":false}}}}}},\"parameters\":[{\"name\":\"namespace\",\"in\":\"path\",\"required\":true,\"schema\":{\"type\":\"string\"}}]}}}"), &openAPI); err != nil {
 					panic(err)
 				}
 				return openAPI
@@ -805,6 +993,9 @@ var customRouteToGoResponseType = map[string]any{
 	"v1alpha1||<namespace>/backend/pathfinder-settings|GET":             v1alpha1.GetBackendSettingsResponse{},
 	"v1alpha1||<namespace>/backend/pathfinder-settings|POST":            v1alpha1.CreateBackendSettingsResponse{},
 	"v1alpha1||<namespace>/backend/pathfinder-settings|PUT":             v1alpha1.ReplaceBackendSettingsResponse{},
+	"v1alpha1||<namespace>/backend/private-cdn/catalogue|GET":           v1alpha1.GetBackendPrivateCDNCatalogueResponse{},
+	"v1alpha1||<namespace>/backend/private-cdn/identity|GET":            v1alpha1.GetBackendPrivateCDNIdentityResponse{},
+	"v1alpha1||<namespace>/backend/private-cdn/sign|POST":               v1alpha1.CreateBackendPrivateCDNURLResponse{},
 }
 
 // ManifestCustomRouteResponsesAssociator returns the associated response go type for a given kind, version, custom route path, and method, if one exists.
@@ -829,7 +1020,9 @@ func ManifestCustomRouteQueryAssociator(kind, version, path, verb string) (goTyp
 	return goType, exists
 }
 
-var customRouteToGoRequestBodyType = map[string]any{}
+var customRouteToGoRequestBodyType = map[string]any{
+	"v1alpha1||<namespace>/backend/private-cdn/sign|POST": v1alpha1.CreateBackendPrivateCDNURLRequestBody{},
+}
 
 func ManifestCustomRouteRequestBodyAssociator(kind, version, path, verb string) (goType any, exists bool) {
 	if len(path) > 0 && path[0] == '/' {
