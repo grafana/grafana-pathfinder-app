@@ -24,6 +24,7 @@ import {
   type CompletionWriteDegradation,
   type ContentFetchOutcome,
   type ContentFetchTier,
+  type CustomGuideCatalogueOutcome,
   type RecommendCompletionsOutcome,
   type RecommenderErrorType,
   type RecommenderOutcome,
@@ -184,6 +185,23 @@ export function recordCompletionWriteDegradation(reason: CompletionWriteDegradat
 // (never RudderStack): it includes open-ended `upstream_<status>` values.
 export function recordCustomGuideCatalogueUnavailable(reason: string): void {
   pushFaroEventChecked(TELEMETRY_EVENTS.customGuideCatalogueUnavailable, { reason: toAnalyticsValue(reason) });
+}
+
+// Whole client round trip, including the proxy's paginated drain.
+export function recordCustomGuideCatalogueRequest(durationMs: number, outcome: CustomGuideCatalogueOutcome): void {
+  pushFaroMeasurementChecked(
+    TELEMETRY_MEASUREMENTS.customGuideCatalogue,
+    { custom_guide_catalogue_ms: Math.round(durationMs) },
+    { outcome: toAnalyticsValue(outcome) }
+  );
+}
+
+// One event per resolution call with counts only, never the locked guide ids.
+export function recordPackageMilestonesLocked(lockedCount: number, totalCount: number): void {
+  pushFaroEventChecked(TELEMETRY_EVENTS.packageMilestonesLocked, {
+    locked_count: lockedCount,
+    total_count: totalCount,
+  });
 }
 
 // Input reason is a capability.reason, `http-<status>` or `transport-error`; never an id or identity.
