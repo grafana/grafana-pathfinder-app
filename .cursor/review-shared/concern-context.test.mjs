@@ -9,6 +9,7 @@ import {
   generalWorkerLimit,
   validateConcernRegistry,
 } from './concern-context.mjs';
+import { routeCandidates } from '../skills/review-lite/scripts/review-lite.mjs';
 
 const concernsPath = fileURLToPath(new URL('../../docs/design/CONCERNS.md', import.meta.url));
 const concernDetailsPath = fileURLToPath(new URL('../../docs/design/CONCERN_DETAILS.md', import.meta.url));
@@ -290,49 +291,39 @@ test('emits every completion-records doc as one loadable path', () => {
   }
 });
 
-const globToRegExp = (glob) =>
-  new RegExp(
-    `^${glob
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*\*/g, '\u0000')
-      .replace(/\*/g, '[^/]*')
-      .replace(/\u0000/g, '.*')}$`
-  );
 const sdkRoutePatternDoc = 'docs/design/BACKEND_PROXY_PATTERN.md';
 
-const routeDiff = (concern, diff) => {
-  const context = extractConcernContext({ routingMarkdown: concerns, detailMarkdown: concernDetails, concern });
-  const pathSignal = diff.some(({ path }) => context.trigger_paths.some((glob) => globToRegExp(glob).test(path)));
-  const keywordSignal = diff.some(({ hunk }) => context.trigger_keywords.some((keyword) => hunk.includes(keyword)));
-  const signals = Number(pathSignal) + Number(keywordSignal);
-  return { activated: signals >= context.activation.min_signals, pathSignal, keywordSignal, context };
-};
+const goBackendCandidate = (path, line) =>
+  routeCandidates(
+    { routingMarkdown: concerns, detailMarkdown: concernDetails },
+    [{ path }],
+    new Map([[path, [line]]])
+  ).candidates.find(({ id }) => id === 'go-backend');
 
 test('a diff touching only one SDK route recipe step routes to go-backend and loads the pattern', () => {
-  const diffs = {
-    'kinds/manifest.cue': [
-      { path: 'kinds/manifest.cue', hunk: '+\t\t"/backend/new-route": "GET": {name: "getNewRoute"}' },
-    ],
-    'src/lib/backend-routes.ts': [{ path: 'src/lib/backend-routes.ts', hunk: "+  'new-route'," }],
-    'pkg/provider/provider.go': [{ path: 'pkg/provider/provider.go', hunk: '+\t\t\t\tnewRouteHandler(store),' }],
-    'a backendRoute( call site': [
-      { path: 'src/lib/assignments-client.ts', hunk: "+  const url = backendRoute('assignments/my');" },
-    ],
-  };
-  for (const [label, diff] of Object.entries(diffs)) {
-    const routed = routeDiff('go-backend', diff);
-    assert.ok(routed.activated, `${label} must activate go-backend`);
-    assert.ok(routed.context.load_docs.includes(sdkRoutePatternDoc), `${label} must load ${sdkRoutePatternDoc}`);
+  for (const [path, line, evidence] of [
+    ['kinds/manifest.cue', '\t\t"/backend/new-route": "GET": {name: "getNewRoute"}', 'path'],
+    ['src/lib/backend-routes.ts', "  'new-route',", 'path'],
+    ['pkg/provider/provider.go', '\t\t\t\tnewRouteHandler(store),', 'path'],
+    ['src/lib/assignments-client.ts', "  const url = backendRoute('assignments/my');", 'keyword'],
+  ]) {
+    assert.equal(
+      goBackendCandidate(path, line)?.lexical_evidence,
+      evidence,
+      `${path} must route to go-backend by ${evidence}`
+    );
   }
-  const callSite = routeDiff('go-backend', diffs['a backendRoute( call site']);
-  assert.equal(callSite.pathSignal, false, 'the call-site diff must reach go-backend through its keyword, not a path');
-  assert.equal(callSite.keywordSignal, true);
   assert.equal(
-    routeDiff('go-backend', [{ path: 'src/lib/assignments-client.ts', hunk: "+  const url = '/api/other';" }])
-      .activated,
-    false,
-    'an unrelated frontend change must not activate go-backend'
+    goBackendCandidate('src/lib/assignments-client.ts', "  const url = '/api/other';"),
+    undefined,
+    'an unrelated frontend change must not route to go-backend'
   );
+  const context = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'go-backend',
+  });
+  assert.ok(context.load_docs.includes(sdkRoutePatternDoc), `go-backend must load ${sdkRoutePatternDoc}`);
 });
 
 test('route concerns that share handlers send reviewers to the pattern invariants', () => {

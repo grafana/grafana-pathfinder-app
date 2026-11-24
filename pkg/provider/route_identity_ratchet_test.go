@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,12 +14,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/grafana-app-sdk/app"
 	"github.com/grafana/grafana-app-sdk/resource"
 	"github.com/grafana/grafana-app-sdk/simple"
 	"github.com/grafana/grafana-pathfinder-app/pkg/generated/manifestdata"
+	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 	"k8s.io/client-go/rest"
 	"k8s.io/kube-openapi/pkg/spec3"
 )
@@ -68,12 +71,49 @@ func manifestRoutes(t *testing.T) []manifestRoute {
 	return routes
 }
 
-func callRoute(application app.App, ctx context.Context, route manifestRoute) (*httptest.ResponseRecorder, error) {
+type routeRequest struct{ query, body string }
+
+const (
+	ratchetGuide    = `{"apiVersion":"pathfinderbackend.ext.grafana.app/v1alpha1","kind":"InteractiveGuide","metadata":{"name":"sample"%s},"spec":{"id":"sample","title":"Sample","status":"draft","schemaVersion":"1.0","blocks":[]}}`
+	ratchetSettings = `{"apiVersion":"pathfinderbackend.ext.grafana.app/v1alpha1","kind":"PathfinderSettings","metadata":{"name":"default"%s},"spec":{}}`
+	resourceVersion = `,"resourceVersion":"1"`
+)
+
+// routeRequests holds a request per route that a verified caller gets past input validation with, so a refusal
+// of the same request from an unverified caller can only come from the identity check.
+func routeRequests() map[string]routeRequest {
+	completion, _ := json.Marshal(sdkCompletionBody())
+	event := fmt.Sprintf(`{"schemaVersion":1,"eventId":"ratchet","entity":"guides","action":"completed","occurredAt":%q,"context":{"guideSource":"bundled","guideId":"first-dashboard","guideCategory":"interactive"}}`, time.Now().UTC().Format(time.RFC3339))
+	return map[string]routeRequest{
+		"GET /backend/custom-guide":                {query: "name=sample"},
+		"POST /backend/custom-guide":               {query: "name=sample", body: fmt.Sprintf(ratchetGuide, "")},
+		"PUT /backend/custom-guide":                {query: "name=sample", body: fmt.Sprintf(ratchetGuide, resourceVersion)},
+		"DELETE /backend/custom-guide":             {query: "name=sample"},
+		"POST /backend/pathfinder-settings":        {body: fmt.Sprintf(ratchetSettings, "")},
+		"PUT /backend/pathfinder-settings":         {body: fmt.Sprintf(ratchetSettings, resourceVersion)},
+		"POST /backend/completion-records":         {body: string(completion)},
+		"POST /backend/api/v1/achievements/events": {body: event},
+	}
+}
+
+type routeCaller struct{ adminIdentity }
+
+func (routeCaller) GetUsername() string { return "login" }
+func (routeCaller) GetName() string     { return "Display" }
+
+func callerIn(namespace string) context.Context {
+	claims := fmt.Sprintf(`{"sub":"user:1","namespace":%q,"role":"Admin"}`, namespace)
+	identity := routeCaller{adminIdentity{completionIdentity: completionIdentity{testIdentity{namespace: namespace}, "user:1"}, idToken: "header." + base64.RawURLEncoding.EncodeToString([]byte(claims)) + ".signature"}}
+	return authlib.WithAuthInfo(context.Background(), identity)
+}
+
+func callRoute(application app.App, ctx context.Context, namespace string, route manifestRoute) (*httptest.ResponseRecorder, error) {
+	request := routeRequests()[route.String()]
 	recorder := httptest.NewRecorder()
 	err := application.CallCustomRoute(ctx, recorder, &app.CustomRouteRequest{
-		Method: route.method, Path: strings.TrimPrefix(route.path, "/"), URL: &url.URL{}, Headers: http.Header{},
-		Body:               io.NopCloser(strings.NewReader("{}")),
-		ResourceIdentifier: resource.FullIdentifier{Group: "pathfinderbackend.ext.grafana.app", Version: "v1alpha1", Namespace: "stacks-1"},
+		Method: route.method, Path: strings.TrimPrefix(route.path, "/"), URL: &url.URL{RawQuery: request.query}, Headers: http.Header{},
+		Body:               io.NopCloser(strings.NewReader(request.body)),
+		ResourceIdentifier: resource.FullIdentifier{Group: "pathfinderbackend.ext.grafana.app", Version: "v1alpha1", Namespace: namespace},
 	})
 	return recorder, err
 }
@@ -95,13 +135,13 @@ func recordingUpstream(t *testing.T) (rest.Config, *atomic.Int32) {
 func routesServingAnUnverifiedCaller(application app.App, routes []manifestRoute, upstreamRequests *atomic.Int32) []string {
 	unverified := map[string]context.Context{
 		"no identity":       context.Background(),
-		"another namespace": authlib.WithAuthInfo(context.Background(), adminIdentity{completionIdentity: completionIdentity{testIdentity{namespace: "stacks-2"}, "user:1"}, accessToken: "token"}),
+		"another namespace": callerIn("stacks-2"),
 	}
 	var violations []string
 	for _, route := range routes {
 		for _, label := range []string{"no identity", "another namespace"} {
 			before := upstreamRequests.Load()
-			recorder, err := callRoute(application, unverified[label], route)
+			recorder, err := callRoute(application, unverified[label], "stacks-1", route)
 			switch {
 			case errors.Is(err, app.ErrCustomRouteNotFound):
 				violations = append(violations, fmt.Sprintf("%s is in the manifest but the provider does not dispatch it", route))
@@ -143,25 +183,44 @@ func TestProviderRegistersExactlyTheManifestRoutes(t *testing.T) {
 	}
 }
 
-func TestEveryTenantRouteRefusesAnUnverifiedCaller(t *testing.T) {
+func ratchetApp(t *testing.T) (app.App, *atomic.Int32) {
+	t.Helper()
 	cfg, upstreamRequests := recordingUpstream(t)
-	application, err := newApp(app.Config{KubeConfig: cfg}, nil, nil, nil)
+	noGuides := services.PathGuideSource(func(context.Context, string, string, string) ([]services.AssignmentGuideIdentity, bool, error) {
+		return nil, false, nil
+	})
+	application, err := newApp(app.Config{KubeConfig: cfg}, noGuides, func() services.PathGuideSource { return noGuides }, nil, achievementDefinitionsForTest(t))
 	if err != nil {
 		t.Fatal(err)
 	}
+	return application, upstreamRequests
+}
+
+func TestEveryTenantRouteRefusesAnUnverifiedCaller(t *testing.T) {
 	var tenantRoutes []manifestRoute
 	for _, route := range manifestRoutes(t) {
 		if _, public := publicRoutesWithoutCallerIdentity[route.path]; !public {
 			tenantRoutes = append(tenantRoutes, route)
 		}
 	}
+	application, upstreamRequests := ratchetApp(t)
 	if violations := routesServingAnUnverifiedCaller(application, tenantRoutes, upstreamRequests); len(violations) > 0 {
 		t.Fatalf("Every tenant route must derive its caller with callerNamespace or completionCaller before touching storage.\n  %s\nFix the handler. Only a genuinely public route may be added to publicRoutesWithoutCallerIdentity, and that change needs review. See %s.", strings.Join(violations, "\n  "), routeRecipe)
 	}
 
-	verified := authlib.WithAuthInfo(context.Background(), testIdentity{namespace: "stacks-1"})
-	if _, err := callRoute(application, verified, manifestRoute{http.MethodGet, "/backend/pathfinder-settings"}); err != nil || upstreamRequests.Load() == 0 {
-		t.Fatalf("a verified caller never reached the recording upstream (error=%v), so the refusals above prove nothing", err)
+	for index, route := range tenantRoutes {
+		application, upstreamRequests := ratchetApp(t)
+		namespace := fmt.Sprintf("stacks-%d", 1000+index)
+		recorder, err := callRoute(application, callerIn(namespace), namespace, route)
+		_, readsNoStorage := unprovisionedClientExemptions[route.path]
+		switch {
+		case err != nil:
+			t.Errorf("%s from a verified caller failed: %v", route, err)
+		case readsNoStorage && recorder.Code >= 300:
+			t.Errorf("%s from a verified caller answered %d %s, so its refusal of an unverified caller proves nothing", route, recorder.Code, recorder.Body.String())
+		case !readsNoStorage && upstreamRequests.Load() == 0:
+			t.Errorf("%s from a verified caller never reached upstream (%d %s); give it a request in routeRequests that passes validation, or its refusal of an unverified caller proves nothing", route, recorder.Code, recorder.Body.String())
+		}
 	}
 }
 
@@ -186,7 +245,7 @@ func TestPublicRouteAllowlistsMatchTheUnprovisionedExemption(t *testing.T) {
 	}
 	ctx := authlib.WithAuthInfo(context.Background(), completionIdentity{testIdentity{namespace: "stacks-1"}, "user:1"})
 	for _, route := range routes {
-		recorder, err := callRoute(application, ctx, route)
+		recorder, err := callRoute(application, ctx, "stacks-1", route)
 		if err != nil {
 			t.Fatalf("%s: %v", route, err)
 		}
