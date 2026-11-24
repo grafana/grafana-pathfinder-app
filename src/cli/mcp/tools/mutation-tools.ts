@@ -107,7 +107,7 @@ const OptsSchema = z
 const MANAGE_BLOCK_OPERATIONS = {
   'add-block': { withhold: ['before', 'after', 'position'] },
   'edit-block': { withhold: ['before', 'after', 'position'] },
-  'remove-block': { withhold: ['orphanChildren'] },
+  'remove-block': { withhold: ['orphanChildren', 'pruneTranslations'] },
   'add-step': {},
   'add-choice': {},
   'add-hint': {},
