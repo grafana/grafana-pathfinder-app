@@ -24,8 +24,8 @@ constraints, and the `grafana-coda-app` repo's `docs/API.md` for the authoritati
 | Writing the gcx config into the VM                              | `grafana-coda-app`                        |
 | Coda API URL, relay URL, enrollment key, refresh token          | `grafana-coda-app`                        |
 
-**There is no Coda Go code in this repo.** `pkg/` is an App Platform proxy only, and
-`plugin.json` no longer declares `"streaming": true`.
+**There is no Coda Go code in this repo.** `pkg/` holds only the Pathfinder SDK backend (tenant routes
+and the public recommendations feed), and `plugin.json` no longer declares `"streaming": true`.
 
 ```
 Pathfinder frontend (React / xterm.js)
