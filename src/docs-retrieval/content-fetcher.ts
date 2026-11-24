@@ -16,6 +16,7 @@ import { fetchBundledInteractive } from './content-fetcher/bundled';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
 import { logger } from '../lib/logging';
+import { contentFileSiblingUrl } from '../lib/guide-content-file';
 import { getPrTestFetchId, stripPrTestMarker, withPrTestMarker } from '../lib/pr-test-marker';
 import { recordContentFetch, recordContentFetchFallback, type ContentFetchTier } from '../lib/telemetry';
 
@@ -202,7 +203,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
               tierUsed: 'unstyled-html',
               errorType: 'content-json-null',
             });
-            const htmlUrl = finalUrl.replace('/content.json', '/unstyled.html');
+            const htmlUrl = contentFileSiblingUrl(finalUrl, 'unstyled.html') ?? finalUrl;
             const htmlFetchResult = await fetchRawHtml(htmlUrl, options);
 
             if (!htmlFetchResult.html) {

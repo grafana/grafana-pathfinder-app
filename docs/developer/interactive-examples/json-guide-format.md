@@ -302,9 +302,15 @@ never instructs someone to flip a control that is already correct. This applies
 to "Show me", to each step of a multistep, and to guided steps, which complete
 straight away rather than waiting for a click that would undo the state.
 
-Note that `targetstate` does not auto-complete a top-level step on arrival — the
-user still presses "Do it", it just does nothing. Auto-completing an
-already-satisfied step is what `objectives` is for.
+A top-level `button` or `highlight` step with no `objectives` completes on its
+own when its control is already in the requested state, and is saved with the
+`objectives` reason. Authored `objectives` stay the only completion evidence for
+a step that has them. A control that exposes no readable state never completes a
+step this way, and neither does a state reached while "Do it" runs, which saves
+as an assisted completion after any `verify`. Steps inside a section still wait
+for "Do it". The check needs passive completion (the **Automatic completion**
+setting) and reads the sidebar's own tab, so a paired pop-out still waits for
+"Do it".
 
 **Formfill Validation:**
 

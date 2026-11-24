@@ -9,7 +9,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-import { CURRENT_SCHEMA_VERSION } from '../../../types/json-guide.schema';
+import { CURRENT_SCHEMA_VERSION, JsonInteractiveBlockSchema, JsonStepSchema } from '../../../types/json-guide.schema';
 import { CONTAINER_BLOCK_TYPES } from '../../utils/block-registry';
 import { SERVER_INSTRUCTIONS } from '../lib/server-instructions';
 import { buildServer } from '../server';
@@ -107,11 +107,11 @@ describe('MCP server', () => {
     }
   });
 
-  it('surfaces distilled compositionRules in pathfinder_authoring_start (issue #8, OQ7 inline variant)', async () => {
+  it('surfaces distilled interactiveRules in pathfinder_authoring_start (issue #8, OQ7 inline variant)', async () => {
     const { client, close } = await spinUp();
     try {
       const ctx = await callTool(client, 'pathfinder_authoring_start');
-      const rules = ctx.compositionRules as string[];
+      const rules = ctx.interactiveRules as string[];
       expect(Array.isArray(rules)).toBe(true);
       // Budget guard — distilled from grafana/interactive-tutorials, hard
       // ceiling per the slice plan is 25 rules. If a future edit pushes the
@@ -128,6 +128,26 @@ describe('MCP server', () => {
       expect(joined).toMatch(/noop/i);
       expect(joined).toMatch(/reftarget/i);
       expect(joined).toMatch(/never invent|do not invent|do not guess/i);
+    } finally {
+      await close();
+    }
+  });
+
+  it('surfaces guideShape with a top-level preamble and per-kind guidance in pathfinder_authoring_start', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const ctx = await callTool(client, 'pathfinder_authoring_start');
+      const shape = ctx.guideShape as { skeleton: string[]; kinds: Record<string, string> };
+      expect(shape.skeleton.join('\n')).toMatch(/preamble/i);
+      expect(Object.keys(shape.kinds).sort()).toEqual(['reference', 'teach', 'walkthrough']);
+      expect(shape.kinds.teach).toMatch(/quiz/);
+      expect(shape.kinds.walkthrough).toMatch(/placeholder/i);
+      const placeholder = '[data-testid="TODO-<what-to-target>"]';
+      const rules = (ctx.interactiveRules as string[]).join('\n');
+      expect(rules).toContain(placeholder);
+      expect(rules).toMatch(/authorNote.*finalize strips/);
+      expect(JsonStepSchema.shape.reftarget.description).toContain(placeholder);
+      expect(JsonInteractiveBlockSchema.shape.reftarget.description).toContain(placeholder);
     } finally {
       await close();
     }

@@ -55,10 +55,10 @@ it('saves and publishes a new resource without targeting a previously edited pri
     JSON.stringify({ resourceName: 'previous', lastPublishedJson: '{}' })
   );
   replaceEditorDraft(guide);
+  const previous = { metadata: { name: 'previous' }, spec: { title: 'Previous', status: 'published' as const } };
   const backendGuides = {
-    guides: [{ metadata: { name: 'previous' }, spec: { title: 'Previous', status: 'published' as const } }],
     saveGuide: jest.fn().mockResolvedValue(undefined),
-    refreshGuides: jest.fn().mockResolvedValue([]),
+    readGuide: jest.fn(async (name: string) => (name === previous.metadata.name ? previous : undefined)),
     unpublishGuide: jest.fn(),
   };
   const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => guide }, backendGuides }));

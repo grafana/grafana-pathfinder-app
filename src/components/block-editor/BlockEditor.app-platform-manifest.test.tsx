@@ -1,3 +1,4 @@
+import { discoverSdkBackend } from '../../lib/backend-routes';
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -11,6 +12,7 @@ import { buildServer } from '../../cli/mcp/server';
 import { BlockEditor } from './BlockEditor';
 
 const mockFetch = jest.fn();
+const mockGet = jest.fn();
 
 jest.mock('@grafana/runtime', () => {
   const actual = jest.requireActual('@grafana/runtime');
@@ -19,13 +21,13 @@ jest.mock('@grafana/runtime', () => {
     config: {
       ...actual.config,
       namespace: 'stacks-1',
-      featureToggles: { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true },
+      featureToggles: { 'appplugins.loadAppManifest': true, 'appplugins.registerAPIServer': true },
       bootData: {
         ...actual.config.bootData,
         user: { name: 'Sam Rivera', login: 'sam', email: 'sam@example.com' },
       },
     },
-    getBackendSrv: () => ({ fetch: mockFetch }),
+    getBackendSrv: () => ({ fetch: mockFetch, get: mockGet }),
     getAppEvents: () => ({ publish: jest.fn() }),
   };
 });
@@ -225,6 +227,12 @@ beforeAll(async () => {
   });
 });
 
+beforeAll(async () => {
+  mockFetch.mockReturnValueOnce(of({ data: { status: 'ok' } }));
+  await discoverSdkBackend();
+  mockFetch.mockClear();
+});
+
 beforeEach(() => {
   localStorage.clear();
   storedResource = clone(finalizedResource);
@@ -241,10 +249,17 @@ beforeEach(() => {
     if (url.pathname.endsWith('/custom-guide') && url.searchParams.get('name') === storedResource.metadata.name) {
       return of({ data: clone(storedResource) });
     }
-    if (url.pathname.endsWith('/custom-guides')) {
-      return of({ data: { items: [clone(storedResource)] } });
-    }
     return of({ data: {} });
+  });
+  mockGet.mockReset().mockImplementation(async (url: string) => {
+    if (!url.endsWith('/custom-guide-repository')) {
+      return {};
+    }
+    const { metadata, spec } = storedResource;
+    return {
+      capability: { available: true },
+      guides: [{ id: spec.id, name: metadata.name, title: spec.title, status: spec.status }],
+    };
   });
 });
 

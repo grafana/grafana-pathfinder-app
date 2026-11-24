@@ -55,7 +55,7 @@ const AUTHORING_CONTEXT = {
   domains: [...PATHFINDER_DOMAINS],
   workflow: [
     '1. Resolve the guide author before creating: use who the user or conversation names as the writer; if that is unclear, ask the user who wrote the guide (and their team, if any). Call pathfinder_help({ command: "create" }), then pathfinder_create_package with those parameters in `opts`, passing `authorName` (and `authorTeam`). If the user does not answer, create without them — the author defaults to "pathfinder-mcp" and nothing is blocked. The response carries BOTH a sessionToken (use this for subsequent calls) AND a seed artifact (ignore unless you are running in stateless fallback mode).',
-    '2. Build the block tree with pathfinder_manage_block, operation "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice" | "add-hint" (CLI command names). Every operation is scoped to ONE block, addressed by id. All adds append under the parent, so author in display order. Steps, choices, and hints are not individually editable or removable; cascade-remove their parent block and rebuild it instead. Pass {sessionToken}; each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact.',
+    '2. Decide what kind of guide is being built per `guideShape.decideFirst`. Build the block tree with pathfinder_manage_block per criteria in the `guideShape` block and `interactiveRules` block if using interactive content. Use operation "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice" | "add-hint" (CLI command names). Every operation is scoped to ONE block, addressed by id. All adds append under the parent, so author in display order. Steps, choices, and hints are not individually editable or removable; cascade-remove their parent block and rebuild it instead. Pass {sessionToken}; each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact.',
     '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_read_session with operation "list-blocks" | "get-block" | "get-manifest" and {sessionToken}; get-block also takes top-level blockId. Cheap; use freely instead of re-reading the full artifact.',
     '4. Set guide-level metadata with pathfinder_manage_guide, operation "set-manifest" — description, category, language, targeting, and anything else describing the package as a whole. This is a different tool from pathfinder_manage_block on purpose: guide metadata is not a block operation, and this is usually the last authoring step before validate.',
     '5. When you need the full artifact body in your context (rare — e.g. for a wholesale review before finalize), call pathfinder_inspect with {sessionToken, opts:{}}. This is the explicit "pull the artifact" escape hatch.',
@@ -111,23 +111,52 @@ const AUTHORING_CONTEXT = {
     'Append-only: pathfinder_manage_block operation "add-block" always appends to the end of the parent. Author in display order. To reorder, remove-block and add-block in the desired order (there is no move/insert-index on this tool). Removing a populated container requires `cascade: true` and deletes its entire subtree with no undo — read the children first (pathfinder_read_session operation "get-block") if you plan to rebuild them.',
     'Tool scope: pathfinder_manage_block changes one block at a time inside the tree. pathfinder_manage_guide changes the guide as a whole (the manifest). Guide-level fields never go through pathfinder_manage_block, and block fields never go through pathfinder_manage_guide.',
   ],
+  // Modeled on the published standalone guides in grafana/interactive-tutorials
+  // (git-sync-guide, knowledge-graph-guide, alerting-101).
+  guideShape: {
+    decideFirst:
+      "Before writing blocks, decide what the guide is for — reference, teach, or walkthrough (`guideShape.kinds`). Infer it from the request and each kind's latches; a guide can mix kinds topic by topic. When latches conflict, pick the strongest match.",
+    skeleton: [
+      'Title: a short title naming the purpose ("Price a Grafana Cloud deal", not "Guide to understanding pricing"). App Platform guides do not render it as a header, so blocks[0] — a top-level `markdown` block, outside any section — opens with a `#` heading: a very brief description of the guide ("Setting up Grafana", "Connecting Prometheus to Grafana", "Objection handling for Datadog"). Word it differently from the title: a heading that starts with the same words as the title fails validation.',
+      'Preamble: the rest of that same blocks[0], under the heading — 1-4 sentences on what the guide covers, who it is for, and what the reader will know or have done by the end. Add a short "Before you begin" list only when there are real prerequisites.',
+      'Body: the content of the guide. This is where you build the guide based off the kind chosen in `guideShape.decideFirst`. You will use blocks to describe, explain, and guide the reader through the topic, adhering to the formatting rules in `guideShape.formatting`.',
+      'Close: a top-level `markdown` block at the end of the guide summarizing what the reader now knows or has done, with next steps, links, or sources where useful.',
+    ],
+    formatting: [
+      'Style content with `markdown`, `section`, `callout`, and `divider` blocks and, inside `markdown`, break up long prose with `##`/`###` headings, lists, tables, block quotes, and **bold** lead-ins. Never write `html` blocks or HTML with CSS classes to style content.',
+      'Keep sentences punchy and direct — "Click **Save**" beats "The save button can be clicked."',
+      'Cover the topic as deeply as the request asks. A request for detail on a large concept gets a long guide: more `##` topics, each fully explained, not a summary. Length comes from more topics, never from longer paragraphs.',
+      'Pick the format the content already has: three or more parallel items (years, tiers, options) → a table; a statement meant to be quoted → a block quote; something the reader must not miss → a `callout`; a change of topic → a `divider`; code the reader reads or copies → a fenced code block inside `markdown`, with a language tag; a recap → a bulleted list.',
+      'Keep it restrained: no more than about three plain paragraphs in a row, at most one callout per `##` topic, and at most one italic summary line under a heading.',
+      'Never put two visual blocks (callouts, dividers, images, videos) back to back. Where two would touch, write a short `markdown` paragraph between them that moves the guide forward: link the two, sum up what the first one showed, or add the point the reader needs before the next. If nothing worth saying fits, merge or drop one of them rather than writing filler.',
+      'Use a `section` only for a set of actionable items the reader completes — it gets a "Mark section as complete" button and completion tracking, which is what it is for. A section needs at least two steps directly inside it besides its lead-in; a single action is a top-level block, not a section. The section numbers its children itself, so a step is never a list: no list markers, and no numbered or bulleted list inside the `markdown` block of a step. Explanations, definitions, and comparisons are top-level `markdown` under `##` headings, never a section. Never number section titles ("Create the dashboard", not "1. Create the dashboard" or "Step 1: Create the dashboard").',
+      'Sections cannot contain other sections, directly or through a `conditional` or `assistant` block inside a section. Keep sections as siblings; a `conditional` inside a section is fine.',
+      'Tables should show a single concept per column. Do not create multiple columns for the same concept.',
+    ],
+    kinds: {
+      reference:
+        'Latches: "how does", "what is", "overview". Comprehensive information the reader reads and reuses (process, definitions, documentation). No interactive blocks. A procedure in it (a process, a prep checklist) is a section whose steps are each their own `markdown` block of plain sentences; a markdown-only section shows a "Mark section as complete" button, which is its completion path.',
+      teach:
+        'Latches: "teach me about", "learn", "how do I" about general Grafana ("build a dashboard"). Reusable material the reader should retain. Shape it like reference, adding hands-on interactive steps per `interactiveRules` where doing teaches better than reading, then end each `##` topic (or the guide, with a closing "Check your knowledge" topic) with a `quiz` that tests only facts the guide itself states.',
+      walkthrough:
+        'Latches: "how to" for one specific task that cannot be applied in generic fashion, "our", a named tool or resource ("integrate with IdP X"). An ordered procedure done start to finish. Steps in the Grafana UI are interactive blocks per `interactiveRules`; steps in other tools are numbered markdown. When a target cannot be addressed with a verified selector, use the placeholder in the `reftarget` rule rather than dropping the step, and when you hand off the guide, list every placeholder step (finalize lists them in validation.warnings) and tell the user they must add selectors before it will run.',
+    },
+  },
   // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
   // Curate ruthlessly — every connected client pays this length on every
   // `_start` call. If this list grows past ~20 rules, ship a separate
   // best-practices tool instead of expanding here.
-  compositionRules: [
+  interactiveRules: [
     'Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must run in order AND are tightly coupled.',
     'Never write a step with `action: noop` as filler. If there is nothing concrete for the user to do, write a `markdown` block describing what they would do instead.',
-    'If you do not have a verified Grafana DOM selector for a `reftarget` field, do NOT write a step that requires one. Write a `markdown` block, use `action: button` with the visible button text, or ask the user — never invent a selector.',
+    'If you do not have a verified Grafana DOM selector for a `reftarget` field, never invent or guess one. Use `action: button` with the visible button text, or ask the user. If neither resolves the target, keep the step with a placeholder `reftarget` of `[data-testid="TODO-<what-to-target>"]`, and you may note it in `authorNote` on the block that holds it (steps have no `authorNote`) for your own tracking; finalize strips notes, so the hand-off to the user is what flags it.',
     'If a `multistep` would end up with only one step, replace it with an `interactive` block. Single-step multisteps add overhead with no benefit.',
-    "Use `section` blocks instead of markdown `##` headings — sections give the app control over rendering, closeable groups, and progress tracking. Don't open a guide with a `## Title` markdown block; the guide's `title` is already rendered in the enclosing frame.",
-    'Sections cannot contain other sections, directly or through a `conditional` or `assistant` block inside a section. Keep sections as siblings; a `conditional` inside a section is fine.',
     "Anchor the user on the first interactive step: add `on-page:/path` to its `requirements`, or use a `navigate` action — the guide can't assume it starts on the right page.",
     'Add contextual `requirements` to every interactive step that touches the DOM. At minimum `on-page:/path`; also `navmenu-open` for nav clicks and `is-admin` (or a role) for admin-only features.',
     "Use `verify` on actions that change state (save, create, navigate) so the next step can't run against a half-completed action.",
-    'Keep prose punchy and action-oriented — the guide shows in a sidebar. "Click **Save**" beats "The save button can be clicked."',
     'Prefer a `grafana:` selector path, then a `data-testid`, over any text-based target. Visible text, `aria-label`, `placeholder` and `title` are all translated, so a guide anchored to them breaks for every user not running the locale you authored in — the engine flags these `i18n-sensitive` for exactly this reason. `action: button` with visible text remains the right fallback when you have no verified stable selector (never invent one), but treat it as a fallback, not a preference.',
     'If the target lives in a virtualized list, paginated table, or dashboard row below the fold, use a `guided` block with `lazyRender: true` on the step — a plain `interactive` will fail because `exists-reftarget` waits but cannot scroll.',
+    "To type code into a Grafana query or code editor for the reader, use a `code-block`. Its `reftarget` is that editor's selector and follows the `reftarget` rule above. Code the reader only reads or copies is a fenced code block in `markdown` (see `guideShape.formatting`), never a `code-block`.",
   ],
   discovery: [
     "pathfinder_help — the parameter interface for any CLI-backed tool's `opts`; read it per `interfaceContract.parameters`. For pathfinder_manage_block and pathfinder_manage_guide, pass `command` equal to that call's `operation`. Remember the addressing parameters help returns (`parent` for add-step / add-choice / add-hint).",
@@ -144,7 +173,7 @@ export function registerAuthoringStart(server: McpServer): void {
     'pathfinder_authoring_start',
     {
       description:
-        'Use this tool when the user wants to author, create, edit, or publish a Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call this first — once per authoring session before any other Pathfinder tool. Returns Pathfinder authoring context, workflow, composition rules, and discovery hints.',
+        'Use this tool when the user wants to author, create, edit, or publish a Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call this first — once per authoring session before any other Pathfinder tool. Returns Pathfinder authoring context, workflow, guide-shape and interactive rules, and discovery hints.',
       annotations: readOnly('Start Pathfinder authoring'),
       inputSchema: {},
     },

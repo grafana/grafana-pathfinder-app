@@ -1,13 +1,78 @@
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
+import { getLearningTopicVisual } from '../LearningContentCard/learning-topic-visual';
 
 export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
   const accent = theme.colors.warning;
+  const spotlight = getLearningTopicVisual('getting-started', theme);
   const focusRing = {
     '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
   };
 
   return {
+    spotlightGroup: css({
+      padding: theme.spacing(2),
+      background: `radial-gradient(ellipse at 100% 0, ${spotlight.background}, transparent 70%), ${theme.colors.background.primary}`,
+      border: `1px solid ${spotlight.border}`,
+      borderRadius: theme.shape.radius.lg,
+      '& h3': { margin: 0, fontSize: 22, fontWeight: theme.typography.fontWeightMedium, letterSpacing: '-0.3px' },
+    }),
+    spotlightList: css({
+      listStyle: 'none',
+      margin: theme.spacing(0.75, 0, 0),
+      padding: theme.spacing(0, 1.25),
+      border: `1px solid ${theme.colors.border.weak}`,
+      borderRadius: theme.shape.radius.default,
+      background: theme.colors.background.primary,
+      '& li + li': { borderTop: `1px solid ${theme.colors.border.weak}` },
+      '& > li': { padding: theme.spacing(1, 0) },
+      '& > li > button': { padding: 0 },
+    }),
+    spotlightSummary: css({
+      paddingInlineStart: `calc(32px + ${theme.spacing(1)})`,
+      '& p': {
+        margin: theme.spacing(0.5, 0),
+        color: theme.colors.text.secondary,
+        fontSize: theme.typography.bodySmall.fontSize,
+      },
+    }),
+    spotlightProgress: css({
+      marginTop: theme.spacing(1.25),
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1.5),
+      '& progress': {
+        flex: 1,
+        minWidth: 0,
+        width: 0,
+        height: 4,
+        border: 0,
+        borderRadius: 4,
+        overflow: 'hidden',
+        appearance: 'none',
+        background: theme.colors.border.weak,
+      },
+      '& progress::-webkit-progress-bar': { background: theme.colors.border.weak },
+      '& progress::-webkit-progress-value': { background: spotlight.color },
+      '& progress::-moz-progress-bar': { background: spotlight.color },
+    }),
+    groupControl: css({
+      display: 'flex',
+      width: '100%',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+      background: 'transparent',
+      font: 'inherit',
+      border: 0,
+      color: theme.colors.text.primary,
+      padding: theme.spacing(0.75, 0),
+      cursor: 'pointer',
+      textAlign: 'start',
+      overflowWrap: 'anywhere',
+      '& > svg:last-child': { marginLeft: 'auto', flexShrink: 0 },
+      '&:hover': { color: theme.colors.text.link },
+      ...focusRing,
+    }),
     header: css({
       display: 'flex',
       alignItems: 'flex-start',
@@ -53,18 +118,7 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
     }),
     noWrap: css({ whiteSpace: 'nowrap' }),
     denseHeading: css({ minWidth: 0, overflowWrap: 'anywhere' }),
-    play: css({
-      display: 'grid',
-      placeItems: 'center',
-      width: 26,
-      height: 26,
-      padding: 0,
-      border: 'none',
-      borderRadius: theme.shape.radius.circle,
-      background: accent.transparent,
-      color: accent.text,
-      cursor: 'pointer',
-    }),
+    play: css({ width: 26, height: 26, marginRight: 0 }),
     ringFigure: css({ width: 'auto' }),
     resume: css({
       background: `radial-gradient(circle at 100% -20%, ${accent.transparent}, transparent 60%), ${theme.colors.background.secondary}`,

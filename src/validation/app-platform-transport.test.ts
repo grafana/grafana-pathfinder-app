@@ -84,9 +84,9 @@ const ADVICE =
   'own rights — so the read 403s and the plugin fails to initialize. A plugin-backend proxy avoids ' +
   'that check entirely by minting a caller-scoped on-behalf-of token server-side.\n\n' +
   'Fix: add (or reuse) a GET route on the plugin backend — a proxy at `${PLUGIN_BACKEND_URL}/<route>` ' +
-  '— and read through it instead of calling getBackendSrv() directly. For a guide list specifically, ' +
-  'use the /custom-guides proxy for full editor resources or fetchCustomGuideRepository for the ' +
-  'slim catalogue. See docs/design/BACKEND_PROXY_PATTERN.md for the full pattern.\n\n' +
+  '— and read through it instead of calling getBackendSrv() directly. For guides specifically, use ' +
+  'fetchCustomGuideCatalogue for the slim list and the /custom-guide?name= proxy for one full ' +
+  'resource. See docs/design/BACKEND_PROXY_PATTERN.md for the full pattern.\n\n' +
   'Administrative WRITES are a deliberate exception: a resolved PUT/POST/PATCH/DELETE stays on the ' +
   'direct App Platform API with its own optimistic-concurrency checks (see ' +
   'docs/design/BACKEND_PROXY_PATTERN.md, "Singleton settings reads") and is never flagged here.\n\n' +
@@ -351,6 +351,14 @@ function calleeAddressesAppPlatform(name: string, scope: UrlScope): boolean {
     ? { declaration: local, sourceFile: scope.sourceFile, fileDir: scope.fileDir }
     : findImportedCallable(name, scope.sourceFile, scope.fileDir);
   if (!resolved) {
+    return false;
+  }
+
+  // Only this bounded helper targets SDK handlers that enforce the backend identity boundary.
+  if (
+    path.resolve(SRC_DIR, resolved.sourceFile.fileName) === path.resolve(SRC_DIR, 'lib/backend-routes.ts') &&
+    resolved.declaration.name?.getText() === 'backendRoute'
+  ) {
     return false;
   }
 
@@ -777,13 +785,32 @@ describe('App Platform transport ratchet: detector', () => {
     return evaluateCall(call, sourceFile, relPath, path.dirname(path.resolve(SRC_DIR, relPath)));
   }
 
-  /** Sits beside the real utils/interactive-guides-api.ts, so `collectionUrl`/`itemUrl` resolve to the shipped builders. */
   function evaluateSource(source: string): CallEvaluation {
     return evaluateModuleSource(
       'utils/detector-fixture.ts',
-      `import { collectionUrl, itemUrl } from './interactive-guides-api';\n${source}`
+      `function collectionUrl(namespace) { return '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/' + namespace + '/interactiveguides'; }
+       function itemUrl(namespace, name) { return collectionUrl(namespace) + '/' + name; }
+       ${source}`
     );
   }
+
+  it('permits the bounded SDK handler helper, including an aliased import', () => {
+    const result = evaluateModuleSource(
+      'utils/detector-fixture.ts',
+      `import { backendRoute as route } from '../lib/backend-routes';
+       getBackendSrv().get(route('custom-guide-repository'));`
+    );
+    expect(result.violation).toBeNull();
+  });
+
+  it('does not permit another function merely named backendRoute', () => {
+    const result = evaluateModuleSource(
+      'utils/detector-fixture.ts',
+      `function backendRoute() { return '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/default/interactiveguides'; }
+       getBackendSrv().get(backendRoute());`
+    );
+    expect(result.violation?.method).toBe('GET');
+  });
 
   it('flags a direct GET read addressed via the collectionUrl builder', () => {
     const result = evaluateSource(`

@@ -1,9 +1,9 @@
 import { readProxyDiagnostics, type ProxyDiagnostics } from './proxy-diagnostics';
 import { diagnoseGuideError, httpStatus } from './guide-diagnostics';
 import { recordPackageIndex } from './telemetry/facade';
-import { getBackendSrv } from '@grafana/runtime';
+import { config, getBackendSrv } from '@grafana/runtime';
 
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from './backend-routes';
 
 /**
  * Subset of the recommender's MatchExpr that ContextService.matchesUrlPrefix
@@ -48,8 +48,6 @@ export interface PackageRecommendationsResponse {
   packages: OnlinePackageEntry[];
 }
 
-const PACKAGE_RECOMMENDATIONS_URL = `${PLUGIN_BACKEND_URL}/package-recommendations`;
-
 /**
  * Build a CDN URL from a package index `baseUrl`, an entry's `path`, and a
  * `fileName` (e.g. `content.json`, `manifest.json`), normalizing slashes so
@@ -60,7 +58,7 @@ const PACKAGE_RECOMMENDATIONS_URL = `${PLUGIN_BACKEND_URL}/package-recommendatio
  * `baseUrl` (`'///'`) or an empty `entryPath`. Callers should treat `''` as
  * "no usable URL" and skip the entry rather than fetching a relative path.
  *
- * Mirrors `buildPackageFileURL` in `pkg/plugin/package_recommendations.go`;
+ * Mirrors `buildPackageFileURL` in `pkg/publiccontent/recommendations.go`;
  * keep the two in sync.
  */
 export function buildPackageFileUrl(baseUrl: string, entryPath: string, fileName: string): string {
@@ -99,17 +97,30 @@ function isOffline(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
+const PUBLIC_FEED_PATH = '/api/plugins/grafana-pathfinder-app/resources/package-recommendations';
+
+async function readPackageIndex(): Promise<PackageRecommendationsResponse> {
+  const read = (url: string) =>
+    getBackendSrv().get<PackageRecommendationsResponse>(url, undefined, undefined, {
+      showErrorAlert: false,
+      showSuccessAlert: false,
+    });
+  if (config.namespace && config.namespace !== '*') {
+    try {
+      return await read(backendRoute('package-recommendations'));
+    } catch (error) {
+      const status = httpStatus(error);
+      if (status !== 404 && status !== 401 && status !== 403) {
+        throw error;
+      }
+    }
+  }
+  return read(PUBLIC_FEED_PATH);
+}
+
 async function performFetch(): Promise<PackageRecommendationsResponse | null> {
   try {
-    const response = await getBackendSrv().get<PackageRecommendationsResponse>(
-      PACKAGE_RECOMMENDATIONS_URL,
-      undefined,
-      undefined,
-      {
-        showErrorAlert: false,
-        showSuccessAlert: false,
-      }
-    );
+    const response = await readPackageIndex();
     if (
       !response ||
       typeof response.baseUrl !== 'string' ||

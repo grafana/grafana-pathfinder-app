@@ -1,5 +1,6 @@
 # Dockerfile.cli only needs the CLI source tree and the bits it imports
-# from src/types, src/validation, src/lib/guide-stats and src/lib/guide-version.ts.
+# from src/types, src/validation, src/lib/guide-stats, src/lib/guide-translation,
+# src/lib/hash.util.ts and src/lib/guide-version.ts.
 # Everything else bloats the build context and triggers cache busts on
 # unrelated changes.
 
@@ -30,9 +31,12 @@ src/styles
 src/lib
 !src/lib/assert-exhaustive.ts
 !src/lib/choice-response.ts
+!src/lib/workflow-objectives.ts
 !src/lib/runtime-manifest.ts
 !src/lib/guide-stats
 !src/lib/guide-version.ts
+!src/lib/guide-translation
+!src/lib/hash.util.ts
 src/locales
 src/img
 src/test-utils
@@ -58,6 +62,6 @@ webpack.config.ts
 
 # Keep:
 # - package.json, package-lock.json, tsconfig.cli.json
-# - src/cli, src/types, src/validation, src/lib/assert-exhaustive.ts, src/lib/guide-stats, src/lib/guide-version.ts
+# - src/cli, src/types, src/validation, src/lib/assert-exhaustive.ts, src/lib/guide-stats, src/lib/guide-translation, src/lib/hash.util.ts, src/lib/guide-version.ts
 # - scripts/cli-build-utils.js, scripts/docker-entrypoint.sh
 # - Dockerfile.cli

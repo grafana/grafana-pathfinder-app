@@ -1,8 +1,8 @@
+import { matchesBackendRoute } from './helpers/backend-route';
 import type { Locator, Page } from '@playwright/test';
 
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
-import pluginJson from '../src/plugin.json';
 import { StorageKeys } from '../src/lib/storage-keys';
 import { openDocsPanel } from './helpers/completion.helpers';
 
@@ -113,11 +113,10 @@ function content(fixture: FixturePackage): Record<string, unknown> {
 }
 
 async function stubPrerequisitePackages(page: Page): Promise<{ packageFeedRequests: () => number }> {
-  const packageRecommendationsUrl = `/api/plugins/${pluginJson.id}/resources/package-recommendations`;
   const byId = new Map(packageFixtures.map((fixture) => [fixture.id, fixture]));
   let packageFeedRequests = 0;
 
-  await page.route(`**${packageRecommendationsUrl}`, async (route) => {
+  await page.route(matchesBackendRoute('package-recommendations'), async (route) => {
     packageFeedRequests++;
     await route.fulfill({
       status: 200,

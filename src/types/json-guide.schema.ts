@@ -186,7 +186,7 @@ export const JsonStepSchema = z
       .string()
       .optional()
       .describe(
-        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) ask the user, (c) set a placeholder `[data-testid="TODO-<what-to-target>"]` and tell the user to replace it (you may note it in `authorNote` on the enclosing block, never on a step; finalize strips notes). A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
       ),
 
     targetvalue: z
@@ -356,7 +356,7 @@ export const JsonInteractiveBlockSchema = z
       .string()
       .optional()
       .describe(
-        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) drop the step and write a markdown block describing what the user would do, (c) ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
+        'Verified Grafana DOM selector (CSS or data-testid) for the target element. Required for non-noop actions. Do NOT invent or guess. If you do not have an explicit, verified selector, do one of: (a) use `action: button` with the visible button text, (b) ask the user, (c) set a placeholder `[data-testid="TODO-<what-to-target>"]` and tell the user to replace it (you may note it in `authorNote` on this block; finalize strips notes). A wrong selector silently breaks the guide at runtime — the validator cannot catch this.'
       ),
 
     targetvalue: z
@@ -1233,6 +1233,18 @@ export const JsonConditionalBlockSchema = z.object({
 export const CURRENT_SCHEMA_VERSION = '1.1.0';
 
 /**
+ * Root annotation on a guide compiled for a locale (docs/design/I18N.md §7.2).
+ * @coupling Type: GuideTranslationAnnotation
+ */
+export const GuideTranslationAnnotationSchema = z.object({
+  language: z.string().min(1),
+  canonicalLanguage: z.string().min(1),
+  canonicalTitle: z.string(),
+  staleBlockIds: z.array(z.string()),
+  fallbackBlockIds: z.array(z.string()),
+});
+
+/**
  * Root schema for JSON guide (strict - no extra fields allowed).
  * @coupling Type: JsonGuide
  */
@@ -1241,6 +1253,7 @@ export const JsonGuideSchemaStrict = z.object({
   id: z.string().min(1, 'Guide id is required'),
   title: z.string().min(1, 'Guide title is required'),
   blocks: z.array(JsonBlockSchema),
+  translation: GuideTranslationAnnotationSchema.optional(),
 });
 
 /**
@@ -1279,7 +1292,7 @@ type KnownFieldsMetaKey = '_guide' | '_step' | '_choice' | '_conditionalSectionC
  * `Record<string, …>` so callers can index with an unvalidated `block.type`.
  */
 export const KNOWN_FIELDS: Record<string, ReadonlySet<string>> = {
-  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks']),
+  _guide: new Set(['schemaVersion', 'id', 'title', 'blocks', 'translation']),
   _step: new Set([
     'id',
     'action',

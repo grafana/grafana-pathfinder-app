@@ -1,4 +1,22 @@
 {
+  "achievements": {
+    "announce": {
+      "award": "Achievement earned",
+      "dismiss": "Dismiss",
+      "final": "Final tier reached",
+      "progress": "Achievement progress",
+      "tierUp": "Tier up"
+    },
+    "hub": {
+      "empty": "Finish a guide to earn your first achievement.",
+      "progress": "{{units}} of {{next}} toward the next tier",
+      "progressLabel": "Progress toward the next tier",
+      "showAll": "Show all achievements",
+      "title": "Achievements",
+      "truncated": "Some achievements could not be loaded.",
+      "unavailable": "Achievements cannot be shown right now. Try again later."
+    }
+  },
   "contextPanel": {
     "categoryDocsPage": "Docs page",
     "categoryInteractiveGuide": "Interactive guide",
@@ -69,6 +87,7 @@
     "previousMilestone": "Previous milestone",
     "previousMilestoneTooltip": "Previous milestone (Alt + ←)",
     "recommendations": "Recommendations",
+    "refreshGuideErrorTitle": "Couldn't refresh the guide",
     "resetGuide": "Reset guide",
     "resetGuideErrorMessage": "Couldn't reset guide progress. Please try again or reload the page.",
     "resetGuideErrorTitle": "Reset failed",
@@ -165,6 +184,7 @@
     "dueOn": "Due {{- date}}",
     "dueToday": "Due today",
     "dueTomorrow": "Due tomorrow",
+    "groupProgress": "{{done}} of {{total}} complete",
     "inProgress": "In progress",
     "moduleOf": "Module {{current}} of {{total}}",
     "moreRecommended": "More recommended",

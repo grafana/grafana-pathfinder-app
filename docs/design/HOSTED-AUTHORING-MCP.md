@@ -166,7 +166,7 @@ The response includes both human-readable instructions and structured fields:
     "Block ids: pass an explicit `id` whenever `type` is a container …",
     "Append-only: …"
   ],
-  "compositionRules": ["Prefer separate sibling blocks over a `multistep` block. …", "…"],
+  "interactiveRules": ["Prefer separate sibling blocks over a `multistep` block. …", "…"],
   "discovery": [
     "pathfinder_help — filtered CLI runner interfaces for mutation payloads. …",
     "pathfinder_read_session — MCP-native explicit schema. …",

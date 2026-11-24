@@ -5,7 +5,7 @@ import { t } from '@grafana/i18n';
 
 import { testIds } from '../../../constants/testIds';
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../../../types/learning-paths.types';
-import { compareResolvedAssignments } from '../../../learning-paths';
+import { compareResolvedAssignments, getPathAssignment } from '../../../learning-paths';
 import { useVerticalOverflow } from '../../../hooks';
 import { LearningPathCard } from '../LearningPathCard';
 import type { getMyLearningStyles } from '../MyLearningTab.styles';
@@ -13,9 +13,9 @@ import type { getMyLearningStyles } from '../MyLearningTab.styles';
 interface MyCoursesSectionProps {
   courses: LearningPath[];
   assignmentByTargetId: Map<string, ResolvedAssignment>;
-  getPathGuides: (pathId: string) => PathGuide[];
-  getPathProgress: (pathId: string) => number;
-  onContinue: (guideId: string, pathId: string) => void;
+  getPathGuides: (pathId: string, selectedPath?: LearningPath) => PathGuide[];
+  getPathProgress: (pathId: string, selectedPath?: LearningPath) => number;
+  onContinue: (guideId: string, pathId: string, options?: { path: LearningPath }) => void;
   onReset: (pathId: string) => void;
   onResetGuides: (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>) => Promise<void>;
   launchingPathId: string | null;
@@ -26,11 +26,11 @@ interface MyCoursesSectionProps {
 // Array.prototype.sort is stable, so unassigned paths keep their incoming order.
 function orderCourses(
   courses: LearningPath[],
-  activeById: (id: string) => ResolvedAssignment | undefined
+  activeById: (path: LearningPath) => ResolvedAssignment | undefined
 ): LearningPath[] {
   return [...courses].sort((a, b) => {
-    const aAssignment = activeById(a.id);
-    const bAssignment = activeById(b.id);
+    const aAssignment = activeById(a);
+    const bAssignment = activeById(b);
     if (aAssignment && bAssignment) {
       return compareResolvedAssignments(aAssignment, bAssignment);
     }
@@ -52,8 +52,8 @@ export function MyCoursesSection({
 }: MyCoursesSectionProps) {
   const [listRef, hasOverflow] = useVerticalOverflow<HTMLDivElement>();
   const activeAssignment = useCallback(
-    (id: string) => {
-      const assignment = assignmentByTargetId.get(id);
+    (path: LearningPath) => {
+      const assignment = getPathAssignment(assignmentByTargetId, path);
       return assignment && !assignment.satisfied ? assignment : undefined;
     },
     [assignmentByTargetId]
@@ -85,18 +85,18 @@ export function MyCoursesSection({
           className={cx(styles.pathsGrid, styles.scrollRegion, hasOverflow && styles.scrollRegionFaded)}
         >
           {ordered.map((path, index) => {
-            const assignment = activeAssignment(path.id);
-            const pathProgress = assignment ? assignment.progress : getPathProgress(path.id);
+            const assignment = activeAssignment(path);
+            const pathProgress = assignment ? assignment.progress : getPathProgress(path.id, path);
             const isFirstInProgress = index === 0 && pathProgress > 0;
 
             return (
               <LearningPathCard
-                key={path.id}
+                key={`${path.isPrivate ? 'organization' : 'grafana'}:${path.id}`}
                 path={path}
-                guides={getPathGuides(path.id)}
+                guides={getPathGuides(path.id, path)}
                 progress={pathProgress}
                 isCompleted={false}
-                onContinue={onContinue}
+                onContinue={(guideId) => onContinue(guideId, path.id, { path })}
                 onReset={onReset}
                 onResetGuides={onResetGuides}
                 defaultExpanded={isFirstInProgress}

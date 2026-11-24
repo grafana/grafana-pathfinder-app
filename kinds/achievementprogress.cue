@@ -1,0 +1,80 @@
+package kinds
+
+import (
+	"list"
+	"strings"
+	"time"
+)
+
+// achievementProgressKind is the kind metadata for AchievementProgress, reusable across versions.
+achievementProgressKind: {
+	kind:       "AchievementProgress"
+	pluralName: "AchievementProgresses"
+	scope:      "Namespaced"
+	// folderScoped: false — this kind is not folder-based. This does not tighten
+	// RBAC; it only drops folder access from the authz question, leaving
+	// "access = has stack role" instead of "has stack role AND has folder access".
+	folderScoped: false
+	codegen: {
+		ts: {
+			enabled: false
+		}
+		go: {
+			enabled: true
+		}
+	}
+}
+
+// achievementprogressv1alpha1 is the v1alpha1 version of the AchievementProgress kind.
+//
+// One mutable record per (user, achievement), the counter that multi-tier
+// achievements need because events carry no server state to re-derive a count
+// from. The writer names each object hash(userId ‖ 0x00 ‖ achievementId) and
+// updates it in place at a resourceVersion (compare-and-swap).
+//
+// Enforcement note (manifest-only deploy posture, see PR #64): in production
+// this kind is served by a shared generic apiserver directly from the generated
+// CRD schema. The CUE schema below is therefore the ONLY enforcement surface
+// that ships, so every invariant we can express is pushed into it. It checks
+// presence and domains, not truth.
+achievementprogressv1alpha1: achievementProgressKind & {
+	schema: {
+		spec: {
+			// ---------------------------------------------------------------
+			// Client-derived fields (required).
+			// ---------------------------------------------------------------
+
+			// achievementId is the catalog achievement's stable id.
+			achievementId: string & strings.MinRunes(1) & strings.MaxRunes(128)
+			// tierIds is the set of catalog tier ids held, each a lowercase slug of
+			// at most 64 characters. The writer keeps it distinct; the CRD cannot
+			// enforce that (Kubernetes forbids uniqueItems, and this codegen emits
+			// neither x-kubernetes-list-type nor CEL rules).
+			tierIds: list.MaxItems(10) & [...string & =~"^[a-z][a-z0-9-]*$" & strings.MaxRunes(64)]
+			// units is the grow-only set of distinct units counted (a dashboard uid,
+			// a guide, an event id). The writer keeps it sorted and distinct; the CRD
+			// cannot express either, so neither is enforced here. The cap is the
+			// 1,040-byte unit-key limit, but maxLength counts characters, so it
+			// admits every unit within that byte limit and some longer in bytes.
+			units: list.MaxItems(200) & [...string & strings.MaxRunes(520)]
+
+			// ---------------------------------------------------------------
+			// Writer-stamped fields (required).
+			// ---------------------------------------------------------------
+
+			// updatedAt is the RFC 3339 UTC timestamp of the last write.
+			updatedAt: string & time.Time & =~"Z$"
+			// userId is the verified ID-token subject (such as "user:27"), the same
+			// value CompletionRecord and Assignment store.
+			userId: string & strings.MinRunes(1)
+			// orgId is the Grafana organization the write originated from.
+			orgId: int64
+			// stackNamespace is the App Platform namespace the record was written into.
+			stackNamespace: string & strings.MinRunes(1)
+			// schemaVersion is the AchievementProgress spec schema version (>= 1).
+			// Separate from the CRD apiVersion so a schema mistake can be corrected
+			// without an API-version bump.
+			schemaVersion: int & >=1
+		}
+	}
+}

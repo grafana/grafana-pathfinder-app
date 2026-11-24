@@ -128,3 +128,26 @@ it('keeps a clickable image preview and progress on a compact resume card withou
   fireEvent.click(screen.getByRole('img', { name: 'Linux dashboard' }));
   expect(view).toHaveBeenCalledTimes(1);
 });
+
+it.each([true, false])('shows unknown assignment progress without a percentage (tile=%s)', (tile) => {
+  render(
+    <LearningPathCard
+      tile={tile}
+      path={{ id: 'unknown', title: 'Assigned course', description: '', guides: ['one'], badgeId: '' }}
+      guides={[{ id: 'one', title: 'First', completed: false, isCurrent: true }]}
+      progress={0}
+      isCompleted={false}
+      assignment={{
+        targetId: 'unknown',
+        title: 'Assigned course',
+        satisfied: false,
+        overdue: false,
+        progress: 0,
+        progressUnavailable: true,
+      }}
+      onContinue={jest.fn()}
+    />
+  );
+  expect(screen.getByText('Cannot check')).toBeInTheDocument();
+  expect(screen.queryByText('0%')).not.toBeInTheDocument();
+});

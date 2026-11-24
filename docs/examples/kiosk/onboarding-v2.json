@@ -1,0 +1,73 @@
+{
+  "rules": [
+    {
+      "id": "tour",
+      "title": "Explore Grafana",
+      "description": "Take a guided tour of Grafana.",
+      "url": "https://interactive-learning.grafana.net/packages/welcome-to-grafana/content.json",
+      "type": "interactive",
+      "targetUrl": "https://play.grafana.org"
+    }
+  ],
+  "page": {
+    "version": 2,
+    "width": "wide",
+    "header": "minimal",
+    "appearance": {
+      "preset": "subtle",
+      "radius": "small"
+    },
+    "blocks": [
+      {
+        "type": "hero",
+        "title": "Get to know your data",
+        "description": "Start with a tour, then explore at your own pace.",
+        "titleSize": "large"
+      },
+      {
+        "type": "section",
+        "title": "A little guidance goes a long way",
+        "appearance": {
+          "background": {
+            "type": "gradient",
+            "from": "#211141",
+            "to": "#542659"
+          }
+        },
+        "blocks": [
+          {
+            "type": "columns",
+            "ratio": "wide-left",
+            "columns": [
+              {
+                "blocks": [
+                  {
+                    "type": "text",
+                    "format": "markdown",
+                    "content": "**Build confidence** with a guided introduction.\n\n- Learn the essentials\n- Explore real examples\n- Continue at your own pace"
+                  }
+                ]
+              },
+              {
+                "blocks": [
+                  {
+                    "type": "guide-links",
+                    "layout": "cards",
+                    "columns": 1,
+                    "links": [
+                      {
+                        "ruleId": "tour",
+                        "badge": "Start here",
+                        "actionLabel": "Begin learning"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

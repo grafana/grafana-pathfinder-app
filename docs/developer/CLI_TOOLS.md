@@ -7,10 +7,11 @@ The `pathfinder-cli` is a command-line interface for working with interactive JS
 - **build-stats** — Writes the computed completion block stats into every package's `manifest.json`
 - **build-graph** — Generates a D3-compatible dependency graph from repository indexes
 - **build-snippets** — Generates a snippet catalog (`index.json`) from a directory of snippet bodies
+- **sync-translations** — Stamps a package's translation sidecars with the tooling-owned fields (`_sourceHash`, `_reviewHash`, `_available`, `baseRef`)
 - **schema** — Exports Zod validation schemas as JSON Schema for cross-language consumers
 - **e2e** — Runs end-to-end tests on guides in a live Grafana instance (see [E2E testing](./E2E_TESTING.md))
 
-This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
+This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, `sync-translations`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
 
 ---
 
@@ -152,7 +153,7 @@ The validator performs these checks in order:
 2. **Schema compliance** - Types, nesting depth, field names
 3. **Unknown fields** - Warns on unrecognized fields (forward compatibility)
 4. **Condition syntax** - Validates requirements/objectives mini-grammar
-5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (the title is rendered separately). This is an error, so the command fails; remove the heading from the block.
+5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (bundled guides render the title above the content; App Platform guides do not, so their opening heading must be worded differently). This is an error, so the command fails; remove or reword the heading.
 6. **Guided step actions** - A `guided` block's steps must not use `navigate` or `popout`; the block waits for the reader to act and neither verb produces an interaction to wait on. This is an error, so the command fails. See [actions a guided step accepts](./interactive-examples/json-guide-format.md#actions-a-guided-step-accepts)
 7. **Snippet references** - When `--snippets-catalog` is supplied, every `snippet-ref` ID must be a key in that catalog
 
@@ -196,6 +197,31 @@ This recursively discovers all package directories (any directory containing `ma
 ```bash
 npm run validate:packages
 ```
+
+### Translation sidecar checks
+
+A package that ships `i18n/*.json` translation sidecars ([`docs/design/I18N.md`](../design/I18N.md) §7.1, §9) gets its sidecars checked as part of package validation. A package with no sidecar gets no sidecar check, and its output does not change.
+
+`validatePackage` reads the sidecars with `readPackageSidecars()` and passes them, with the parsed `content.json` and `manifest.json`, to `validateSidecars()` (`src/validation/sidecar/index.ts`). The checks are listed in `src/validation/sidecar/registry.ts`, and every code they emit is declared in `src/validation/sidecar/codes.ts`. A sidecar that cannot be read is an error (`sidecar_unreadable`, with the file path); the other sidecars are still checked.
+
+Findings are routed by severity:
+
+- **Error** findings go to `errors`, with their `remediation` line when the check sets one, and fail validation.
+- **Warning** findings go to `messages` with `severity: 'warn'` and a `remediation` line, never to `warnings`. `--strict` promotes `warnings` to errors, and stale or orphaned translations must never fail a build.
+
+| Check                     | Codes                                                                                                                                                             | Severity          | Status                                                                          |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------- |
+| `language-tag`            | `sidecar_filename_invalid`, `sidecar_language_invalid`, `sidecar_language_filename_mismatch`, `sidecar_language_is_canonical`, `sidecar_unicode_format_character` | error and warning | pending, [#2392](https://github.com/grafana/grafana-pathfinder-app/issues/2392) |
+| `manifest-block-fields`   | `sidecar_manifest_block_field`                                                                                                                                    | error             | shipped                                                                         |
+| `projection-conformance`  | `sidecar_structural_field`, `sidecar_field_not_translatable`, `sidecar_block_type_not_translatable`, `sidecar_steps_not_allowed`, `sidecar_reserved_field`        | error             | pending, [#2389](https://github.com/grafana/grafana-pathfinder-app/issues/2389) |
+| `orphan-key`              | `sidecar_orphan_key`, `sidecar_orphan_step`                                                                                                                       | warning           | pending, [#2387](https://github.com/grafana/grafana-pathfinder-app/issues/2387) |
+| `source-hash`             | `sidecar_missing_source_hash`, `sidecar_stale_translation`                                                                                                        | error and warning | pending, [#2388](https://github.com/grafana/grafana-pathfinder-app/issues/2388) |
+| `translatable-ids`        | `translatable_block_missing_id`, `translatable_step_missing_id`, `duplicate_block_id`, `duplicate_step_id`                                                        | error             | pending, [#2391](https://github.com/grafana/grafana-pathfinder-app/issues/2391) |
+| `text-dependent-selector` | `text_dependent_selector`                                                                                                                                         | error             | pending, [#2390](https://github.com/grafana/grafana-pathfinder-app/issues/2390) |
+
+A pending check is registered and returns no findings until its issue lands. Its codes are already in the union, so filling it means editing its file under `src/validation/sidecar/checks/` and its test, and flipping its status row in this table.
+
+`manifest-block-fields` rejects any key in a sidecar's `manifest` block other than `description`, `category`, `reviewed`, `_sourceHash` and the tooling fields declared on `TranslationManifestEntrySchema`. Structural manifest fields such as `milestones`, `targeting` or `author` are named as such in the message.
 
 ## GitHub Actions integration
 
@@ -464,6 +490,56 @@ Snippet bodies live in the content repository alongside package content, not in 
 
 ```bash
 npm run snippets:build -- <dir>
+```
+
+---
+
+## Sync-translations command
+
+Writes the tooling-owned fields of a package's translation sidecars (`i18n/<tag>.json`, [`docs/design/I18N.md`](../design/I18N.md) §6.8, §7.1, §9). It is the only writer of those fields: `validate` stays read-only, and nothing runs this command in CI. The rules live in `src/lib/guide-translation/sync-translations.ts`; the command reads the package, asks git for `baseRef`, and writes through `writePackageSidecar`.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js sync-translations <dir> [options]
+```
+
+### Arguments
+
+- `<dir>` (required): The package directory, holding `content.json`, an optional `manifest.json` and `i18n/`.
+
+### Options
+
+- `--locale <tag>`: Sync only this sidecar. The other sidecars still layer into the availability rule, but are not written.
+- `--accept <entry...>`: Re-stamp `_sourceHash` on the named entries of `--locale`, which is required with it. This is the translator asserting that the translation now matches the current English. It never re-stamps `_reviewHash`, so it never restores a lapsed review. Name the `guide` entry as `guide`, the `manifest` entry as `manifest`, and a block by its id; write `block:<id>` for a block whose id is itself `guide` or `manifest`. Put the package directory before this option, because it takes a list.
+- `--check`: Print what would be written and exit non-zero if anything would be. Writes nothing.
+
+### What a plain run stamps
+
+For each sidecar, in this order:
+
+| Field         | Where                                 | Rule                                                                                                                                                             |
+| ------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_sourceHash` | Each block entry, `guide`, `manifest` | Stamped when the entry has translated text and no hash. Hashes the current English with the functions in `source-hash.ts`.                                       |
+| `_reviewHash` | Each entry with `reviewed: true`      | Stamped when the entry has translated text and no review hash. Hashes the translated text, so a later edit to it ends the review.                                |
+| `_available`  | Sidecar root                          | Stamped as `true` the first time every translatable unit resolves to a reviewed translation (the derived rule in `availableLocales`). Never removed by the tool. |
+| `baseRef`     | Sidecar root                          | Set to the commit that last changed `content.json`, with its repository-relative path, only when every entry's `_sourceHash` matches the current English.        |
+
+A hash that is present but no longer matches is **never** re-stamped by a plain run, because that would hide a stale or changed translation. It is reported instead: entries whose English changed are listed as stale, and entries whose translated text changed since they were reviewed are listed as lapsed. A stale entry stays stale until a translator runs `--accept` for it. A lapsed entry stops counting as reviewed (so it no longer counts toward availability or coverage) until a reviewer checks the new text, deletes its `_reviewHash`, and runs `sync-translations` again, which stamps a new review hash.
+
+`baseRef` is left absent or unchanged, with a note and no error, outside a git repository, in a shallow clone, when `content.json` has uncommitted changes, or while any entry is stale or has no English source. A second run with no input change writes nothing. Writes keep the file's key order and two-space JSON formatting with a trailing newline.
+
+### Examples
+
+```bash
+# After editing i18n/ja.json: stamp what is missing
+node dist/cli/cli/index.js sync-translations guides/first-dashboard
+
+# See what a run would change, without writing (exit 1 if anything would change)
+node dist/cli/cli/index.js sync-translations guides/first-dashboard --check
+
+# The Japanese translation of two entries was brought up to date by hand
+node dist/cli/cli/index.js sync-translations guides/first-dashboard --locale ja --accept intro guide
 ```
 
 ---

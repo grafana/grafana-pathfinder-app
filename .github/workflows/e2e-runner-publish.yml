@@ -12,6 +12,8 @@ on:
       - 'src/lib/assert-exhaustive.ts'
       - 'src/lib/guide-stats/**'
       - 'src/lib/guide-version.ts'
+      - 'src/lib/guide-translation/**'
+      - 'src/lib/hash.util.ts'
       - 'tests/e2e-runner/**'
       - 'tests/fixtures.ts'
       - 'src/cli/e2e/schemas/**'
@@ -24,6 +26,7 @@ on:
       - 'tsconfig.cli.json'
       - '.github/workflows/e2e-runner-publish.yml'
       - 'src/lib/choice-response.ts'
+      - 'src/lib/workflow-objectives.ts'
   pull_request:
     branches:
       - main
@@ -35,6 +38,8 @@ on:
       - 'src/lib/assert-exhaustive.ts'
       - 'src/lib/guide-stats/**'
       - 'src/lib/guide-version.ts'
+      - 'src/lib/guide-translation/**'
+      - 'src/lib/hash.util.ts'
       - 'tests/e2e-runner/**'
       - 'tests/fixtures.ts'
       - 'src/cli/e2e/schemas/**'
@@ -47,6 +52,7 @@ on:
       - 'tsconfig.cli.json'
       - '.github/workflows/e2e-runner-publish.yml'
       - 'src/lib/choice-response.ts'
+      - 'src/lib/workflow-objectives.ts'
 
 permissions: read-all
 

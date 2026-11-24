@@ -8,7 +8,8 @@ interface HeroStatsProps {
   narrative?: boolean;
   guidesCompleted: number;
   pathsCompleted?: number;
-  badgesEarned: number;
+  /** Null hides the legacy badge count. */
+  badgesEarned: number | null;
   streakDays: number;
   styles: ReturnType<typeof getMyLearningStyles>;
 }
@@ -54,15 +55,17 @@ export function HeroStats({
             <div className={styles.statValue}>{guidesCompleted}</div>
           </div>
         </div>
-        <div className={styles.statItem}>
-          <span className={styles.statIconBadges}>
-            <Icon name="star" size="lg" />
-          </span>
-          <div className={styles.statContent}>
-            <div className={styles.statLabel}>{t('myLearning.badgesEarned', 'Badges earned')}</div>
-            <div className={styles.statValueBadges}>{badgesEarned}</div>
+        {badgesEarned !== null && (
+          <div className={styles.statItem}>
+            <span className={styles.statIconBadges}>
+              <Icon name="star" size="lg" />
+            </span>
+            <div className={styles.statContent}>
+              <div className={styles.statLabel}>{t('myLearning.badgesEarned', 'Badges earned')}</div>
+              <div className={styles.statValueBadges}>{badgesEarned}</div>
+            </div>
           </div>
-        </div>
+        )}
         <div className={styles.statItem}>
           <span className={styles.statIconStreak}>
             <Icon name="fire" size="lg" />

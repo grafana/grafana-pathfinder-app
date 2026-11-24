@@ -1,4 +1,22 @@
 {
+  "achievements": {
+    "announce": {
+      "award": "",
+      "dismiss": "",
+      "final": "",
+      "progress": "",
+      "tierUp": ""
+    },
+    "hub": {
+      "empty": "",
+      "progress": "",
+      "progressLabel": "",
+      "showAll": "",
+      "title": "",
+      "truncated": "",
+      "unavailable": ""
+    }
+  },
   "contextPanel": {
     "categoryDocsPage": "Página de documentación",
     "categoryInteractiveGuide": "Guía interactiva",
@@ -110,6 +128,7 @@
     "dueOn": "Vence el {{- date}}",
     "dueToday": "Vence hoy",
     "dueTomorrow": "Vence mañana",
+    "groupProgress": "",
     "inProgress": "En curso",
     "moduleOf": "Módulo {{current}} de {{total}}",
     "moreRecommended": "Más recomendados",

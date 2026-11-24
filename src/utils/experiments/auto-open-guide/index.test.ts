@@ -5,6 +5,9 @@ import { config, reportExperimentView } from '@grafana/runtime';
 
 import { reportAppInteraction, UserInteraction } from '../../../lib/analytics';
 import {
+  COHORT_AUTO_OPEN_EXPERIMENT_ID,
+  COHORT_AUTO_OPEN_EXPERIMENT_FLAG,
+  COHORT_AUTO_OPEN_EXPERIMENT_GROUP,
   AUTO_OPEN_GUIDE_ELIGIBLE_EVENT,
   AUTO_OPEN_GUIDE_EXPERIMENT_FLAG,
   AUTO_OPEN_GUIDE_EXPERIMENT_GROUP,
@@ -25,6 +28,12 @@ import { getActiveExperiments } from '../active-experiments';
 import { startSavedIntentBridge } from './saved-intent-bridge';
 import { getAutoOpenGuideEnrollment, setAutoOpenGuideEnrollment } from './state';
 import { startAutoOpenGuideExperiment } from './index';
+import { getAutoOpenGuideFeatured } from './featured';
+import { resolveTenantSettings } from '../../resolve-tenant-settings';
+
+jest.mock('../../resolve-tenant-settings', () => ({ resolveTenantSettings: jest.fn() }));
+jest.mock('../../../lib/hash.util', () => ({ hashString: jest.fn(async () => 'a'.repeat(64)) }));
+const mockCohortFetch = jest.fn();
 
 const mockPushEvent = jest.fn();
 let mockSessionId: string | undefined = 'test-session';
@@ -45,6 +54,7 @@ jest.mock('../../../lib/telemetry/surface', () => ({ isPathfinderOpen: () => moc
 jest.mock('../../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: {
+    CohortAutoOpenEligible: 'cohort_auto_open_eligible',
     AutoOpenGuideEligible: 'auto_open_guide_eligible',
     OnboardingExploringEligible: 'onboarding_exploring_auto_open_eligible',
   },
@@ -75,7 +85,11 @@ jest.mock('../../../global-state/sidebar', () => ({
   sidebarState: { setPendingOpenSource: jest.fn(), getIsSidebarMounted: jest.fn(() => false) },
 }));
 jest.mock('@grafana/runtime', () => ({
-  config: { namespace: 'stacks-123', bootData: { user: { id: 42, isSignedIn: true } }, analytics: { enabled: true } },
+  config: {
+    namespace: 'stacks-123',
+    bootData: { settings: { buildInfo: { versionString: 'Grafana Cloud' } }, user: { id: 42, isSignedIn: true } },
+    analytics: { enabled: true },
+  },
   reportExperimentView: jest.fn(),
   locationService: {
     getHistory: () => ({
@@ -173,6 +187,13 @@ beforeEach(() => {
   sessionStorage.clear();
   localStorage.clear();
   mockPathfinderOpen = false;
+  global.fetch = mockCohortFetch;
+  mockCohortFetch.mockReset();
+  mockCohortFetch.mockResolvedValue({ ok: true, json: async () => ({ cohorts: ['billing'] }) });
+  jest
+    .mocked(resolveTenantSettings)
+    .mockResolvedValue({ config: { pathfinderEnabled: true, acceptedTermsAndConditions: true } } as never);
+  config.bootData.user.email = 'test@example.com';
   config.analytics.enabled = true;
   config.bootData.user.isSignedIn = true;
   setAutoOpenGuideEnrollment(null);
@@ -759,7 +780,7 @@ describe('saved exploring cohort', () => {
     await startExploring('treatment', { variant: 'control', experiences: EXPERIENCES });
     expect(reportExperimentView).not.toHaveBeenCalled();
     expect(attemptAutoOpen).not.toHaveBeenCalled();
-    expect(logger.warn).toHaveBeenCalledWith('[Pathfinder] Auto-open experiments overlap; neither will enroll');
+    expect(logger.warn).toHaveBeenCalledWith('[Pathfinder] Auto-open experiments overlap; none will enroll');
   });
   it('preserves the consumed visit while a reloaded bridge is loading', async () => {
     const overlapping = [
@@ -814,5 +835,286 @@ describe('saved exploring cohort', () => {
     config.bootData.user.id = 42;
     stop?.();
     expect(shouldOpen()).toBe(false);
+  });
+});
+
+describe('remote cohort child experiment', () => {
+  const experiences = [
+    { cohort: 'alerts', guide: 'bundled:alerts', pages: ['/explore*'] },
+    { cohort: 'billing', guide: 'bundled:billing', pages: ['/explore*', '/dashboards'] },
+    { cohort: 'billing', guide: 'bundled:billing-second', pages: ['/explore*'] },
+  ];
+  const flush = async () => {
+    for (let i = 0; i < 30; i++) {
+      await Promise.resolve();
+    }
+  };
+  async function startCohort(variant = 'treatment', path = '/explore', legacy?: unknown) {
+    window.history.replaceState(null, '', path);
+    await flag({ variant, experiences }, COHORT_AUTO_OPEN_EXPERIMENT_FLAG, legacy);
+    stop = await startAutoOpenGuideExperiment();
+    await flush();
+  }
+  const cohortOffers = () =>
+    (reportAppInteraction as jest.Mock).mock.calls.filter(([name]) => name === UserInteraction.CohortAutoOpenEligible);
+
+  it.each(['control', 'treatment'])('enrolls %s only after membership and the trigger delay', async (variant) => {
+    await startCohort(variant);
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    expect(getActiveExperiments()).toEqual([]);
+    jest.advanceTimersByTime(199);
+    await flush();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    await settle();
+    expect(reportExperimentView).toHaveBeenCalledTimes(1);
+    expect(reportExperimentView).toHaveBeenCalledWith(
+      COHORT_AUTO_OPEN_EXPERIMENT_ID,
+      COHORT_AUTO_OPEN_EXPERIMENT_GROUP,
+      variant
+    );
+    expect(attemptAutoOpen).toHaveBeenCalledTimes(variant === 'treatment' ? 1 : 0);
+    expect(cohortOffers()).toHaveLength(1);
+    expect(cohortOffers()[0][1]).toEqual(
+      expect.objectContaining({
+        experiment_cohort_auto_open: variant,
+        experience_index: 1,
+        opened: variant === 'treatment',
+      })
+    );
+    expect(getActiveExperiments()).toEqual([{ flag: COHORT_AUTO_OPEN_EXPERIMENT_FLAG, variant }]);
+    expect(startSavedIntentBridge).not.toHaveBeenCalled();
+    expect(getAutoOpenGuideFeatured('/explore')?.url).toBe(variant === 'treatment' ? 'bundled:billing' : undefined);
+    expect(getAutoOpenGuideEnrollment()?.experiences.map((experience) => experience.guide)).toEqual([
+      'bundled:billing',
+      'bundled:billing-second',
+    ]);
+  });
+
+  it('supports membership in multiple cohorts and preserves configuration priority', async () => {
+    mockCohortFetch.mockResolvedValue({ ok: true, json: async () => ({ cohorts: ['billing', 'alerts'] }) });
+    await startCohort();
+    await settle();
+    expect(cohortOffers()[0][1]).toEqual(expect.objectContaining({ experience_index: 0 }));
+    expect(installAutoLaunchOnMount).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'bundled:alerts' }),
+      expect.any(Function)
+    );
+  });
+
+  it('does not request memberships on unrelated pages or for excluded users', async () => {
+    await startCohort('excluded');
+    await settle();
+    expect(mockCohortFetch).not.toHaveBeenCalled();
+    stop?.();
+    await startCohort('treatment', '/alerting');
+    await settle();
+    expect(mockCohortFetch).not.toHaveBeenCalled();
+    await navigate('/explore');
+    await flush();
+    await settle();
+    expect(mockCohortFetch).toHaveBeenCalledTimes(1);
+    expect(attemptAutoOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([{ cohorts: [] }, { cohorts: ['Billing'] }, { cohorts: ['other'] }])(
+    'does not enroll memberships %p',
+    async ({ cohorts }) => {
+      mockCohortFetch.mockResolvedValue({ ok: true, json: async () => ({ cohorts }) });
+      await startCohort();
+      await settle();
+      expect(reportExperimentView).not.toHaveBeenCalled();
+      expect(attemptAutoOpen).not.toHaveBeenCalled();
+      expect(getAutoOpenGuideEnrollment()).toBeNull();
+      expect(localStorage.length).toBe(0);
+    }
+  );
+
+  it.each(['navigation', 'hidden', 'open', 'identity', 'stop'])(
+    'discards a delayed lookup after %s',
+    async (change) => {
+      let resolve!: (value: unknown) => void;
+      mockCohortFetch.mockReturnValueOnce(
+        new Promise((done) => {
+          resolve = done;
+        })
+      );
+      const visibility = jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+      const previousId = config.bootData.user.id;
+      await startCohort();
+      expect(reportExperimentView).not.toHaveBeenCalled();
+      if (change === 'navigation') {
+        await navigate('/alerting');
+      }
+      if (change === 'hidden') {
+        visibility.mockReturnValue('hidden');
+        document.dispatchEvent(new Event('visibilitychange'));
+      }
+      if (change === 'open') {
+        mockPathfinderOpen = true;
+      }
+      if (change === 'identity') {
+        config.bootData.user.id = previousId + 1;
+      }
+      if (change === 'stop') {
+        stop?.();
+      }
+      resolve({ ok: true, json: async () => ({ cohorts: ['billing'] }) });
+      await flush();
+      await settle();
+      expect(reportExperimentView).not.toHaveBeenCalled();
+      expect(attemptAutoOpen).not.toHaveBeenCalled();
+      config.bootData.user.id = previousId;
+      visibility.mockRestore();
+    }
+  );
+
+  it.each(['navigation', 'hidden', 'open', 'identity', 'stop'])(
+    'rechecks %s during activation delay',
+    async (change) => {
+      const visibility = jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+      const previousId = config.bootData.user.id;
+      await startCohort();
+      if (change === 'navigation') {
+        window.history.replaceState(null, '', '/alerting');
+      }
+      if (change === 'hidden') {
+        visibility.mockReturnValue('hidden');
+      }
+      if (change === 'open') {
+        mockPathfinderOpen = true;
+      }
+      if (change === 'identity') {
+        config.bootData.user.id = previousId + 1;
+      }
+      if (change === 'stop') {
+        stop?.();
+      }
+      await settle();
+      expect(reportExperimentView).not.toHaveBeenCalled();
+      expect(attemptAutoOpen).not.toHaveBeenCalled();
+      config.bootData.user.id = previousId;
+      visibility.mockRestore();
+    }
+  );
+
+  it.each(['/explore?doc=bundled:foo', '/explore?controller=1', '/explore?pathfinderKiosk=1'])(
+    'respects explicit surface navigation at %s',
+    async (path) => {
+      await startCohort('treatment', path);
+      await settle();
+      expect(mockCohortFetch).not.toHaveBeenCalled();
+      expect(reportExperimentView).not.toHaveBeenCalled();
+      expect(attemptAutoOpen).not.toHaveBeenCalled();
+    }
+  );
+
+  it('keeps a consumed visit when only another cohort’s page match changes', async () => {
+    window.history.replaceState(null, '', '/explore');
+    await flag(
+      {
+        variant: 'treatment',
+        experiences: [{ ...experiences[0], pages: ['/explore/metrics'] }, experiences[1], experiences[2]],
+      },
+      COHORT_AUTO_OPEN_EXPERIMENT_FLAG
+    );
+    stop = await startAutoOpenGuideExperiment();
+    await flush();
+    await settle();
+    await navigate('/explore/metrics');
+    expect(cohortOffers()).toHaveLength(1);
+    expect(cohortOffers()[0][1].experience_index).toBe(1);
+  });
+
+  it('skips lookup when the panel is occupied', async () => {
+    mockPathfinderOpen = true;
+    await startCohort();
+    expect(mockCohortFetch).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed lookup on a later navigation after cooldown without consuming the offer', async () => {
+    mockCohortFetch.mockResolvedValueOnce({ ok: false, status: 503 });
+    await startCohort();
+    await settle();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(30000);
+    expect(mockCohortFetch).toHaveBeenCalledTimes(1);
+    await navigate('/explore/metrics');
+    await flush();
+    await settle();
+    expect(mockCohortFetch).toHaveBeenCalledTimes(2);
+    expect(cohortOffers()).toHaveLength(1);
+  });
+
+  it('restores only its own attribution after rechecking membership without reoffering on reload', async () => {
+    await startCohort();
+    await settle();
+    expect(cohortOffers()).toHaveLength(1);
+    stop?.();
+    jest.clearAllMocks();
+    let resolve!: (value: unknown) => void;
+    mockCohortFetch.mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      })
+    );
+    await startCohort();
+    expect(getAutoOpenGuideEnrollment()).toBeNull();
+    resolve({ ok: true, json: async () => ({ cohorts: ['billing'] }) });
+    await flush();
+    await settle();
+    expect(getAutoOpenGuideEnrollment()?.flag).toBe(COHORT_AUTO_OPEN_EXPERIMENT_FLAG);
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    await navigate('/explore/metrics');
+    expect(cohortOffers()).toHaveLength(0);
+    await navigate('/alerting');
+    await navigate('/explore');
+    expect(cohortOffers()).toHaveLength(1);
+    expect(cohortOffers()[0][1]).toEqual(expect.objectContaining({ experience_index: 2 }));
+  });
+
+  it('respects earlier experiment suppression without restoring earlier attribution', async () => {
+    localStorage.setItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:alerts', 'true');
+    localStorage.setItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:billing', 'true');
+    localStorage.setItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:billing-second', 'true');
+    await startCohort();
+    await settle();
+    expect(mockCohortFetch).not.toHaveBeenCalled();
+    expect(getAutoOpenGuideEnrollment()).toBeNull();
+    expect(attemptAutoOpen).not.toHaveBeenCalled();
+  });
+
+  it('hides cached enrichment and featured content immediately after an account change', async () => {
+    await startCohort();
+    await settle();
+    const previousId = config.bootData.user.id;
+    config.bootData.user.id = previousId + 1;
+    expect(getActiveExperiments()).toEqual([]);
+    expect(getAutoOpenGuideFeatured('/explore')).toBeNull();
+    await navigate('/dashboards');
+    expect(getAutoOpenGuideEnrollment()).toBeNull();
+    config.bootData.user.id = previousId;
+  });
+
+  it('rejects overlapping experiments before requesting membership', async () => {
+    await startCohort('treatment', '/explore', { variant: 'control', experiences: EXPERIENCES });
+    await settle();
+    expect(mockCohortFetch).not.toHaveBeenCalled();
+    expect(reportExperimentView).not.toHaveBeenCalled();
+  });
+
+  it('does not expose membership or the hash in eligibility analytics', async () => {
+    await startCohort();
+    await settle();
+    expect(Object.keys(cohortOffers()[0][1]).sort()).toEqual([
+      'event_id',
+      'experience_index',
+      'experiment_cohort_auto_open',
+      'exposure_id',
+      'opened',
+    ]);
+    expect(JSON.stringify(mockPushEvent.mock.calls)).not.toContain('billing');
+    expect(JSON.stringify(mockPushEvent.mock.calls)).not.toContain('a'.repeat(64));
   });
 });

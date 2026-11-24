@@ -945,9 +945,10 @@ All commands support --quiet (terse output) and --format json (structured output
 
 Block types: markdown, section, interactive, multistep, guided, quiz, input,
   image, video, html, terminal, terminal-connect, code-block, conditional, assistant,
-  challenge
+  challenge, collapsible
 
-Container types (require --id): section, conditional, assistant, multistep, guided, quiz, challenge
+Container types (require --id): section, conditional, assistant, multistep, guided, quiz, challenge, collapsible
+A collapsible holds only markdown, divider, html, image, video and callout blocks.
 Leaf blocks are auto-assigned an ID (e.g., markdown-1) if --id is not provided.
 Use --parent <id> to append inside a container. New blocks are always appended in order.
 Use --if-absent on container blocks to make retries safe.

@@ -1055,6 +1055,7 @@ describe('CHECK_HANDLERS routing parity', () => {
     ['has-dashboard-named:My Dashboard', 'has-dashboard-named:'],
     ['dashboard-exists', 'dashboard-exists'],
     ['on-page:/explore', 'on-page:'],
+    ['workflow-ready:cloud-access-policy-token', 'workflow-ready:'],
     ['has-feature:my-toggle', 'has-feature:'],
     ['in-environment:cloud', 'in-environment:'],
     ['min-version:10.0.0', 'min-version:'],

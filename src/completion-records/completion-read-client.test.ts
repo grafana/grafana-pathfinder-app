@@ -1,4 +1,7 @@
-import { of, throwError } from 'rxjs';
+let mockScope = 'default:1:1';
+jest.mock('../lib/user-scope', () => ({ getUserScope: () => mockScope }));
+
+import { of, Subject, throwError } from 'rxjs';
 
 import { getBackendSrv } from '@grafana/runtime';
 
@@ -10,6 +13,7 @@ import {
 
 const mockFetch = jest.fn();
 jest.mock('@grafana/runtime', () => ({
+  config: { namespace: 'stacks-123' },
   getBackendSrv: jest.fn(),
 }));
 
@@ -29,6 +33,7 @@ function body(available = true) {
 
 describe('loadMyCompletions', () => {
   beforeEach(() => {
+    mockScope = 'default:1:1';
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-10-13T12:00:00Z'));
     mockFetch.mockReset();
@@ -139,5 +144,28 @@ describe('loadMyCompletions', () => {
     mockFetch.mockReturnValue(of({ data: body() }));
     await loadMyCompletions();
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['org-2:2:1', 'default:1:2', 'stacks-123:1:1'])(
+    'does not reuse completion data in scope %s',
+    async (scope) => {
+      __resetMyCompletionsCacheForTests();
+      mockFetch.mockReturnValue(of({ data: body() }));
+      await loadMyCompletions();
+      mockScope = scope;
+      await loadMyCompletions();
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it('discards a completion response after the caller changes', async () => {
+    __resetMyCompletionsCacheForTests();
+    const response = new Subject<{ data: ReturnType<typeof body> }>();
+    mockFetch.mockReturnValueOnce(response);
+    const pending = loadMyCompletions();
+    mockScope = 'default:1:2';
+    response.next({ data: body() });
+    response.complete();
+    await expect(pending).resolves.toEqual({ kind: 'unavailable' });
   });
 });

@@ -6,8 +6,8 @@ import type { ChoiceProgressModel } from '../lib/guide-stats/choice-progress';
 import { evaluateChoiceConditions } from '../lib/choice-response';
 import type { GuideBlockIndex } from '../lib/guide-stats';
 
-/** Where the frozen denominator came from. Reported in telemetry, never branched on by UI. */
-export type ActiveGuideIndexDenominatorSource = 'live-pre-inlining' | 'live-post-inlining-degraded';
+/** Where the frozen denominator came from. Kept on the index; no production consumer reads it today. */
+export type ActiveGuideIndexDenominatorSource = 'live-pre-inlining';
 
 export interface ActiveGuideIndex {
   contentKey: string;

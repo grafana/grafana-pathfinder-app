@@ -1,4 +1,22 @@
 {
+  "achievements": {
+    "announce": {
+      "award": "",
+      "dismiss": "",
+      "final": "",
+      "progress": "",
+      "tierUp": ""
+    },
+    "hub": {
+      "empty": "",
+      "progress": "",
+      "progressLabel": "",
+      "showAll": "",
+      "title": "",
+      "truncated": "",
+      "unavailable": ""
+    }
+  },
   "contextPanel": {
     "categoryDocsPage": "Stránka dokumentace",
     "categoryInteractiveGuide": "Interaktivní průvodce",
@@ -114,6 +132,7 @@
     "dueOn": "",
     "dueToday": "",
     "dueTomorrow": "",
+    "groupProgress": "",
     "inProgress": "",
     "moduleOf": "",
     "moreRecommended": "",

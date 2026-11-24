@@ -3,7 +3,7 @@ import { ThemeContext } from '@grafana/data';
 import { config, locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { consumePendingGuideOnMount, initializePanelTabsOnMount } from '../docs-panel/pendingGuideRouter';
-import { useContentReset, useAutoOpenListener } from '../docs-panel/hooks';
+import { useContentReset, useAutoOpenListener, useAssistantPathfinderListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
 import { isNonContentTab } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
@@ -194,6 +194,7 @@ function FloatingPanelInner() {
   // Receive intercepted docs links while the floating panel owns the surface
   // (#1450). Mode-gated to 'floating' so a dock-back can't double-open.
   useAutoOpenListener(panel, 'floating');
+  useAssistantPathfinderListener(panel, 'floating');
 
   // Get active tab content
   const activeTab = tabs.find((t) => t.id === activeTabId);

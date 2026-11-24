@@ -13,6 +13,7 @@ import {
   guideCompletionMarkStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
+  listPrTestContentKeys,
   milestoneCompletionStorage,
 } from '../../../lib/user-storage';
 
@@ -105,4 +106,10 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
       detail: { contentKey },
     })
   );
+}
+
+// PR-tester preview keys carry the #pf-pr- marker; real guide keys never do.
+// Clears every orphaned preview record through the single-guide reset path.
+export async function resetPrTestProgress(): Promise<void> {
+  await Promise.all(listPrTestContentKeys().map((contentKey) => resetGuideProgress(contentKey)));
 }

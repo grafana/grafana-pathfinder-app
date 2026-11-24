@@ -294,7 +294,12 @@ describe('InteractiveGuided terminal presentation with real handler and comment 
           }
           await jest.advanceTimersByTimeAsync(0);
         });
-        expect(document.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+        if (outcome === 'skipped') {
+          expect(document.querySelector('.interactive-comment-progress-bar')).toHaveStyle({ width: '100%' });
+        } else {
+          // The user's own final action dismisses the guided box (#2465).
+          expect(document.querySelector('.interactive-comment-box')).toBeNull();
+        }
         expect(view.container.querySelector('.interactive-guided')).toHaveAttribute(
           'data-test-step-state',
           'completed'
@@ -307,6 +312,10 @@ describe('InteractiveGuided terminal presentation with real handler and comment 
         });
         expect(onComplete).toHaveBeenCalledTimes(1);
         expect(mockStoredCompleted).toBe(true);
+        if (outcome === 'completed') {
+          expect(document.querySelector('.interactive-comment-box')).toBeNull();
+          return;
+        }
         const box = document.querySelector('.interactive-comment-box')!;
         expect(Array.from(box.querySelectorAll('button'), (button) => button.textContent)).toEqual(['Close']);
         fireEvent.click(box.querySelector('button')!);

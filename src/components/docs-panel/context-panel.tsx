@@ -39,11 +39,13 @@ import {
   useLearningPaths,
   useMyAssignments,
   selectHubResume,
+  type HubLearningDeps,
   selectHubStats,
   type HubResume,
   type ResolvedAssignment,
 } from '../../learning-paths';
 import { learningEffort } from '../LearningContentCard/learning-effort';
+import { bundledId } from '../../lib/completion-suggestions';
 import { catalogTopic } from '../../lib/catalog-discovery';
 
 /**
@@ -192,14 +194,16 @@ function launchRecommendation(
     : openLearningJourney(contentUrl, recommendation.title);
 }
 
-function hubInteractionLocation(index: number): string {
-  if (index === 0) {
+function hubInteractionLocation(index: number, featuredCount: number): string {
+  if (index < featuredCount) {
     return 'hub_featured_card';
   }
-  return index <= MORE_RECOMMENDED_COUNT ? 'hub_more_recommended' : 'hub_other_docs';
+  return index < featuredCount + MORE_RECOMMENDED_COUNT ? 'hub_more_recommended' : 'hub_other_docs';
 }
 
 interface HubGuidesOptions {
+  completedGuides: readonly string[];
+  featuredRecommendations: Recommendation[];
   recommendations: Recommendation[];
   resume: Pick<HubResume, 'pathId' | 'guideUrl'> | undefined;
   assignments: ResolvedAssignment[];
@@ -272,22 +276,36 @@ function toHubExpansion({
 
 /** Keeps the engine's order; what the resume card already offers is left out. */
 function toHubGuides({
+  completedGuides,
+  featuredRecommendations,
   recommendations,
   resume,
   assignments,
   toggleSummaryExpansion,
   ...openers
-}: HubGuidesOptions): HubGuide[] {
-  const launchable = recommendations.filter((recommendation) => {
+}: HubGuidesOptions) {
+  const seen = new Set<string>();
+  const isLaunchable = (recommendation: Recommendation) => {
     const contentUrl = getRecommendationContentUrl(recommendation);
-    return (
-      contentUrl !== '' &&
-      contentUrl !== resume?.guideUrl &&
-      (resume === undefined || recommendationTargetId(recommendation) !== resume.pathId)
-    );
-  });
+    if (
+      !contentUrl ||
+      seen.has(contentUrl) ||
+      contentUrl === resume?.guideUrl ||
+      (resume !== undefined && recommendationTargetId(recommendation) === resume.pathId)
+    ) {
+      return false;
+    }
+    seen.add(contentUrl);
+    return true;
+  };
+  const featured = featuredRecommendations.filter(isLaunchable);
+  const launchable = [...featured, ...recommendations.filter(isLaunchable)];
+  const groupTitle = featured[0]?.placement === 'suggestion' ? featured[0].groupTitle : undefined;
+  const featuredCount = groupTitle
+    ? featured.filter((rec) => rec.placement === 'suggestion' && rec.groupTitle === groupTitle).length
+    : featured.length || Math.min(1, launchable.length);
 
-  return launchable.map((recommendation, index) => {
+  const guides = launchable.map((recommendation, index): HubGuide => {
     const contentUrl = getRecommendationContentUrl(recommendation);
     const displayType = getEffectiveDisplayType(recommendation);
     const kind = getRecommendationKind(displayType);
@@ -295,6 +313,8 @@ function toHubGuides({
       recommendation,
       assignmentForPath(recommendation, assignments)?.trackId
     );
+    const id = recommendationTargetId(recommendation) ?? bundledId(contentUrl);
+    const completed = kind === 'guide' && id !== undefined && completedGuides.includes(id);
     return {
       key: contentUrl,
       title: recommendation.title,
@@ -302,24 +322,25 @@ function toHubGuides({
       topic: getRecommendationTopic(recommendation, contentUrl),
       kind,
       effort: learningEffort(recommendation.manifest, kind),
-      progress: displayType === 'docs-page' ? undefined : recommendation.completionPercentage,
+      progress: completed ? 100 : displayType === 'docs-page' ? undefined : recommendation.completionPercentage,
       expansion: toHubExpansion({
         recommendation,
         contentUrl,
         displayType,
         packageInfo,
-        featured: index === 0,
+        featured: index < featuredCount,
         toggleSummaryExpansion,
         ...openers,
       }),
       onLaunch: () =>
         launchRecommendation(recommendation, {
-          interactionLocation: hubInteractionLocation(index),
+          interactionLocation: hubInteractionLocation(index, featuredCount),
           packageInfo,
           ...openers,
         }),
     };
   });
+  return { guides, featuredCount, groupTitle };
 }
 
 export class ContextPanel extends SceneObjectBase<ContextPanelState> {
@@ -423,12 +444,12 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const { recommendations, recommendationsError } = contextData;
 
   const hubLearning = useMemo(() => {
-    const deps = {
+    const deps: HubLearningDeps = {
       paths: [...paths, ...onlinePaths],
       assignmentByTargetId,
       getPathProgress,
       isPathCompleted,
-      getPathGuides: getAssignedPathGuides,
+      getPathGuides: (id, path) => getAssignedPathGuides(id, false, path),
     };
     return {
       resume: selectHubResume(deps),
@@ -447,7 +468,9 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
   const hubGuides = useMemo(
     () =>
       toHubGuides({
-        recommendations: [...contextData.featuredRecommendations, ...recommendations],
+        completedGuides: progress.completedGuides,
+        featuredRecommendations: contextData.featuredRecommendations,
+        recommendations,
         resume: hubLearning.resume ?? undefined,
         assignments: assignedNotDone,
         openLearningJourney,
@@ -455,6 +478,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
         toggleSummaryExpansion,
       }),
     [
+      progress.completedGuides,
       contextData.featuredRecommendations,
       recommendations,
       hubLearning.resume,
@@ -552,7 +576,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
 
           <SidebarHub
             userName={getFirstName(config.bootData?.user)}
-            guides={hubGuides}
+            {...hubGuides}
             customGuides={hubCustomGuides}
             isLoadingCustomGuides={isLoadingCustomGuides}
             resume={hubLearning.resume}

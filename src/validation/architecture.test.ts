@@ -435,6 +435,43 @@ const ALLOWED_ORPHANED_MODULES = new Set(ALLOWED_ORPHANED_MODULES_ENTRIES.map((e
  * permanent.
  */
 const ALLOWED_OFF_GRAPH_REACHABLE_ENTRIES: readonly AllowedArchitectureEntry[] = [
+  ...[
+    'lib/guide-translation/availability.ts',
+    'lib/guide-translation/compile-locale.ts',
+    'lib/guide-translation/locale-chain.ts',
+    'lib/guide-translation/projection-table.ts',
+    'lib/guide-translation/review.ts',
+    'lib/guide-translation/source-hash.ts',
+    'lib/guide-translation/sync-translations.ts',
+    'types/translation-sidecar.schema.ts',
+  ].map((violation) => ({
+    violation,
+    reason:
+      'Guide translation contract (docs/design/I18N.md). Sidecars are compiled at build time, so only ' +
+      'src/cli/** and tests read it; the app loads compiled content.<locale>.json files and needs none of it ' +
+      'until the block editor previews a translation (I18N.md §6.1).',
+    tracking: '#2373',
+  })),
+  ...[
+    'validation/sidecar/codes.ts',
+    'validation/sidecar/hash.ts',
+    'validation/sidecar/index.ts',
+    'validation/sidecar/registry.ts',
+    'validation/sidecar/types.ts',
+    'validation/sidecar/checks/language-tag.ts',
+    'validation/sidecar/checks/manifest-block-fields.ts',
+    'validation/sidecar/checks/orphan-key.ts',
+    'validation/sidecar/checks/projection-conformance.ts',
+    'validation/sidecar/checks/source-hash.ts',
+    'validation/sidecar/checks/text-dependent-selector.ts',
+    'validation/sidecar/checks/translatable-ids.ts',
+  ].map((violation) => ({
+    violation,
+    reason:
+      'Sidecar validation seam (docs/design/I18N.md §7.1, §9), reached only through validation/validate-package.ts, ' +
+      'itself off-graph-reachable: the CLI and tests run it, the app never does.',
+    tracking: '#2373',
+  })),
   {
     violation: 'types/v1-recommender.types.ts',
     reason:
@@ -514,6 +551,7 @@ const NODE_SAFE_EXTERNALS = new Set([
   'commander', // CLI argument parser, Node-only
   'playwright', // Playwright runtime and package metadata, Node-only
   'prettier', // used by the CLI for output formatting, Node API
+  'semver', // version range checks, verified in plain Node
   'zod', // schema validation, environment-neutral
 ]);
 

@@ -126,14 +126,16 @@ describe('getActiveExperiments', () => {
   });
 });
 
-it('attributes saved-intent enrollment to its own flag without evaluating it', () => {
-  jest.isolateModules(() => {
-    const mockOF = setup({});
-    const { setAutoOpenGuideEnrollment } = require('./auto-open-guide/state');
-    const { getActiveExperiments } = require('./active-experiments');
-    const flag = 'pathfinder.onboarding-exploring-auto-open-experiment';
-    setAutoOpenGuideEnrollment({ ...AUTO_OPEN_GUIDE_ENROLLMENT, flag });
-    expect(getActiveExperiments()).toEqual([{ flag, variant: 'treatment' }]);
-    expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalledWith(flag, expect.anything());
-  });
-});
+it.each(['pathfinder.onboarding-exploring-auto-open-experiment', 'pathfinder.cohort-auto-open-experiment'])(
+  'attributes %s to its own flag without evaluating it',
+  (flag) => {
+    jest.isolateModules(() => {
+      const mockOF = setup({});
+      const { setAutoOpenGuideEnrollment } = require('./auto-open-guide/state');
+      const { getActiveExperiments } = require('./active-experiments');
+      setAutoOpenGuideEnrollment({ ...AUTO_OPEN_GUIDE_ENROLLMENT, flag });
+      expect(getActiveExperiments()).toEqual([{ flag, variant: 'treatment' }]);
+      expect(mockOF.mockClient.getObjectValue).not.toHaveBeenCalledWith(flag, expect.anything());
+    });
+  }
+);

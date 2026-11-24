@@ -63,10 +63,10 @@ describe('active-guide-index', () => {
     const a = fakeIndex(3);
     const b = fakeIndex(7);
     publishGuideIndex({ contentKey: 'bundled:a', index: a, denominatorSource: 'live-pre-inlining' });
-    publishGuideIndex({ contentKey: 'bundled:b', index: b, denominatorSource: 'live-post-inlining-degraded' });
+    publishGuideIndex({ contentKey: 'bundled:b', index: b, denominatorSource: 'live-pre-inlining' });
 
     expect(getGuideIndex('bundled:a')?.index.totalBlockCount).toBe(3);
     expect(getGuideIndex('bundled:b')?.index.totalBlockCount).toBe(7);
-    expect(getGuideIndex('bundled:b')?.denominatorSource).toBe('live-post-inlining-degraded');
+    expect(getGuideIndex('bundled:b')?.denominatorSource).toBe('live-pre-inlining');
   });
 });

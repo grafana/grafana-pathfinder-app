@@ -38,6 +38,21 @@ describe('suggestionState', () => {
   });
 
   describe('setSuggestions', () => {
+    it('scopes a named group to its page and clears the heading when replaced', () => {
+      const picks = [{ title: 'One', url: 'bundled:one' }];
+      const pathname = window.location.pathname;
+      suggestionState.setSuggestions(picks, { groupTitle: 'Setup', pathname });
+      try {
+        expect(suggestionState.getSuggestions()).toEqual([{ ...picks[0], groupTitle: 'Setup' }]);
+        window.history.replaceState(null, '', '/different-page');
+        expect(suggestionState.getSuggestions()).toEqual([]);
+        suggestionState.setSuggestions(picks);
+        expect(suggestionState.getSuggestions()).toEqual(picks);
+      } finally {
+        window.history.replaceState(null, '', pathname);
+      }
+    });
+
     it('should persist suggestions to sessionStorage', () => {
       const suggestions = [{ title: 'Guide A', url: '/docs/a' }];
       suggestionState.setSuggestions(suggestions);

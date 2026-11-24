@@ -67,6 +67,7 @@ The manifest carries metadata, dependencies, and targeting as flat top-level fie
 | `tracks`            | `Track[]`                            | No — `path` only              | —                         | Named, independently-ordered guide sequences alongside `milestones` (see [tracks](#tracks))                                                                                                                               |
 | `description`       | `string`                             | Recommended                   | —                         | Full description for display and search                                                                                                                                                                                   |
 | `language`          | `string`                             | No                            | `"en"`                    | Content language (BCP 47 tag)                                                                                                                                                                                             |
+| `translations`      | `string[]`                           | No                            | —                         | Advisory list of translated locales, carried into `repository.json`; reserved for guide translation (see [I18N design](../design/I18N.md))                                                                                |
 | `category`          | `string`                             | **Yes** (CLI validation)      | —                         | Content category for taxonomy; any non-blank value passes `validate`, which fails on a missing or blank one. Runtime loading does not require it                                                                          |
 | `author`            | `{ name?, team? }`                   | Recommended                   | —                         | Content author or owning team; the CLI and MCP fill it (see [Author defaults](#author-defaults))                                                                                                                          |
 | `startingLocation`  | `string`                             | Recommended                   | `"/"`                     | URL path where the guide expects to begin execution                                                                                                                                                                       |
@@ -480,10 +481,54 @@ node dist/cli/cli/index.js build-repository src/bundled-interactives -o src/bund
 
 ---
 
+## Translate a guide
+
+A guide is translated by adding one sidecar per language beside `content.json`. The English guide is not touched. The design is in [I18N.md](../design/I18N.md); this section is the working procedure.
+
+```
+first-dashboard/
+├── content.json
+├── manifest.json
+└── i18n/
+    ├── ja.json          ← every Japanese string
+    └── ja-JP.json       ← optional: only the fields that differ for Japan
+```
+
+Name the file after its language tag, and set `language` to the same tag. A regional file such as `ja-JP.json` holds only the fields that differ from `ja.json`; every other field falls back to it.
+
+### What a translator edits
+
+A sidecar maps a block `id` to the translated text of that block. Translate only text fields: `content`, `tooltip`, `hint`, `formHint`, `title`, `alt`, `description`, and so on, as the projection table in [I18N.md §7.1](../design/I18N.md) lists for each block type. A multistep or guided block translates each step under its `steps` key, by step id. The `guide` entry holds the guide title, and the `manifest` entry holds the manifest `description` and `category`.
+
+Never copy a selector, a requirement, an action, or any other structural field into a sidecar. `validate` rejects them, and they are not read.
+
+Fields whose name starts with an underscore are owned by tooling. Do not write or edit `_sourceHash`, `_reviewHash` or `_available`, or the root `baseRef`. `sync-translations` writes them.
+
+### Write UI labels with a gloss
+
+The reader's guide language and Grafana's interface language are independent choices, so a label in a translated sentence must work for both readers. Write the label as the English Grafana UI shows it, then Grafana's own string for it in the guide's language, in parentheses. For Japanese: `**Add**（追加）メニューを開いてください。` Take the gloss from Grafana's own catalog for that language, not from a fresh translation. Leave operational values untouched in every language: query text, label matchers such as `walker=jack`, and values to type. The reasoning is in [I18N.md §6.4](../design/I18N.md).
+
+### Review, and stamp
+
+1. Translate the entry.
+2. A second person checks it and sets `"reviewed": true` on that entry. An entry that is not reviewed is treated as untranslated: readers see the English for it.
+3. Run `pathfinder-cli sync-translations <dir>`. It stamps `_sourceHash` (the English the entry was translated from), `_reviewHash` (the text that was reviewed), `_available` (once the whole guide is translated and reviewed), and `baseRef`. Commit the sidecar with those changes in it.
+
+A reviewed entry with no `_reviewHash` does not count as reviewed, so step 3 is part of the review.
+
+After that, two things can change under a translation, and the command never hides either:
+
+- **The English changes.** The entry's `_sourceHash` no longer matches. The translation counts as stale, and `sync-translations` lists it. Update the translation, then run `pathfinder-cli sync-translations <dir> --locale ja --accept <entry>` to say that it now matches the English. This does not restore the review: the edited text needs a reviewer, as in the next item.
+- **The translation is edited.** The entry's `_reviewHash` no longer matches, so it stops counting as reviewed and readers see the English for it. `--accept` never changes `_reviewHash`. A reviewer who checks the new text deletes the entry's `_reviewHash` and runs `pathfinder-cli sync-translations <dir>`, which stamps a new one.
+
+`--accept` and a deleted `_reviewHash` are deliberate acts and show up in the diff as changed hashes. A plain run never re-stamps a hash that no longer matches. See the [command reference](./CLI_TOOLS.md#sync-translations-command) for every option, including `--check`.
+
+---
+
 ## Further reading
 
 - [JSON guide format](./interactive-examples/json-guide-format.md) — block-level schema reference
-- [CLI tools](./CLI_TOOLS.md) — `validate`, `build-repository`, `build-stats`, `build-graph` command reference
+- [CLI tools](./CLI_TOOLS.md) — `validate`, `build-repository`, `build-stats`, `build-graph`, `sync-translations` command reference
 - [Authoring interactive guides](./interactive-examples/authoring-interactive-journeys.md) — starting point for all guide authoring
 - [Pathfinder package design](../design/PATHFINDER-PACKAGE-DESIGN.md) — the full design spec (for design review, not day-to-day authoring)
 - [Dependencies design](../design/package/dependencies.md) — deep dive on the dependency model
@@ -526,18 +571,17 @@ completion evidence belongs to RSS and cannot satisfy the migrated dashboard tar
 
 ### Enable the daily sync
 
-Register `.github/workflows/sync-bundled-tutorials.yml` for the `updater-for-ci`
-GitHub App Token Broker in deployment_tools at
-`terraform/repositories/grafana-pathfinder-app/github-app-configs/config.yaml`.
-Scope its token to this repository with Contents and Pull requests write permissions,
-main-branch schedule and workflow_dispatch events. Merge and apply that broker
-configuration before enabling the workflow. The workflow uses short-lived OIDC
-credentials in a separate PR job; package installation and generation have no token
-minting permission. No GitHub App private key belongs in repository secrets.
+The workflow uses the repository's built-in `GITHUB_TOKEN` in a separate PR job
+with Contents and Pull requests write permissions. Package installation and generation
+retain read-only permissions. No GitHub App installation, token broker configuration,
+or repository secret is required. Repository Actions settings must allow GitHub Actions
+to create pull requests.
 After the upstream migration is merged and its seven packages are published,
 set repository variable `BUNDLED_TUTORIAL_SYNC_ENABLED` to `true` and manually run
 **Sync bundled tutorials**. Confirm it opens or updates the signed
-`codex/sync-bundled-tutorials` PR and that normal PR checks run. Subsequent checks
+`codex/sync-bundled-tutorials` PR. A repository writer must select **Approve workflows to run**
+when GitHub requests approval for the generated PR checks, then confirm they pass.
+See [GitHub’s workflow triggering rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow). Subsequent checks
 run daily at 06:17 UTC. Merge sync PRs normally; there is no automatic merge.
 Unset the enable variable to pause synchronization without affecting bundled content.
 

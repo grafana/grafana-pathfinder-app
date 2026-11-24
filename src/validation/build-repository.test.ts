@@ -504,6 +504,25 @@ describe('buildRepository', () => {
     // Named, so it is not announced as a forwarded extension field.
     expect(info).toEqual([]);
   });
+
+  it('should keep carrying a manifest translations list now that it is a named field', () => {
+    writeJson(path.join(tmpDir, 'guide-with-translations', 'content.json'), {
+      id: 'guide-with-translations',
+      title: 'Guide with translations',
+      blocks: [],
+    });
+    writeJson(path.join(tmpDir, 'guide-with-translations', 'manifest.json'), {
+      id: 'guide-with-translations',
+      type: 'guide',
+      translations: ['ja'],
+    });
+
+    const { repository, info, errors } = buildRepository(tmpDir);
+    expect(errors).toHaveLength(0);
+    expect(repository['guide-with-translations']?.translations).toEqual(['ja']);
+    expect(info).toEqual([]);
+  });
+
   it('should carry a well-formed stats stamp onto the entry as a named field', () => {
     const stamp = {
       version: 1,

@@ -1,3 +1,5 @@
+import { activePrPreview } from '../../lib/pr-preview-fetch';
+import { resolvePrPath } from '../pr-package';
 import { bundledTutorialContentKey, isBundledTutorial } from '../../lib/bundled-tutorial-identity';
 import { identifyGuideLoad } from '../../lib/telemetry/guide-load';
 import type { GuideLoadContext } from '../../types/guide-diagnostics.types';
@@ -22,8 +24,10 @@ import { resolveOfflinePathContext } from './package-fallback-context';
 import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
+import { recordPackageMilestonesLocked } from '../../lib/telemetry/facade';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
 import { getPrTestFetchId, withPrTestMarker } from '../../lib/pr-test-marker';
+import { canonicalContentFileUrl } from '../../lib/guide-content-file';
 import { readDeclaredStartingLocation } from '../../recovery/starting-location';
 import { getPackageResolver, setPackageResolver, setPackageResolverFactory } from './package-resolver-registry';
 
@@ -123,6 +127,10 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
     });
   }
 
+  const lockedCount = milestones.filter((milestone) => milestone.isLocked).length;
+  if (lockedCount > 0) {
+    recordPackageMilestonesLocked(lockedCount, milestones.length);
+  }
   return milestones;
 }
 
@@ -392,21 +400,33 @@ export async function fetchPackageContent(
   // Track-only direct opens need classification even without a cover-page click.
   const tracksEligible = needsMilestones && packageManifest?.type === 'path';
 
+  const preview = activePrPreview(contentUrl);
+  const previewPath =
+    preview && needsMilestones && packageManifest ? await resolvePrPath(contentUrl, packageManifest) : undefined;
+  if (previewPath) {
+    knownBaseUrl = previewPath.baseUrl;
+    preResolvedMilestones = previewPath.milestones;
+  }
+
   const [result, unmarkedMilestones, baseUrlResolution, unmarkedPathTracks] = await Promise.all([
     preFetchedContent ?? fetchContent(contentUrl, { loadContext }),
-    shouldResolveMilestones && !offlinePath
-      ? resolvePackageMilestones(milestoneIds, pathSlug)
-      : Promise.resolve(undefined),
-    manifestId && !offlinePath
+    previewPath
+      ? Promise.resolve(previewPath.milestones)
+      : shouldResolveMilestones && !offlinePath
+        ? resolvePackageMilestones(milestoneIds, pathSlug)
+        : Promise.resolve(undefined),
+    manifestId && !offlinePath && !preview
       ? getPackageResolver().then((resolver) =>
           resolver ? resolver.resolve(manifestId, { loadContent: false }).catch(() => undefined) : undefined
         )
       : Promise.resolve(undefined),
-    offlinePath
-      ? Promise.resolve(offlinePath.pathTracks)
-      : tracksEligible
-        ? resolvePathTracks(manifestId, packageManifest, pathSlug)
-        : Promise.resolve(undefined),
+    previewPath
+      ? Promise.resolve(previewPath.tracks)
+      : offlinePath
+        ? Promise.resolve(offlinePath.pathTracks)
+        : tracksEligible
+          ? resolvePathTracks(manifestId, packageManifest, pathSlug)
+          : Promise.resolve(undefined),
   ]);
   // Derived URLs must retain PR-test isolation from production progress.
   const prTestFetchId = getPrTestFetchId(contentUrl);
@@ -430,10 +450,12 @@ export async function fetchPackageContent(
     return result;
   }
 
+  // A localized content file is a fetch detail; every journey key below names the canonical file.
+  const identityUrl = canonicalContentFileUrl(contentUrl).url;
   const milestones = preResolvedMilestones?.length ? preResolvedMilestones : resolvedMilestones;
   const matchesLoadedMember = (milestone: Milestone) => {
     if (!explicitGuideId) {
-      return milestone.url === contentUrl;
+      return milestone.url === identityUrl;
     }
     if (milestone.id !== undefined) {
       return milestone.id === explicitGuideId;
@@ -466,22 +488,22 @@ export async function fetchPackageContent(
       // The clicked member ID is authoritative; resolved URLs can differ across delivery sources.
       const milestoneIndex = explicitGuideId
         ? milestoneIds.indexOf(explicitGuideId)
-        : milestones.findIndex((m) => m.url === contentUrl);
+        : milestones.findIndex((m) => m.url === identityUrl);
 
       let isConfirmedTrackMember =
         milestoneIndex < 0 &&
         (explicitGuideId
           ? getAllTrackGuideIds(manifestTracks).includes(explicitGuideId)
-          : tracks.some((track) => track.milestones.some((m) => !m.isLocked && m.url === contentUrl)));
+          : tracks.some((track) => track.milestones.some((m) => !m.isLocked && m.url === identityUrl)));
 
-      if (!offlinePath && !explicitGuideId && !isConfirmedTrackMember && milestoneIndex < 0) {
+      if (!offlinePath && !preview && !explicitGuideId && !isConfirmedTrackMember && milestoneIndex < 0) {
         const lockedTrackGuideIds = tracks
           .flatMap((track) => track.milestones.filter((m) => m.isLocked))
           .map((m) => m.id)
           .filter((id): id is string => id != null);
         if (lockedTrackGuideIds.length > 0) {
           const retriedUrls = await Promise.all(lockedTrackGuideIds.map((id) => resolvePackageUrlBypassCache(id)));
-          isConfirmedTrackMember = retriedUrls.some((url) => url !== undefined && markForPrTest(url) === contentUrl);
+          isConfirmedTrackMember = retriedUrls.some((url) => url !== undefined && markForPrTest(url) === identityUrl);
         }
       }
 
@@ -491,11 +513,11 @@ export async function fetchPackageContent(
       if (milestoneIndex >= 0 || isCoverPageLoad) {
         const currentMilestone = milestoneIndex >= 0 ? milestoneIndex + 1 : 0;
 
-        let baseUrl = contentUrl;
+        let baseUrl = identityUrl;
         if (milestoneIndex >= 0) {
           baseUrl = baseUrlResolution?.ok
             ? markForPrTest(baseUrlResolution.contentUrl)
-            : (knownBaseUrl ?? (offlinePath ? '' : contentUrl));
+            : (knownBaseUrl ?? (offlinePath ? '' : identityUrl));
         }
 
         learningJourney = {
@@ -525,12 +547,12 @@ export async function fetchPackageContent(
         trackMemberBaseUrl = markForPrTest(baseUrlResolution.contentUrl);
       } else if (knownBaseUrl) {
         trackMemberBaseUrl = knownBaseUrl;
-      } else if (manifestId && !offlinePath) {
+      } else if (manifestId && !offlinePath && !preview) {
         const retriedBaseUrl = await resolvePackageUrlBypassCache(manifestId);
         if (retriedBaseUrl) {
           trackMemberBaseUrl = markForPrTest(retriedBaseUrl);
         } else {
-          trackMemberBaseUrl = contentUrl;
+          trackMemberBaseUrl = identityUrl;
           logger.warn(
             `[fetchPackageContent] Could not resolve path base URL for track-only guide; using its own contentUrl as a fallback completion identity: ${contentUrl}`,
             { manifestId }

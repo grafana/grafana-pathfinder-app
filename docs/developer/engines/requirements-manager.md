@@ -98,6 +98,8 @@ The hook returns a comprehensive state object including:
 
 **Supported Requirement Types**:
 
+- `workflow-ready:cloud-access-policy-token` - Read-only, tab-local check for the shared Cloud token form success marker. Prefer it as an objective or verification condition; using it as a creation prerequisite blocks creation. See the [external component contract and inference rules](../interactive-examples/requirements-reference.md#automatic-token-workflow-detection).
+
 **Authentication & Authorization:**
 
 - `is-admin` - User is Grafana admin or org admin

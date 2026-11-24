@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
+import { activePrPreview } from '../../lib/pr-preview-fetch';
+import { mapPreviewContentUrl } from '../../lib/pr-preview-core';
 import { GrafanaTheme2 } from '@grafana/data';
 import { handleKioskLinkClick, prepareKioskLink } from '../../utils/kiosk-navigation';
 import { safeEventHandler } from '../../utils/safe-event-handler.util';
@@ -77,6 +79,14 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
   const journeyStartInFlightRef = useRef(false);
 
   useEffect(() => {
+    const navigationUrl = (value: string) => {
+      const source = activeTab?.content?.url ?? activeTab?.baseUrl ?? '';
+      const snapshot = activePrPreview(source);
+      if (!snapshot || value.startsWith('bundled:')) {
+        return value;
+      }
+      return mapPreviewContentUrl(new URL(value, source).href, snapshot, snapshot.fetchId);
+    };
     const handleLinkClick = (event: MouseEvent) => {
       if (handleKioskLinkClick(event, true)) {
         return;
@@ -98,7 +108,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
         const loadJourneyTab = (tabId: string, url: string, explicitGuideId?: string) => {
           journeyStartInFlightRef.current = true;
-          model.loadTab(tabId, url, { explicitGuideId }).finally(() => {
+          model.loadTab(tabId, navigationUrl(url), { explicitGuideId }).finally(() => {
             journeyStartInFlightRef.current = false;
           });
         };
@@ -180,9 +190,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
             });
             const linkText = anchor.textContent?.trim() || 'interactive guide';
             if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-              model.openDocsPage(href, linkText, CONTENT_LINK_OPTS);
+              model.openDocsPage(navigationUrl(href), linkText, CONTENT_LINK_OPTS);
             } else {
-              model.openLearningJourney(href, linkText, CONTENT_LINK_OPTS);
+              model.openLearningJourney(navigationUrl(href), linkText, CONTENT_LINK_OPTS);
             }
             reportAppInteraction(
               UserInteraction.OpenExtraResource,
@@ -257,13 +267,13 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             // Determine if it's a learning path or regular docs/tutorials
             if (isLearningJourney) {
-              model.openLearningJourney(fullUrl, linkText, CONTENT_LINK_OPTS);
+              model.openLearningJourney(navigationUrl(fullUrl), linkText, CONTENT_LINK_OPTS);
             } else {
               // For regular docs and guides, use openDocsPage if available, otherwise openLearningJourney
               if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-                model.openDocsPage(fullUrl, linkText, CONTENT_LINK_OPTS);
+                model.openDocsPage(navigationUrl(fullUrl), linkText, CONTENT_LINK_OPTS);
               } else {
-                model.openLearningJourney(fullUrl, linkText, CONTENT_LINK_OPTS);
+                model.openLearningJourney(navigationUrl(fullUrl), linkText, CONTENT_LINK_OPTS);
               }
             }
 
@@ -293,9 +303,9 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
             // Open interactive learning content in app
             if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-              model.openDocsPage(resolvedUrl, linkText, CONTENT_LINK_OPTS);
+              model.openDocsPage(navigationUrl(resolvedUrl), linkText, CONTENT_LINK_OPTS);
             } else {
-              model.openLearningJourney(resolvedUrl, linkText, CONTENT_LINK_OPTS);
+              model.openLearningJourney(navigationUrl(resolvedUrl), linkText, CONTENT_LINK_OPTS);
             }
 
             // Track analytics for interactive learning link
@@ -405,10 +415,10 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
           if (isValidGrafanaContentUrl(fullUrl)) {
             // Open side journey links in new app tabs (as docs pages)
             if ('openDocsPage' in model && typeof model.openDocsPage === 'function') {
-              model.openDocsPage(fullUrl, linkTitle, CONTENT_LINK_OPTS);
+              model.openDocsPage(navigationUrl(fullUrl), linkTitle, CONTENT_LINK_OPTS);
             } else {
               // Fallback to learning journey handler
-              model.openLearningJourney(fullUrl, linkTitle, CONTENT_LINK_OPTS);
+              model.openLearningJourney(navigationUrl(fullUrl), linkTitle, CONTENT_LINK_OPTS);
             }
 
             // Track analytics for side journey clicks as extra resource
@@ -493,7 +503,7 @@ export function useLinkClickHandler({ contentRef, activeTab, theme, model }: Use
 
           // Check if URL passes security validation for in-app opening
           if (isValidGrafanaContentUrl(fullUrl)) {
-            model.openLearningJourney(fullUrl, linkTitle, CONTENT_LINK_OPTS);
+            model.openLearningJourney(navigationUrl(fullUrl), linkTitle, CONTENT_LINK_OPTS);
 
             // Track analytics for related journey clicks
             reportAppInteraction(

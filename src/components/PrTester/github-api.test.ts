@@ -134,7 +134,14 @@ describe('fetchPrContentFiles', () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
-    global.fetch = jest.fn();
+    global.fetch = jest.fn(
+      async (input: RequestInfo | URL) =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => (String(input).includes('/git/trees/') ? { tree: [], truncated: false } : []),
+        }) as Response
+    );
   });
 
   afterEach(() => {
@@ -189,7 +196,7 @@ describe('fetchPrContentFiles', () => {
 
     // Verify API was called with per_page=100 parameter
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.github.com/repos/grafana/interactive-tutorials/pulls/70/files?per_page=100',
+      'https://api.github.com/repos/grafana/interactive-tutorials/pulls/70/files?per_page=100&page=1',
       expect.objectContaining({
         headers: expect.any(Object),
       })
@@ -244,7 +251,7 @@ describe('fetchPrContentFiles', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.type).toBe('no_files');
-      expect(result.error.message).toContain('No content.json or manifest.json');
+      expect(result.error.message).toContain('No content.json, manifest.json');
     }
   });
 
@@ -428,7 +435,7 @@ describe('fetchPrContentFiles', () => {
     await fetchPrContentFiles('org', 'repo', 1, controller.signal);
 
     // Verify signal was passed to both fetch calls
-    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
     expect(global.fetch).toHaveBeenNthCalledWith(
       1,
       expect.any(String),
@@ -466,7 +473,7 @@ describe('fetchPrContentFiles', () => {
     }
   });
 
-  it('should show warning when GitHub API limit is reached (100+ total files)', async () => {
+  it('should paginate when the first page contains 100 files', async () => {
     const prMetadataResponse = { head: { sha: '0123456789abcdef0123456789abcdef01234567' } };
     // Simulate GitHub returning exactly 100 files (pagination limit)
     // Mixed content: 8 content.json files and 92 other files
@@ -498,10 +505,7 @@ describe('fetchPrContentFiles', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.files).toHaveLength(8);
-      expect(result.warning).toBeDefined();
-      expect(result.warning).toContain('100+ files');
-      expect(result.warning).toContain('Found 8 content.json');
-      expect(result.warning).toContain('additional guides not shown');
+      expect(result.warning).toBeUndefined();
     }
   });
 
@@ -566,8 +570,7 @@ describe('fetchPrContentFiles', () => {
     if (result.success) {
       expect(result.files).toHaveLength(100);
       // Should show warning because we hit the GitHub API limit
-      expect(result.warning).toBeDefined();
-      expect(result.warning).toContain('100+ files');
+      expect(result.warning).toBeUndefined();
     }
   });
 
@@ -739,7 +742,14 @@ describe('fetchPrContentFilesFromUrl', () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
-    global.fetch = jest.fn();
+    global.fetch = jest.fn(
+      async (input: RequestInfo | URL) =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => (String(input).includes('/git/trees/') ? { tree: [], truncated: false } : []),
+        }) as Response
+    );
   });
 
   afterEach(() => {
@@ -817,7 +827,14 @@ describe('fetchPrContentFiles — manifest.json support', () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
-    global.fetch = jest.fn();
+    global.fetch = jest.fn(
+      async (input: RequestInfo | URL) =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => (String(input).includes('/git/trees/') ? { tree: [], truncated: false } : []),
+        }) as Response
+    );
   });
 
   afterEach(() => {
@@ -902,7 +919,7 @@ describe('fetchPrContentFiles — manifest.json support', () => {
     }
   });
 
-  it('should report both content and manifest counts in the pagination warning', async () => {
+  it('keeps content and manifest files across paginated discovery', async () => {
     const files = [
       ...Array.from({ length: 4 }, (_, i) => ({ filename: `g${i}/content.json`, status: 'added' })),
       ...Array.from({ length: 4 }, (_, i) => ({ filename: `g${i}/manifest.json`, status: 'added' })),
@@ -916,8 +933,6 @@ describe('fetchPrContentFiles — manifest.json support', () => {
     if (result.success) {
       // 4 content + 4 manifest = 8
       expect(result.files).toHaveLength(8);
-      expect(result.warning).toContain('4 content.json');
-      expect(result.warning).toContain('4 manifest.json');
     }
   });
 });
@@ -926,7 +941,14 @@ describe('fetchPrManifest', () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
-    global.fetch = jest.fn();
+    global.fetch = jest.fn(
+      async (input: RequestInfo | URL) =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => (String(input).includes('/git/trees/') ? { tree: [], truncated: false } : []),
+        }) as Response
+    );
   });
 
   afterEach(() => {
@@ -1112,7 +1134,14 @@ describe('fetchPrContentMeta', () => {
   const originalFetch = global.fetch;
 
   beforeEach(() => {
-    global.fetch = jest.fn();
+    global.fetch = jest.fn(
+      async (input: RequestInfo | URL) =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => (String(input).includes('/git/trees/') ? { tree: [], truncated: false } : []),
+        }) as Response
+    );
   });
 
   afterEach(() => {
@@ -1191,9 +1220,11 @@ describe('fetchPrContentFiles under a browser HTTP cache', () => {
       if (entry && !bypass && now - entry.storedAt < API_MAX_AGE_MS) {
         return { ok: true, status: 200, json: async () => entry.body } as Response;
       }
-      const body = url.endsWith('/files?per_page=100')
-        ? [{ filename: 'guide-one/content.json', status: 'modified' }]
-        : { head: { sha: serverSha } };
+      const body = url.includes('/git/trees/')
+        ? { tree: [] }
+        : url.endsWith('/files?per_page=100&page=1')
+          ? [{ filename: 'guide-one/content.json', status: 'modified' }]
+          : { head: { sha: serverSha } };
       cache.set(url, { storedAt: now, body });
       return { ok: true, status: 200, json: async () => body } as Response;
     }) as jest.Mock;

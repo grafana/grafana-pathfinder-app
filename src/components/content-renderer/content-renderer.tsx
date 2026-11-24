@@ -38,7 +38,7 @@ import {
   recordGuideCompletionForSurface,
   type SurfaceCompletionInput,
 } from '../../docs-retrieval';
-import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus } from '../../snippet-engine';
+import { guideHasSnippetRefs, inlineSnippetRefsInGuideWithStatus, prSnippetResolver } from '../../snippet-engine';
 import type { JsonGuide } from '../../types/json-guide.types';
 import {
   InteractiveSection,
@@ -110,6 +110,7 @@ import { openLearningHome } from '../docs-panel/utils/open-catalog-browser';
 import { MyLearningErrorBoundary } from '../docs-panel/components/MyLearningErrorBoundary';
 import { resolveFullScreenFallbackLocation, resolveFullScreenManifestLocation } from './full-screen-fallback-location';
 import { GuideEndSentinel } from './GuideEndSentinel';
+import { CANONICAL_CONTENT_FILE, canonicalContentFileUrl, stripContentFile } from '../../lib/guide-content-file';
 
 const ReaderCompletionPanel = React.lazy(() => import('../completion-panel/ReaderCompletionPanel'));
 
@@ -833,14 +834,14 @@ function ContentWithVariables({
 
     e.preventDefault();
 
-    // Ensure URL ends with content.json for proper fetching
-    let contentUrl = fullUrl;
-    if (!contentUrl.endsWith('/content.json') && !contentUrl.endsWith('.json')) {
-      contentUrl = contentUrl.replace(/\/+$/, '') + '/content.json';
+    // A localized content file opens under its canonical URL; any other URL gets content.json appended
+    let contentUrl = canonicalContentFileUrl(fullUrl).url;
+    if (!contentUrl.endsWith('.json')) {
+      contentUrl = `${contentUrl.replace(/\/+$/, '')}/${CANONICAL_CONTENT_FILE}`;
     }
 
     // Derive readable title from the path
-    const cleanedPath = fullUrl.replace(/\/(content\.json|unstyled\.html)$/i, '');
+    const cleanedPath = stripContentFile(fullUrl).replace(/\/unstyled\.html$/i, '');
     const segments = cleanedPath.split('/').filter(Boolean);
     const slug = segments[segments.length - 1] || 'Interactive tutorial';
     const title = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -1088,7 +1089,7 @@ function ContentProcessor({
     }
     let cancelled = false;
     (async () => {
-      const resolved = await inlineSnippetRefsInGuideWithStatus(guideWithSnippetRefs);
+      const resolved = await inlineSnippetRefsInGuideWithStatus(guideWithSnippetRefs, prSnippetResolver(baseUrl));
       if (cancelled) {
         return;
       }

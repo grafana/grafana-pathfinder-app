@@ -1,3 +1,5 @@
+import { CLOUD_TOKEN_OBJECTIVE, CLOUD_TOKEN_INCOMPLETE_MESSAGE } from '../lib/workflow-objectives';
+
 /**
  * Shared utility functions for requirement explanations
  * Used across the interactive requirements system
@@ -9,6 +11,8 @@
  */
 export function mapRequirementToUserFriendlyMessage(requirement: string): string {
   const requirementMappings: Record<string, string> = {
+    [CLOUD_TOKEN_OBJECTIVE]: CLOUD_TOKEN_INCOMPLETE_MESSAGE,
+
     // Navigation requirements
     'navmenu-open':
       'The navigation menu needs to be open and docked. Click "Fix this" to automatically open and dock the navigation menu.',

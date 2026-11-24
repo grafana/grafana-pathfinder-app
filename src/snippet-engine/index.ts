@@ -24,3 +24,5 @@ export type {
   SnippetResolutionSuccess,
   SnippetResolver,
 } from './types';
+
+export { prSnippetResolver } from './pr-snippet-resolver';

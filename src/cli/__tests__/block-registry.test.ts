@@ -8,6 +8,7 @@ import {
   getBlockSchema,
   isBlockType,
   isContainerBlockType,
+  PRESENTATIONAL_BLOCK_TYPES,
 } from '../utils/block-registry';
 import {
   BLOCK_FIELD_VALIDATORS,
@@ -83,7 +84,7 @@ describe('BLOCK_TYPES ordering', () => {
 });
 
 describe('CONTAINER_BLOCK_TYPES', () => {
-  it.each(['section', 'conditional', 'assistant', 'multistep', 'guided', 'quiz', 'challenge'] as const)(
+  it.each(['section', 'conditional', 'assistant', 'multistep', 'guided', 'quiz', 'challenge', 'collapsible'] as const)(
     '%s is a container',
     (t) => {
       expect(isContainerBlockType(t)).toBe(true);
@@ -100,6 +101,25 @@ describe('CONTAINER_BLOCK_TYPES', () => {
   it('every container is a registered block type', () => {
     for (const t of CONTAINER_BLOCK_TYPES) {
       expect(t in BLOCK_SCHEMA_MAP).toBe(true);
+    }
+  });
+});
+
+describe('PRESENTATIONAL_BLOCK_TYPES', () => {
+  it('lists exactly the block types PresentationalBlockSchema accepts', () => {
+    expect([...PRESENTATIONAL_BLOCK_TYPES].sort()).toEqual([
+      'callout',
+      'divider',
+      'html',
+      'image',
+      'markdown',
+      'video',
+    ]);
+  });
+
+  it('every presentational type is a registered leaf block', () => {
+    for (const t of PRESENTATIONAL_BLOCK_TYPES) {
+      expect(isBlockType(t) && !isContainerBlockType(t)).toBe(true);
     }
   });
 });
@@ -172,6 +192,7 @@ describe('integration: every registered schema can be given a flag surface', () 
 const CONTAINER_CHILD_KEYS_MIRROR: Record<string, string[]> = {
   section: ['blocks'],
   assistant: ['blocks'],
+  collapsible: ['blocks'],
   conditional: ['whenTrue', 'whenFalse'],
 };
 const CONTAINER_NON_BLOCK_CHILD_KEYS_MIRROR: Record<string, string[]> = {

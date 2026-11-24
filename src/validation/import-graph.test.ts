@@ -238,7 +238,9 @@ describe('resolvePathAlias', () => {
   });
 
   it('resolves a bare specifier to a directory index file', () => {
-    expect(resolvePathAlias('hooks', tsconfigPaths)).toBe(path.join(SRC_DIR, 'hooks', 'index.ts'));
+    const resolved = resolvePathAlias('hooks', tsconfigPaths);
+    // The resolver appends '/index.ts' to a native path, mixing separators on Windows.
+    expect(resolved && path.normalize(resolved)).toBe(path.join(SRC_DIR, 'hooks', 'index.ts'));
   });
 
   it('returns null for an npm package name with no matching file under src/', () => {
@@ -323,19 +325,19 @@ describe('resolveImportToRelative', () => {
   it('resolves a sibling import to a relative path', () => {
     const fileDir = path.join(SRC_DIR, 'utils');
     const result = resolveImportToRelative(fileDir, './helpers');
-    expect(result).toBe(path.join('utils', 'helpers'));
+    expect(result).toBe('utils/helpers');
   });
 
   it('resolves a parent-relative import', () => {
     const fileDir = path.join(SRC_DIR, 'utils', 'sub');
     const result = resolveImportToRelative(fileDir, '../types');
-    expect(result).toBe(path.join('utils', 'types'));
+    expect(result).toBe('utils/types');
   });
 
   it('resolves cross-directory imports', () => {
     const fileDir = path.join(SRC_DIR, 'components');
     const result = resolveImportToRelative(fileDir, '../lib/analytics');
-    expect(result).toBe(path.join('lib', 'analytics'));
+    expect(result).toBe('lib/analytics');
   });
 
   it('returns null for imports that escape SRC_DIR', () => {

@@ -1,3 +1,4 @@
+import { matchesBackendRoute } from './helpers/backend-route';
 import { test, expect } from './fixtures';
 import demo from '../docs/examples/kiosk/dem.json';
 import { testIds } from '../src/constants/testIds';
@@ -57,9 +58,8 @@ async function installFixtures(
     const body = await response.json();
     await route.fulfill({ response, json: { ...body, jsonData: { ...body.jsonData, ...settings } } });
   });
-  await page.route(
-    (url) => url.pathname.endsWith('/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings'),
-    (route) => route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: settings } })
+  await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
+    route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: settings } })
   );
   await page.route(catalogUrl, (route) =>
     route.fulfill({
