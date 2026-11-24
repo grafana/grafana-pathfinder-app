@@ -3,8 +3,8 @@
  * rewrites every supported reference to it inside the same package.
  *
  * Supported references: any `section-completed:` token in a `requirements`,
- * `objectives`, `conditions` or `verify` field that the runtime resolves to this
- * block. Ids in a compiled locale's `translation` annotation are
+ * `objectives`, `conditions`, `verify` or `successCriteria` field that the runtime
+ * resolves to this block. Ids in a compiled locale's `translation` annotation are
  * reported and the rename refused, and so is a new id a condition cannot carry
  * (a comma, or edge whitespace). Other packages and completion records are out of scope.
  */
@@ -19,7 +19,7 @@ import { issueToOutcome, renderError, type CommandOutcome } from '../utils/outpu
 const SECTION_COMPLETED = ParameterizedRequirementPrefix.SECTION_COMPLETED;
 // A section renders as `section-<id>`, and the section check adds that prefix unless the ref already has it.
 const SECTION_PREFIX = 'section-';
-const CONDITION_KEYS = new Set(['requirements', 'objectives', 'conditions', 'verify']);
+const CONDITION_KEYS = new Set(['requirements', 'objectives', 'conditions', 'verify', 'successCriteria']);
 
 export const RenameBlockCommand = z.object({
   dir: z.string().describe('package directory').meta({ role: 'io' }),
@@ -36,7 +36,7 @@ export type RenameBlockInput = z.output<typeof RenameBlockCommand>;
 interface RenameScan {
   oldId: string;
   newId: string;
-  rewritten: string[];
+  rewritten: Set<string>;
   unsupported: string[];
 }
 
@@ -57,7 +57,7 @@ function rewriteToken(part: string, path: string, scan: RenameScan): string {
   }
   // Keep the short spelling only when it still resolves to the renamed block.
   const keepShort = ref === scan.oldId && !scan.newId.startsWith(SECTION_PREFIX);
-  scan.rewritten.push(path);
+  scan.rewritten.add(path);
   const next = `${SECTION_COMPLETED}${keepShort ? '' : SECTION_PREFIX}${scan.newId}`;
   // A replacer function keeps `$` sequences in the new id literal.
   return part.replace(token, () => next);
@@ -97,7 +97,7 @@ function rewriteReferences(node: unknown, path: string, scan: RenameScan): void 
       record[key] = rewriteConditionString(value, childPath, scan);
     } else if (CONDITION_KEYS.has(key) && Array.isArray(value)) {
       record[key] = value.map((entry, i) =>
-        typeof entry === 'string' ? rewriteConditionString(entry, `${childPath}[${i}]`, scan) : entry
+        typeof entry === 'string' ? rewriteToken(entry, `${childPath}[${i}]`, scan) : entry
       );
     } else {
       rewriteReferences(value, childPath, scan);
@@ -136,7 +136,7 @@ export async function runRenameBlock(args: RenameBlockInput): Promise<CommandOut
       const found: RenameScan = {
         oldId: args.id,
         newId: args.newId,
-        rewritten: [],
+        rewritten: new Set(),
         unsupported: [],
       };
       scan = found;
@@ -175,14 +175,14 @@ export async function runRenameBlock(args: RenameBlockInput): Promise<CommandOut
       data: { id: args.newId, renamed: false, referencesRewritten: [] },
     };
   }
-  const rewritten = scan.rewritten;
+  const rewritten = [...scan.rewritten];
   return {
     status: 'ok',
-    summary: `Renamed ${blockType} "${args.id}" to "${args.newId}" and rewrote ${rewritten.length} reference(s)`,
+    summary: `Renamed ${blockType} "${args.id}" to "${args.newId}" and rewrote ${rewritten.length} field(s) that referenced it`,
     details: {
       'old id': args.id,
       'new id': args.newId,
-      references: rewritten.length > 0 ? rewritten.join(', ') : 'none',
+      fields: rewritten.length > 0 ? rewritten.join(', ') : 'none',
       'package valid': true,
     },
     hints: [`Completion records saved under "${args.id}" are not migrated, and other packages are not scanned.`],

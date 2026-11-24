@@ -137,6 +137,75 @@ describe('runRenameBlock', () => {
     }
   );
 
+  it('rewrites a challenge successCriteria that names the block', async () => {
+    const dir = await writePackage([
+      section('setup'),
+      {
+        type: 'challenge',
+        id: 'check',
+        mode: 'standard',
+        title: 'Check',
+        brief: 'Finish setup',
+        successCriteria: 'section-completed:setup',
+      },
+      {
+        type: 'section',
+        id: 'group',
+        title: 'Group',
+        blocks: [
+          {
+            type: 'challenge',
+            id: 'inner',
+            mode: 'standard',
+            title: 'Inner',
+            brief: 'Again',
+            successCriteria: 'section-completed:section-setup',
+          },
+        ],
+      },
+    ]);
+
+    const result = await runRenameBlock({ dir, id: 'setup', newId: 'install' });
+
+    expect(result.status === 'ok' && result.data?.referencesRewritten).toEqual([
+      'blocks[1].successCriteria',
+      'blocks[2].blocks[0].successCriteria',
+    ]);
+    const blocks = readPackage(dir).content.blocks as any[];
+    expect(blocks[1].successCriteria).toBe('section-completed:install');
+    expect(blocks[2].blocks[0].successCriteria).toBe('section-completed:section-install');
+  });
+
+  it('treats each array entry as one condition and splits only the verify string', async () => {
+    const dir = await writePackage([
+      section('setup'),
+      interactive({
+        id: 'next',
+        requirements: ['has-dashboard-named:CPU, section-completed:setup'],
+        verify: 'section-completed:setup,section-completed:setup',
+      }),
+    ]);
+
+    const result = await runRenameBlock({ dir, id: 'setup', newId: 'install' });
+
+    expect(result.status === 'ok' && result.data?.referencesRewritten).toEqual(['blocks[1].verify']);
+    const block = (readPackage(dir).content.blocks as any[])[1];
+    expect(block.requirements).toEqual(['has-dashboard-named:CPU, section-completed:setup']);
+    expect(block.verify).toBe('section-completed:install,section-completed:install');
+  });
+
+  it('lists a field once when it holds several matching tokens', async () => {
+    const dir = await writePackage([
+      section('setup'),
+      interactive({ id: 'next', verify: 'section-completed:setup, section-completed:section-setup' }),
+    ]);
+
+    const result = await runRenameBlock({ dir, id: 'setup', newId: 'install' });
+
+    expect(result.status === 'ok' && result.data?.referencesRewritten).toEqual(['blocks[1].verify']);
+    expect(result.status === 'ok' && result.summary).toContain('rewrote 1 field(s)');
+  });
+
   it('renames a nested block with no references', async () => {
     const dir = await writePackage([
       { type: 'collapsible', id: 'more', title: 'More', blocks: [{ type: 'markdown', id: 'note', content: 'Hi' }] },
