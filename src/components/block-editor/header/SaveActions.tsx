@@ -11,6 +11,7 @@ export interface SaveActionsProps {
    * - 'published': visible in docs panel Custom guides section
    */
   publishedStatus: 'not-saved' | 'draft' | 'published';
+  canSaveAsNew?: boolean;
   /** Whether the guide (draft or published) has local changes not yet sent to the backend. */
   hasUnsyncedChanges: boolean;
   /** Whether a backend operation is in progress. */
@@ -29,6 +30,7 @@ export interface SaveActionsProps {
  */
 export function SaveActions({
   publishedStatus,
+  canSaveAsNew,
   hasUnsyncedChanges,
   isPosting,
   onSaveDraft,
@@ -37,6 +39,7 @@ export function SaveActions({
   const styles = useStyles2(getHeaderStyles);
 
   if (publishedStatus === 'not-saved') {
+    const label = canSaveAsNew ? 'Save as new' : 'Save';
     return (
       <Button
         variant="secondary"
@@ -45,11 +48,11 @@ export function SaveActions({
         onClick={onSaveDraft}
         disabled={isPosting}
         tooltip="Save as draft without publishing"
-        aria-label="Save"
+        aria-label={label}
         className={styles.saveButton}
         data-testid={testIds.blockEditor.saveDraftButton}
       >
-        Save
+        {label}
       </Button>
     );
   }
