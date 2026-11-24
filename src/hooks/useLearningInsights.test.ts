@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { getBackendSrv } from '@grafana/runtime';
 import { useLearningInsights } from './useLearningInsights';
 
-jest.mock('@grafana/runtime', () => ({ getBackendSrv: jest.fn(), config: {} }));
+jest.mock('@grafana/runtime', () => ({ getBackendSrv: jest.fn(), config: { namespace: 'stacks-123' } }));
 
 const empty = {
   asOf: '2026-08-01T00:00:00Z',
@@ -27,7 +27,7 @@ test('reads the guarded plugin route and validates its envelope', async () => {
   const { result } = renderHook(() => useLearningInsights(empty.from, empty.to));
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(result.current.data).toEqual(empty);
-  expect(get.mock.calls[0][0]).toContain('/resources/learning-insights?from=2026-07-04T00%3A00%3A00Z');
+  expect(get.mock.calls[0][0]).toContain('/backend/learning-insights?from=2026-07-04T00%3A00%3A00Z');
 });
 
 test('reports denial without exposing response text', async () => {

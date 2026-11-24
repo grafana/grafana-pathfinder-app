@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
 const mockFetchCustomGuideRepository = jest.fn();
 jest.mock('../lib/custom-guide-repository-client', () => ({
   fetchCustomGuideRepository: (namespace: string) => mockFetchCustomGuideRepository(namespace),
@@ -173,4 +176,14 @@ describe('fetchAppPlatformLearningPaths', () => {
     expect(result.paths[0]!.title).toBe('fe-path-no-desc');
     expect(result.paths[0]!.description).toBe('');
   });
+});
+
+it('keeps drafts out of learning metadata from the frozen catalogue response', async () => {
+  const transcript = JSON.parse(
+    readFileSync(join(__dirname, '../../scripts/sdk-fidelity/baseline-writes.json'), 'utf8')
+  );
+  mockFetchCustomGuideRepository.mockResolvedValue(transcript.httpReads['guide-list/200/catalogue=true'].body.guides);
+  const result = await fetchAppPlatformLearningPaths('stacks-1');
+  expect(Object.keys(result.guideMetadata).sort()).toEqual(['last', 'published']);
+  expect(result.guideMetadata['published']?.url).toBe('backend-guide:published');
 });

@@ -16,7 +16,7 @@ import { observeGuideRequest, finishGuideLoad } from '../lib/telemetry/guide-loa
  * resolutions from here (see CompositePackageResolver's repository check).
  *
  * @coupling Types: PackageResolver, PackageResolution in package.types.ts
- * @coupling API: GET /api/plugins/grafana-pathfinder-app/resources/custom-guide?name={name}
+ * @coupling API: GET SDK backend/custom-guide?name={name}
  *   — group/version/availability come from utils/interactive-guides-api.ts (GAP).
  * @coupling Catalogue/listing needs (Custom Guides, My Learning) go through the
  *   separate /custom-guide-repository backend proxy instead of this resolver —
@@ -26,7 +26,8 @@ import { observeGuideRequest, finishGuideLoad } from '../lib/telemetry/guide-loa
 import { config, getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom } from 'rxjs';
 
-import { isBackendApiAvailable, guideReadUrl } from '../utils/interactive-guides-api';
+import { recoverSdkBackend } from '../lib/backend-routes';
+import { guideReadUrl } from '../utils/interactive-guides-api';
 import { logger } from '../lib/logging';
 
 import { RuntimeManifestJsonObjectSchema } from '../lib/runtime-manifest';
@@ -277,10 +278,7 @@ export class AppPlatformPackageResolver implements PackageResolver {
       });
     }
 
-    // GAP gate: when the aggregation toggle is off the interactiveguides API
-    // isn't served here, so decline (composite resolver falls through) rather
-    // than issue a doomed request.
-    if (!isBackendApiAvailable()) {
+    if (!(await recoverSdkBackend())) {
       return decline(packageId, 'not-found', 'App Platform backend is not available on this instance', {
         source: 'app-platform',
         stage: 'resolve',

@@ -1,4 +1,4 @@
-import { matchesBackendRoute, matchesGuideResource } from './helpers/backend-route';
+import { matchesBackendRoute } from './helpers/backend-route';
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 import { StorageKeys } from '../src/lib/storage-keys';
@@ -20,25 +20,24 @@ test('copies a public guide, protects the draft and publishes a separate private
       configurable: true,
       get: () => bootData,
       set: (value: typeof window.grafanaBootData) => {
-        value.settings.featureToggles['aggregation.pathfinderbackend-ext-grafana-app.enabled'] = true;
+        value.settings.featureToggles['appplugins.loadAppManifest'] = true;
+        value.settings.featureToggles['appplugins.registerAPIServer'] = true;
+        value.settings.namespace = 'default';
         bootData = value;
       },
     });
   });
+  await page.route(matchesBackendRoute('health'), (route) => route.fulfill({ json: { status: 'ok' } }));
   await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
     route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: {} } })
   );
-  await page.route(matchesGuideResource, async (route) => {
-    if (route.request().method() === 'GET' && matchesBackendRoute('custom-guide')(new URL(route.request().url()))) {
+  await page.route(matchesBackendRoute('custom-guide'), async (route) => {
+    if (route.request().method() === 'GET') {
       const name = new URL(route.request().url()).searchParams.get('name');
       const stored = resources.find((entry) => entry.metadata.name === name);
       return stored ? route.fulfill({ json: stored }) : route.fulfill({ status: 404, json: { message: 'not found' } });
     }
     const request = route.request();
-    if (request.method() === 'GET') {
-      await route.fulfill({ json: { items: resources } });
-      return;
-    }
     const resource = request.postDataJSON();
     writes.push(request.method());
     const existing = resources.findIndex((entry) => entry.metadata.name === resource.metadata.name);

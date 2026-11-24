@@ -184,6 +184,7 @@
     "dueOn": "Due {{- date}}",
     "dueToday": "Due today",
     "dueTomorrow": "Due tomorrow",
+    "groupProgress": "{{done}} of {{total}} complete",
     "inProgress": "In progress",
     "moduleOf": "Module {{current}} of {{total}}",
     "moreRecommended": "More recommended",

@@ -218,6 +218,45 @@ describe('ContextPanelRenderer sidebar hub', () => {
     });
   });
 
+  it('groups named event picks, preserves completion, and keeps other spotlights outside the group', async () => {
+    const groupTitle = "What's new";
+    const picks = ['a', 'b'].map((id) => pkg(id, { placement: 'suggestion', groupTitle }));
+    setup({ featured: [...picks, pkg('editorial')], recommendations: [pkg('b')], startedPath: true });
+    const group = within(screen.getByRole('region', { name: groupTitle }));
+    expect(group.getByText('1 of 2 complete')).toBeVisible();
+    expect(group.getByRole('button', { name: 'Review: Title a' })).toBeVisible();
+    expect(group.queryByText('Title editorial')).toBeNull();
+    const readMore = group.getAllByRole('button', { name: 'Read more' })[0]!;
+    await click(readMore);
+    expect(group.getByText('Summary a')).toBeVisible();
+    expect(openDocsPage).not.toHaveBeenCalled();
+    await click(group.getByRole('button', { name: 'Show less' }));
+    expect(group.getByText('Summary a')).not.toBeVisible();
+    const toggle = group.getByRole('button', { name: groupTitle });
+    await click(toggle);
+    expect(group.queryByRole('button', { name: 'Start: Title b' })).toBeNull();
+    await click(toggle);
+    await click(group.getByRole('button', { name: 'Start: Title b' }));
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.OpenResourceClick,
+      expect.objectContaining({ content_title: 'Title b', interaction_location: 'hub_featured_card' })
+    );
+  });
+
+  it.each(['bundled:a', 'bundled:a/content.json', 'bundled:a/content.ja.json'])(
+    'recognizes the completed bundled guide at %s without a manifest',
+    (url) => {
+      setup({ featured: [{ title: 'Bundled A', type: 'interactive', url }, pkg('other')], startedPath: true });
+      expect(screen.getByText('1 of 2 complete')).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Review: Bundled A' })).toBeVisible();
+    }
+  );
+
+  it('uses the neutral heading for multiple editorial spotlights', () => {
+    setup({ featured: [pkg('one'), pkg('two')] });
+    expect(screen.getByRole('button', { name: 'Recommended for you' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('threads the assigned track into the package info of a recommended path', async () => {
     setup({
       featured: [pkg('ops-path', { manifest: { id: 'ops-path', type: 'path' } })],

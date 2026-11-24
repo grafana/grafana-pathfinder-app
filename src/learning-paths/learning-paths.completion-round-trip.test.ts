@@ -11,6 +11,8 @@
  * mocked, so the catalogue fetch, path synthesis, badge coordinator and
  * progress storage all run for real.
  */
+import { discoverSdkBackend } from '../lib/backend-routes';
+import { of } from 'rxjs';
 import { renderHook, waitFor } from '@testing-library/react';
 
 const mockGet = jest.fn();
@@ -18,9 +20,9 @@ const mockGet = jest.fn();
 jest.mock('@grafana/runtime', () => ({
   config: {
     namespace: 'stacks-123',
-    featureToggles: { 'aggregation.pathfinderbackend-ext-grafana-app.enabled': true },
+    featureToggles: { 'appplugins.loadAppManifest': true, 'appplugins.registerAPIServer': true },
   },
-  getBackendSrv: () => ({ get: mockGet }),
+  getBackendSrv: () => ({ get: mockGet, fetch: () => of({ data: { status: 'ok' } }) }),
   usePluginUserStorage: jest.fn(),
   getAppEvents: jest.fn(() => ({ publish: jest.fn() })),
   reportInteraction: jest.fn(),
@@ -69,6 +71,8 @@ async function renderPaths() {
   });
   return result;
 }
+
+beforeAll(discoverSdkBackend);
 
 beforeEach(() => {
   jest.clearAllMocks();

@@ -32,7 +32,7 @@ jest.mock('@grafana/i18n', () => ({
     fallback.replace(/\{\{(\w+)\}\}/g, (_m, name: string) => String(values?.[name])),
 }));
 
-const CONTRACT_DIR = path.resolve(__dirname, '..', '..', '..', 'pkg', 'plugin', 'testdata', 'contract');
+const CONTRACT_DIR = path.resolve(__dirname, '..', '..', '..', 'pkg', 'provider', 'testdata', 'contract');
 function myFixture(name: string): MyAchievementsResult {
   const data = MyAchievementsResponseWireSchema.parse(
     JSON.parse(fs.readFileSync(path.join(CONTRACT_DIR, `achievements-my.${name}.json`), 'utf8'))
