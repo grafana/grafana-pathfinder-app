@@ -59,7 +59,7 @@ func TestSettingsRoutePreservesResource(t *testing.T) {
 }
 
 func TestSettingsRouteDistinguishesMissingSingleton(t *testing.T) {
-	body, err := os.ReadFile("../plugin/testdata/upstream/pathfindersettings-not-found.json")
+	body, err := os.ReadFile("../provider/testdata/upstream/pathfindersettings-not-found.json")
 	if err != nil {
 		t.Fatal(err)
 	}

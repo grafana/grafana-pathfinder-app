@@ -34,11 +34,14 @@ test('correlates private and CDN failures with committed rendering without leaki
       get: () => boot,
       set: (value) => {
         value.settings.buildInfo.env = 'development';
-        value.settings.featureToggles['aggregation.pathfinderbackend-ext-grafana-app.enabled'] = true;
+        value.settings.featureToggles['appplugins.loadAppManifest'] = true;
+        value.settings.featureToggles['appplugins.registerAPIServer'] = true;
+        value.settings.namespace = 'default';
         boot = value;
       },
     });
   });
+  await page.route(matchesBackendRoute('health'), (route) => route.fulfill({ json: { status: 'ok' } }));
   await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
     route.fulfill({ json: { state: 'not-configured' } })
   );

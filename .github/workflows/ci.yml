@@ -259,6 +259,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Check for backend
         id: check-for-backend
@@ -279,6 +280,10 @@ jobs:
         with:
           version: latest
           args: coverage
+
+      - name: Compare SDK behavior with frozen backend
+        if: steps.check-for-backend.outputs.has-backend == 'true'
+        run: python3 scripts/sdk-fidelity/run.py
 
   # Build job runs in parallel with quality checks
   build:
@@ -625,6 +630,8 @@ jobs:
 
       - name: Run Playwright tests
         id: run-tests
+        env:
+          GRAFANA_TEST_IMAGE_VERSION: ${{ matrix.GRAFANA_IMAGE.VERSION }}
         run: npm run e2e
 
       - name: Upload e2e test summary

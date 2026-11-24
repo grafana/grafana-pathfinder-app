@@ -307,12 +307,19 @@ export class GuidedHandler {
     }
   }
 
-  private finishGuidedStep(result: CompletionResult, stepIndex: number, totalSteps: number): CompletionResult {
+  // A user-performed final action dismisses the box; Skip and a continued final noop keep it.
+  private finishGuidedStep(
+    result: CompletionResult,
+    stepIndex: number,
+    totalSteps: number,
+    retainOnCompletion = false
+  ): CompletionResult {
     const successful = result === 'completed' || result === 'skipped';
     if (successful && !this.completedSteps.includes(stepIndex)) {
       this.completedSteps.push(stepIndex);
     }
-    const completedBox = successful && stepIndex === totalSteps - 1 ? this.prepareCompletedBox() : null;
+    const retainDoneBox = result === 'skipped' || (result === 'completed' && retainOnCompletion);
+    const completedBox = retainDoneBox && stepIndex === totalSteps - 1 ? this.prepareCompletedBox() : null;
     if (this.currentAbortController) {
       this.currentAbortController.abort();
       this.currentAbortController = null;
@@ -366,7 +373,7 @@ export class GuidedHandler {
       action.targetComment || 'Complete this step to continue',
       action.isSkippable
     );
-    return this.finishGuidedStep(await arbiter.promise, stepIndex, totalSteps);
+    return this.finishGuidedStep(await arbiter.promise, stepIndex, totalSteps, true);
   }
 
   /**

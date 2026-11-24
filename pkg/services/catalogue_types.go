@@ -170,11 +170,7 @@ func (s *CatalogueStats) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// CatalogueEntry is the slim, block-stripped view of an
-// InteractiveGuide — the App Platform analogue of a repository.json entry (see
-// PackageEntry in package_recommendations.go). This is the shaped/collated
-// unit the cache stores; the heavy spec.blocks never survives shaping, so
-// steady-state memory is bounded by guide count, not guide size.
+// CatalogueEntry is the slim, block-stripped view of an InteractiveGuide.
 type CatalogueEntry struct {
 	ID                string             `json:"id"`
 	Name              string             `json:"name"`

@@ -32,9 +32,9 @@ A local tool that is newer or older than the CI pin can report findings CI does 
 
 Then reproduce on a pristine `origin/main` worktree. If main fails the same way, the failure is not yours. Never regenerate a golden file (for example with `go test -update`) under a toolchain that differs from the pin.
 
-## `go test -race -shuffle=on ./pkg/plugin` fails on main
+## Historical legacy-backend race on main
 
-The `withFrozenTime` helper in `pkg/plugin/package_recommendations_test.go` writes the package-global `timeNow` while a package-recommendations background refresh reads it. With `-shuffle=on`, the race fails most runs on plain main, and the blamed test changes from run to run. CI runs `-race` without `-shuffle`, so this never blocks a PR. Before investigating a shuffled failure, compare against a pristine main worktree.
+On the pre-SDK main branch, the `withFrozenTime` helper in `pkg/plugin/package_recommendations_test.go` writes the package-global `timeNow` while a package-recommendations background refresh reads it. With `-shuffle=on`, the race fails most runs on plain main, and the blamed test changes from run to run. CI runs `-race` without `-shuffle`, so this never blocks a PR. Before investigating a shuffled failure, compare against a pristine main worktree.
 
 ## A green CI Gate does not cover the e2e matrix
 
@@ -47,3 +47,13 @@ The `withFrozenTime` helper in `pkg/plugin/package_recommendations_test.go` writ
 ## CLI e2e symlink tests fail on Windows with `EPERM`
 
 `src/cli/e2e/local-cloud-cli.test.ts` and `src/cli/e2e/e2e-local-cloud-source.test.ts` create symbolic links to test link confinement. Windows only allows that with Developer Mode turned on (or from an elevated shell), so without it every test that creates a symbolic link fails with `EPERM: operation not permitted, symlink`. If every failing test in these files shows that error, the failure is environmental: turn on Developer Mode or rely on CI, which runs on Linux.
+
+## SDK fidelity reports a changed mutation target
+
+The negative controls in `scripts/sdk-fidelity/run.py` deliberately alter one production expression in a temporary checkout. After a refactor, find the control named by the failure, point it at the equivalent production expression, and rerun `python3 scripts/sdk-fidelity/run.py`. The unmodified build must match the legacy baseline and the isolated mutation must still be detected. Keep the frozen baseline until the compatibility window closes and the team has retained equivalent coverage for supported behavior.
+
+## SDK fidelity CI reports “mutation target changed”
+
+The controls in `scripts/sdk-fidelity/run.py` temporarily replace exact source strings to check that the tests catch a regression. After a refactor, find the error text in the script, update the target to the equivalent code, and run `python3 scripts/sdk-fidelity/run.py`. Each control must still introduce the behavior its test is meant to catch.
+
+The `f106a89` pin supplies the legacy comparison. Keep it across refactors. Retire it only when the team explicitly ends that compatibility contract and identifies the tests that will cover the supported behavior going forward.

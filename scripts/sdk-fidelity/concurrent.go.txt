@@ -1,0 +1,122 @@
+package PACKAGE
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"sync"
+	"testing"
+	"time"
+)
+
+type fidelityConcurrentStore struct {
+	*fakeAttemptStore
+	gate       sync.Mutex
+	reads      int
+	ready      chan struct{}
+	release    chan struct{}
+	winnerDone chan struct{}
+	winner     int64
+}
+
+func (s *fidelityConcurrentStore) Get(ctx context.Context, ns, name string) (*fidelityStoredRecord, error) {
+	record, err := s.fakeAttemptStore.Get(ctx, ns, name)
+	s.gate.Lock()
+	s.reads++
+	wait := s.reads <= 2
+	s.gate.Unlock()
+	if wait {
+		s.ready <- struct{}{}
+		select {
+		case <-s.release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return record, err
+}
+func (s *fidelityConcurrentStore) Replace(ctx context.Context, ns, name string, obj map[string]any) error {
+	percent := obj["spec"].(map[string]any)["completionPercent"].(int64)
+	if percent != s.winner {
+		select {
+		case <-s.winnerDone:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	err := s.fakeAttemptStore.Replace(ctx, ns, name, obj)
+	if percent == s.winner {
+		close(s.winnerDone)
+	}
+	return err
+}
+func TestFrozenFidelityConcurrent(t *testing.T) {
+	results := map[string]any{}
+	for _, winner := range []int64{70, 100} {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		store := &fidelityConcurrentStore{fakeAttemptStore: newFakeAttemptStore(), ready: make(chan struct{}, 2), release: make(chan struct{}), winnerDone: make(chan struct{}), winner: winner, reads: 2}
+		seed := fidelityWriteSpec{UserID: "user:abc", GuideID: "first-dashboard", GuideSource: "bundled", CompletionPercent: 40, RecordedAt: "2026-11-01T00:00:00Z", AttemptStartedAt: "2026-11-01T00:00:00Z", Source: "objectives", OrgID: 1, StackNamespace: "stacks-1", SchemaVersion: 1, Platform: "cloud", GuideTitle: "First dashboard", GuideCategory: "interactive"}
+		if _, _, err := fidelityConcurrentUpsert(ctx, store, seed); err != nil {
+			t.Fatal(err)
+		}
+		store.reads = 0
+		type result struct {
+			Percent   int64
+			Outcome   int
+			Persisted fidelityWriteSpec
+			Error     string
+		}
+		done := make(chan result, 2)
+		for _, percent := range []int64{70, 100} {
+			go func(percent int64) {
+				incoming := seed
+				incoming.CompletionPercent = percent
+				if percent == 100 {
+					incoming.CompletedAt = "2026-11-01T01:00:00Z"
+					incoming.RecordedAt = incoming.CompletedAt
+					incoming.Source = "manual"
+					incoming.DurationSeconds = 90
+				}
+				outcome, persisted, err := fidelityConcurrentUpsert(ctx, store, incoming)
+				value := result{Percent: percent, Outcome: outcome, Persisted: persisted}
+				if err != nil {
+					value.Error = err.Error()
+				}
+				done <- value
+			}(percent)
+		}
+		for range 2 {
+			select {
+			case <-store.ready:
+			case <-ctx.Done():
+				t.Fatal("concurrent reads did not reach barrier")
+			}
+		}
+		close(store.release)
+		rows := map[int64]result{}
+		for range 2 {
+			value := <-done
+			if value.Error != "" {
+				t.Fatal(value.Error)
+			}
+			rows[value.Percent] = value
+		}
+		raw := store.objects["concurrent-attempt"]
+		if raw["spec"].(map[string]any)["completionPercent"] != float64(100) {
+			t.Fatalf("progress regressed: %v", raw)
+		}
+		key := "70-first"
+		if winner == 100 {
+			key = "100-first"
+		}
+		results[key] = map[string]any{"results": rows, "persisted": raw, "creates": store.creates, "replaces": store.replaces, "gets": store.gets}
+		cancel()
+	}
+	body, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(os.Getenv("FIDELITY_OUTPUT")+".concurrent", body, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
