@@ -20,7 +20,7 @@ jest.mock('../../integrations/assistant-integration/assistant-dev-mode', () => (
 it.each([
   { topic: 'path', currentMilestone: 0, currentLesson: undefined },
   { topic: 'module', currentMilestone: 1, currentLesson: 'Module body' },
-])('prefills an editable question with $topic context', ({ topic, currentMilestone, currentLesson }) => {
+])('prefills an editable question with $topic context', ({ currentMilestone, currentLesson }) => {
   jest.clearAllMocks();
   const url = 'https://grafana.com/docs/learning-paths/demo/';
   const content: RawContent = {
@@ -42,11 +42,11 @@ it.each([
     'structured',
     expect.objectContaining({ data: expect.objectContaining({ currentLesson }) })
   );
-  fireEvent.click(screen.getByRole('button', { name: `Ask about this ${topic}` }));
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Assistant' }));
   expect(openAssistant).toHaveBeenLastCalledWith(
     expect.objectContaining({
       origin: 'grafana-pathfinder-app/course',
-      prompt: `What will I learn in this ${topic}?`,
+      prompt: 'What will I learn here?',
       context: [jest.mocked(createAssistantContextItem).mock.results[0]!.value],
       autoSend: false,
     })
