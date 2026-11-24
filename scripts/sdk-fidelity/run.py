@@ -81,9 +81,20 @@ def main():
         subprocess.run(['go', 'test', './pkg/plugin', '-run', '^(TestContractValueGoldens|TestAchievementStore|TestAchievementNameReader|TestCustomGuideHTTPClient_LargeGuidesDrainAcrossSmallerPages)', '-count=1'], cwd=achievement_target, check=True)
         achievement_goldens = {file.name: json.loads(file.read_text()) for file in (achievement_target / 'pkg/plugin/testdata/contract').glob('achievements-*.json')}
         sdk_achievements = {name: goldens[1].pop(name) for name in achievement_goldens}
+        # Explicit permitted difference: per-tier criteria (#2463) change six achievement
+        # contracts. Each must still differ from the frozen baseline and match its reviewed copy exactly.
+        per_tier = json.loads((HERE / 'achievement-per-tier.json').read_text())
+        if len(per_tier) != 6 or not set(per_tier) <= set(achievement_goldens):
+            raise RuntimeError('the per-tier achievement difference must name six frozen contracts')
+        for name, reviewed in per_tier.items():
+            if not compare(achievement_goldens[name], reviewed):
+                raise RuntimeError(name + ' no longer differs from the frozen baseline; remove it from achievement-per-tier.json')
+            if compare(reviewed, sdk_achievements[name]):
+                raise RuntimeError(name + ' differs from its reviewed per-tier copy: ' + '\n'.join(compare(reviewed, sdk_achievements[name])))
+            achievement_goldens[name] = reviewed
         if len(achievement_goldens) != 9 or compare(achievement_goldens, sdk_achievements):
             raise RuntimeError('achievement baseline contracts differ: ' + '\n'.join(compare(achievement_goldens, sdk_achievements)))
-        print('Nine achievement contracts match their separate frozen main baseline', flush=True)
+        print('Three achievement contracts match their separate frozen main baseline; six match their reviewed per-tier copies', flush=True)
         unavailable = goldens[0].pop('learning-insights.unavailable.json')
         if unavailable['capability'] != {'available': False, 'reason': 'identity-unavailable'}:
             raise RuntimeError('legacy unavailable-identity contract changed')
