@@ -287,6 +287,20 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     setupRestoreMocks();
   });
 
+  it('does not persist an ephemeral reader over the editor workspace', async () => {
+    const panel = new CombinedLearningJourneyPanel({}, { persistTabs: false });
+    await panel.saveTabsToStorage();
+    expect(tabStorage.setTabs).not.toHaveBeenCalled();
+    expect(tabStorage.setActiveTab).not.toHaveBeenCalled();
+  });
+
+  it('keeps normal workspace persistence enabled by default', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.saveTabsToStorage();
+    expect(tabStorage.setTabs).toHaveBeenCalledTimes(1);
+    expect(tabStorage.setActiveTab).toHaveBeenCalledTimes(1);
+  });
+
   it('should restore tabs on the first call to restoreTabsAsync', async () => {
     const panel = new CombinedLearningJourneyPanel();
 

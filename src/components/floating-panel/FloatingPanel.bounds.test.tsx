@@ -41,6 +41,19 @@ describe('floating panel navigation layout bounds', () => {
     );
   }
 
+  it('can render a closeable companion without docking or full-screen actions', () => {
+    const onClose = jest.fn();
+    render(
+      <FloatingPanel title="Authoring instructions" hasActiveGuide onClose={onClose}>
+        Instructions
+      </FloatingPanel>
+    );
+    expect(screen.queryByRole('button', { name: 'Dock to sidebar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open in full screen' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('contains long content and keeps resizing available when navigation introduces an overlapping side panel', async () => {
     const mounted = mountPanel();
     await act(async () => {

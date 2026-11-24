@@ -15,7 +15,7 @@ import { initializeConfiguredSurfaces } from './utils/configured-bootstrap';
 // guide index), which would land in module.js. createCompositeResolver is
 // deferred behind a dynamic import below for the same reason.
 import { setPackageResolverFactory } from './docs-retrieval/content-fetcher/package-resolver-registry';
-import { PANEL_MODE_CHANGE_EVENT } from './lib/event-names';
+import { PANEL_MODE_CHANGE_EVENT, COMPANION_GUIDE_CHANGE_EVENT } from './lib/event-names';
 import { linkInterceptionState } from './global-state/link-interception';
 import { sidebarState } from 'global-state/sidebar';
 import { panelModeManager } from './global-state/panel-mode';
@@ -373,6 +373,12 @@ plugin.init = function () {
   if (panelModeManager.getMode() === 'floating') {
     mountFloatingPanel();
   }
+
+  document.addEventListener(COMPANION_GUIDE_CHANGE_EVENT, ((event: CustomEvent<{ open: boolean }>) => {
+    if (event.detail.open) {
+      mountFloatingPanel();
+    }
+  }) as EventListener);
 
   document.addEventListener(PANEL_MODE_CHANGE_EVENT, ((e: CustomEvent<{ mode: string }>) => {
     if (e.detail.mode === 'floating') {

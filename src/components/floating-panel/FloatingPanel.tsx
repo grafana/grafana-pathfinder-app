@@ -28,7 +28,7 @@ export interface FloatingPanelProps {
    */
   guideType?: 'learning-journey' | 'docs';
   /** Called when user clicks dock-to-sidebar button */
-  onSwitchToSidebar: () => void;
+  onSwitchToSidebar?: () => void;
   /** Called when user clicks open-in-full-screen button. Hidden when omitted. */
   onSwitchToFullScreen?: () => void;
   /** Called when user closes the floating panel entirely */
@@ -69,7 +69,7 @@ export function FloatingPanel({
   }, []);
 
   const handleSwitchToSidebar = useCallback(() => {
-    onSwitchToSidebar();
+    onSwitchToSidebar?.();
   }, [onSwitchToSidebar]);
 
   const [linkCopy, setLinkCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
@@ -166,13 +166,15 @@ export function FloatingPanel({
                 aria-label="Copy workshop link"
               />
             )}
-            <IconButton
-              name="columns"
-              size="sm"
-              tooltip="Dock to sidebar"
-              onClick={handleSwitchToSidebar}
-              aria-label="Dock to sidebar"
-            />
+            {onSwitchToSidebar && (
+              <IconButton
+                name="columns"
+                size="sm"
+                tooltip="Dock to sidebar"
+                onClick={handleSwitchToSidebar}
+                aria-label="Dock to sidebar"
+              />
+            )}
             {onSwitchToFullScreen && (
               <IconButton
                 name="expand-arrows"

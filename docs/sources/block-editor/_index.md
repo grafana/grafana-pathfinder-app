@@ -44,6 +44,18 @@ The block editor lives inside the Interactive learning sidebar.
 
 If **Create guide** is missing, check that you are signed in with the Editor or Admin role.
 
+## Follow a guide while you edit
+
+Editors and Admins can keep a guide open beside the editor:
+
+1. Open a guide and wait for it to load.
+1. Select **More options** > **Open beside guide editor**.
+1. Move or resize the floating guide so you can see the editor controls.
+
+The editor opens your current draft. This action does not copy the instructional guide into your draft. Closing the floating guide leaves the editor open. The floating guide does not replace your saved tab workspace or change your panel-mode preference. A page refresh closes this companion window.
+
+The normal **Pop out** action still moves the whole panel between surfaces.
+
 ## Anatomy of the editor
 
 When you open the editor for a new guide, you see the empty canvas:

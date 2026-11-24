@@ -213,7 +213,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return true;
   }
 
-  public constructor(pluginConfig: PathfinderPluginConfig = {}) {
+  private readonly persistTabs: boolean;
+
+  public constructor(pluginConfig: PathfinderPluginConfig = {}, options: { persistTabs?: boolean } = {}) {
     // Initialize with the recommendations home tab
     const defaultTabs: LearningJourneyTab[] = [
       {
@@ -254,6 +256,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       contextPanel,
       pluginConfig,
     });
+    this.persistTabs = options.persistTabs ?? true;
 
     // Wire the composite PackageResolver into docs-retrieval so that
     // fetchPackageContent() and fetchPackageById() can resolve bundled and
@@ -398,6 +401,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public saveTabsToStorage(): Promise<void> {
+    if (!this.persistTabs) {
+      return Promise.resolve();
+    }
     const write = this.writeTabsToStorage();
     pendingTabStorageWrite = write;
     // Only the newest write clears the barrier; an older one settling late must
