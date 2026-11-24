@@ -9,7 +9,8 @@ import (
 // BundleBreaks lists what next drops, reorders or redefines from live. Award
 // rows and progress name achievements, tiers, counted units and art for good,
 // so a published bundle may only add to what an earlier one published, a new
-// tier goes after every published one, and no published goal goes down.
+// tier goes after every published one, no published goal goes down, and no
+// published achievement turns grant-only or earnable.
 func BundleBreaks(live, next []byte) ([]string, error) {
 	var before, after struct {
 		Grammar  string          `json:"grammar"`
@@ -51,8 +52,9 @@ func orEmpty(raw json.RawMessage) json.RawMessage {
 }
 
 type achievementIdentity struct {
-	ID    string `json:"id"`
-	Tiers []struct {
+	ID        string `json:"id"`
+	GrantOnly bool   `json:"grantOnly"`
+	Tiers     []struct {
 		ID   string `json:"id"`
 		Goal *int   `json:"goal"`
 	} `json:"tiers"`
@@ -90,6 +92,9 @@ func catalogBreaks(live, next []byte) ([]string, error) {
 		if !ok {
 			problems = append(problems, fmt.Sprintf("achievement %q was removed or renamed", was.ID))
 			continue
+		}
+		if was.GrantOnly != is.GrantOnly {
+			problems = append(problems, fmt.Sprintf("achievement %q changed grantOnly from %v to %v", was.ID, was.GrantOnly, is.GrantOnly))
 		}
 		what := fmt.Sprintf("achievement %q tier", was.ID)
 		problems = append(problems, orderBreaks(what, was.tierIDs(), is.tierIDs())...)

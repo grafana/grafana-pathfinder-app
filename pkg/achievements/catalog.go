@@ -45,19 +45,22 @@ type Catalog struct {
 	Achievements []Definition `json:"achievements"`
 }
 
-// Definition is earned one tier at a time, lowest first.
+// Definition is earned one tier at a time, lowest first, unless GrantOnly.
 type Definition struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
-	Tiers       []Tier `json:"tiers"`
+	// GrantOnly tiers have no goal or rules; only an award row an operator writes holds one.
+	GrantOnly bool   `json:"grantOnly,omitempty"`
+	Tiers     []Tier `json:"tiers"`
 }
 
-// Tier is earned by reaching Goal points from its own Rules, counted only while
-// it is the lowest tier not held. ID is permanent: a released tier is never
-// renamed, removed or moved. Art is an optional, explicitly authored key naming
-// the image published at achievements/art/<key>.svg on the interactive-learning
-// CDN; never a URL or a path.
+// Tier of an earnable definition is earned by reaching Goal points from its own
+// Rules, counted only while it is the lowest tier not held. ID is permanent: a
+// released tier is never renamed, removed or moved. Art is an optional,
+// explicitly authored key naming the image published at
+// achievements/art/<key>.svg on the interactive-learning CDN; never a URL or a
+// path.
 type Tier struct {
 	ID    string `json:"id"`
 	Goal  int    `json:"goal"`
@@ -198,6 +201,12 @@ func (d *Definition) validate(registry *Registry) []error {
 		tierIDs[t.ID] = true
 		if t.Art != "" && (len(t.Art) > maxIDLen || !idPattern.MatchString(t.Art)) {
 			fail("%s: art must be a lowercase key of at most %d characters", tw, maxIDLen)
+		}
+		if d.GrantOnly {
+			if t.Goal != 0 || len(t.Rules) > 0 {
+				fail("%s: a grant-only tier has no goal or rules", tw)
+			}
+			continue
 		}
 		errs = append(errs, t.validate(where+": "+tw, registry)...)
 		total += t.Goal

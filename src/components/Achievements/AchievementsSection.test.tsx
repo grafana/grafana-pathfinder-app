@@ -11,6 +11,7 @@ import {
   __setAchievementDisplayDepsForTests,
 } from '../../completion-records/achievements/achievement-display';
 import type { AchievementDefinitions, MyAchievementsResult } from '../../completion-records/achievements';
+import { parseAchievementDefinitions } from '../../completion-records/achievements/achievements-client';
 import { testIds } from '../../constants/testIds';
 import { MyAchievementsResponseWireSchema } from '../../types/backend-api.schema';
 import type { getMyLearningStyles } from '../LearningPaths/MyLearningTab.styles';
@@ -311,5 +312,47 @@ describe('buildAchievementsView', () => {
       },
     };
     expect(buildAchievementsView(my, definitions)).toEqual({ kind: 'ready', rows: [], truncated: false });
+  });
+
+  it('shows a grant-only achievement once granted and hides one not held', () => {
+    const grantOnly = (id: string) => ({
+      id,
+      title: id,
+      description: 'Granted, never earned.',
+      tiers: [{ id: 'earned', art: id }],
+      earnable: false,
+    });
+    const grantOnlyDefinitions = parseAchievementDefinitions({
+      version: 'v',
+      artBase: 'https://interactive-learning.grafana.net/achievements/art/',
+      achievements: [grantOnly('grot-groundbreaker'), grantOnly('grot-navigator')],
+      sources: [],
+    });
+    expect(grantOnlyDefinitions).not.toBeNull();
+    const my: MyAchievementsResult = {
+      kind: 'ok',
+      data: {
+        capability: { available: true },
+        truncated: false,
+        awards: [{ achievementId: 'grot-groundbreaker', tierId: 'earned', entity: 'grotacademy', earnedAt: '' }],
+        progress: [],
+        legacy: [],
+      },
+    };
+    expect(buildAchievementsView(my, grantOnlyDefinitions)).toEqual({
+      kind: 'ready',
+      truncated: false,
+      rows: [
+        expect.objectContaining({
+          id: 'grot-groundbreaker',
+          earned: {
+            id: 'earned',
+            label: 'Earned',
+            artUrl: 'https://interactive-learning.grafana.net/achievements/art/grot-groundbreaker.svg',
+          },
+          progress: null,
+        }),
+      ],
+    });
   });
 });

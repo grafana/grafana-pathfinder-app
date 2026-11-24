@@ -84,6 +84,46 @@ func TestLoadBundleSkipsOnlyWhatItCannotRead(t *testing.T) {
 	}
 }
 
+const grantOnlyDefinition = `{"id":"legacy","title":"Legacy","description":"Granted, never earned.","grantOnly":true,
+  "tiers":[{"id":"earned","art":"a-1"}]}`
+
+func TestLoadBundleKeepsAGrantOnlyDefinitionThatNoEventEarns(t *testing.T) {
+	s, err := LoadBundle(bundleOf("2.0", guidesAction, guidesDefinition("kept", ""), grantOnlyDefinition))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Skipped) != 0 || len(s.Catalog.Achievements) != 2 || !s.Catalog.Achievements[1].GrantOnly {
+		t.Fatalf("evaluable %+v, skipped %+v; want both definitions loaded", s.Catalog.Achievements, s.Skipped)
+	}
+
+	display := s.DisplayFor(Stack{})
+	if d := display[1]; d.ID != "legacy" || d.Earnable || len(d.Tiers) != 1 || d.Tiers[0].ID != "earned" || d.Tiers[0].Art != "a-1" || d.Tiers[0].At != nil {
+		t.Errorf("display = %+v, want the earned tier with its art, no goal, and earnable false", d)
+	}
+	if !display[0].Earnable {
+		t.Errorf("display = %+v, want the earnable definition beside it unchanged", display[0])
+	}
+
+	store := newFakeStore()
+	ev := NewEvaluator(s.Catalog, store, &fakePolicy{}, func() time.Time { return fixedNow })
+	decisions, err := ev.Evaluate(context.Background(), testPerson, Event{ID: "e1", Entity: "guides", Action: "completed",
+		Context: map[string]any{"guideSource": "bundled", "guideId": "intro"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decisions) != 1 || decisions[0].AchievementID != "kept" {
+		t.Fatalf("decisions = %+v, want only the earnable definition selected", decisions)
+	}
+	if _, ok := store.progress["legacy"]; ok {
+		t.Error("the evaluator wrote a progress row for a grant-only definition")
+	}
+	for key := range store.awards {
+		if strings.HasPrefix(key, "legacy/") {
+			t.Errorf("the evaluator wrote award %s for a grant-only definition", key)
+		}
+	}
+}
+
 func TestLoadBundleRefusesTheWholeBundleOnlyForTheEnvelope(t *testing.T) {
 	cases := []struct {
 		name string

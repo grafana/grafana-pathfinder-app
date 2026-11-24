@@ -125,3 +125,30 @@ func TestBundleBreaksGuardsDuplicates(t *testing.T) {
 		})
 	}
 }
+
+func TestCatalogBreaksGrantOnlyFlip(t *testing.T) {
+	const (
+		granted = `{"achievements":[{"id":"legacy","grantOnly":true,"tiers":[{"id":"earned"}]}]}`
+		earned  = `{"achievements":[{"id":"legacy","tiers":[{"id":"earned","goal":1}]}]}`
+		cleared = `{"achievements":[{"id":"legacy","grantOnly":false,"tiers":[{"id":"earned","goal":1}]}]}`
+	)
+	cases := []struct{ name, live, next, want string }{
+		{"grant-only unchanged", granted, granted, ""},
+		{"a grant-only achievement added", `{"achievements":[]}`, granted, ""},
+		{"grant-only turned earnable", granted, earned, `achievement "legacy" changed grantOnly from true to false`},
+		{"grant-only cleared explicitly", granted, cleared, `achievement "legacy" changed grantOnly from true to false`},
+		{"earnable turned grant-only", earned, granted, `achievement "legacy" changed grantOnly from false to true`},
+		{"an explicit false is not a change", earned, cleared, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			problems, err := catalogBreaks([]byte(tc.live), []byte(tc.next))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Join(problems, "; "); got != tc.want {
+				t.Errorf("problems = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
