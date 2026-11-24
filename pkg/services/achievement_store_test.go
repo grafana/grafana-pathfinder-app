@@ -30,8 +30,9 @@ func (c pointsFreeClient) Create(context.Context, string, string, string, []byte
 func (c pointsFreeClient) Replace(context.Context, string, string, string, string, []byte, int64) ([]byte, error) {
 	return []byte(c.body), nil
 }
-func (pointsFreeClient) IsConflict(error) bool       { return false }
-func (pointsFreeClient) IsAbsent(error, string) bool { return false }
+func (pointsFreeClient) IsConflict(error) bool          { return false }
+func (pointsFreeClient) IsAbsent(error, string) bool    { return false }
+func (pointsFreeClient) Rejection(error) (string, bool) { return "", false }
 
 func TestAchievementStoreWarnsWhenTheKindDropsPointsFromAWrite(t *testing.T) {
 	body := `{"metadata":{"resourceVersion":"7"},"spec":{"achievementId":"a","tierIds":[],"units":[],"userId":"user:1","schemaVersion":2}}`

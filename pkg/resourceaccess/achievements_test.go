@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -24,6 +25,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/rest"
 
+	"github.com/grafana/grafana-pathfinder-app/pkg/generated/manifestdata"
 	"github.com/grafana/grafana-pathfinder-app/pkg/services"
 
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
@@ -40,21 +42,23 @@ var (
 	achievementTestPerson = achievements.Person{ID: "user:27"}
 )
 
-// fakeAchievementAPI enforces the kinds' CRD schemas, prunes spec fields they do
-// not declare, answers 409 on a duplicate create or a stale resourceVersion, and
-// allows only create-only verbs on AchievementAward.
+// fakeAchievementAPI enforces the kinds' CRD schemas, answers 409 on a duplicate
+// create or a stale resourceVersion, and allows only create-only verbs on
+// AchievementAward. It prunes spec fields a kind does not declare, as a CRD host
+// does; with rejectUndeclared it answers Grafana's 422 for them instead.
 // testdata/achievements holds the CRDs generated at
 // grafana-pathfinder-backend 84c582fdae1916910e5197a44bd0078018315135, plus
-// the required points field on AchievementProgress that the kind still lacks.
+// the required points field on AchievementProgress.
 type fakeAchievementAPI struct {
-	mu           sync.Mutex
-	rv           int
-	objects      map[string]map[string]any
-	schemas      map[string]map[string]any
-	requestPaths []string
-	requests     []string
-	failNext     map[string]int
-	emptyNext    map[string]bool
+	mu               sync.Mutex
+	rv               int
+	objects          map[string]map[string]any
+	schemas          map[string]map[string]any
+	requestPaths     []string
+	requests         []string
+	failNext         map[string]int
+	emptyNext        map[string]bool
+	rejectUndeclared bool
 }
 
 func newFakeAchievementAPI(t *testing.T) *fakeAchievementAPI {
@@ -222,9 +226,16 @@ func (a *fakeAchievementAPI) decode(w http.ResponseWriter, r *http.Request, sche
 	props, _ := schema["properties"].(map[string]any)
 	spec, _ := obj["spec"].(map[string]any)
 	for field := range spec {
-		if _, declared := props[field]; !declared {
-			delete(spec, field)
+		if _, declared := props[field]; declared {
+			continue
 		}
+		if a.rejectUndeclared {
+			cause := fmt.Sprintf("Invalid value: %q: spec.%s in body is a forbidden property", field, field)
+			a.statusWith(w, http.StatusUnprocessableEntity, "Invalid", fmt.Sprintf("%s.%s %q is invalid: spec: %s", obj["kind"], appPlatformGroup, meta["name"], cause),
+				map[string]any{"name": meta["name"], "group": appPlatformGroup, "kind": obj["kind"], "causes": []any{map[string]any{"reason": "FieldValueInvalid", "message": cause, "field": "spec"}}})
+			return nil
+		}
+		delete(spec, field)
 	}
 	return obj
 }
@@ -339,6 +350,11 @@ var errAchievementRowMismatch = services.ErrAchievementRowMismatch
 
 func newAchievementTestStore(t *testing.T) (*services.AchievementStore, *fakeAchievementAPI) {
 	t.Helper()
+	return newAchievementTestStoreLogging(t, log.DefaultLogger)
+}
+
+func newAchievementTestStoreLogging(t *testing.T, logger log.Logger) (*services.AchievementStore, *fakeAchievementAPI) {
+	t.Helper()
 	api := newFakeAchievementAPI(t)
 	server := httptest.NewServer(api)
 	t.Cleanup(server.Close)
@@ -346,7 +362,25 @@ func newAchievementTestStore(t *testing.T) (*services.AchievementStore, *fakeAch
 	if err != nil {
 		t.Fatal(err)
 	}
-	return services.NewAchievementStore(clients, services.AchievementWriter{Namespace: achievementTestNamespace, OrgID: 1, UserLogin: "ada", UserDisplayName: "Ada L"}, func() time.Time { return achievementTestNow }, log.DefaultLogger), api
+	return services.NewAchievementStore(clients, services.AchievementWriter{Namespace: achievementTestNamespace, OrgID: 1, UserLogin: "ada", UserDisplayName: "Ada L"}, func() time.Time { return achievementTestNow }, logger), api
+}
+
+type warnRecorder struct {
+	log.Logger
+	mu    sync.Mutex
+	warns []string
+}
+
+func (w *warnRecorder) Warn(msg string, args ...any) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.warns = append(w.warns, fmt.Sprintln(append([]any{msg}, args...)...))
+}
+
+func (w *warnRecorder) lines() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return slices.Clone(w.warns)
 }
 func upstreamStatusOf(err error) (int, bool) {
 	var status apierrors.APIStatus
@@ -621,15 +655,23 @@ func TestAchievementStore_RowCreatedOnAKindWithoutPointsHealsOnceItServesThem(t 
 
 func TestAchievementStore_KindWithoutPointsSpendsNothing(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		seed map[string]any
+		name    string
+		seed    map[string]any
+		rejects bool
+		warning string
 	}{
-		{"no row yet", nil},
-		{"version 1 row", map[string]any{"schemaVersion": 1}},
+		{"no row yet, host prunes", nil, false, "without a required field"},
+		{"version 1 row, host prunes", map[string]any{"schemaVersion": 1}, false, "without a required field"},
+		{"no row yet, host rejects", nil, true, "spec.points in body is a forbidden property"},
+		{"version 1 row, host rejects", map[string]any{"schemaVersion": 1}, true, "spec.points in body is a forbidden property"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store, api := newAchievementTestStore(t)
+			logger := &warnRecorder{Logger: log.DefaultLogger}
+			store, api := newAchievementTestStoreLogging(t, logger)
 			prunePointsFromKind(api)
+			api.mu.Lock()
+			api.rejectUndeclared = tc.rejects
+			api.mu.Unlock()
 			name := achievementProgressName(achievementTestPerson.ID, "guides-finished")
 			if tc.seed != nil {
 				api.seed(achievementProgressResource, name, progressSpec("guides-finished", tc.seed))
@@ -648,8 +690,55 @@ func TestAchievementStore_KindWithoutPointsSpendsNothing(t *testing.T) {
 			if api.spec(achievementAwardResource, achievementAwardName(achievementTestPerson.ID, "guides-finished", "bronze")) != nil {
 				t.Fatal("an award was created while the kind drops points")
 			}
+			if warns := logger.lines(); len(warns) != 1 || !strings.Contains(warns[0], tc.warning) {
+				t.Errorf("warnings = %q, want one naming %q", warns, tc.warning)
+			}
 		})
 	}
+}
+
+func TestAchievementFixturesMatchTheRegisteredKinds(t *testing.T) {
+	fixtures := newFakeAchievementAPI(t).schemas
+	kinds := map[string]string{"AchievementProgress": achievementProgressResource, "AchievementAward": achievementAwardResource}
+	for _, version := range manifestdata.LocalManifest().ManifestData.Versions {
+		for _, kind := range version.Kinds {
+			resource, ok := kinds[kind.Kind]
+			if !ok || version.Name != "v1alpha1" {
+				continue
+			}
+			delete(kinds, kind.Kind)
+			crd, err := kind.Schema.AsCRDMap(kind.Kind)
+			if err != nil {
+				t.Fatalf("%s schema: %v", kind.Kind, err)
+			}
+			if got, want := withoutDescriptions(crd["spec"]), withoutDescriptions(fixtures[resource]); !reflect.DeepEqual(got, want) {
+				t.Errorf("%s: the kind this plugin registers serves spec %v, but the fake serves %v; regenerate the kind or update testdata/achievements", kind.Kind, got, want)
+			}
+		}
+	}
+	if len(kinds) != 0 {
+		t.Fatalf("the manifest registers no v1alpha1 %v", kinds)
+	}
+}
+
+func withoutDescriptions(schema any) any {
+	switch v := schema.(type) {
+	case map[string]any:
+		out := map[string]any{}
+		for key, value := range v {
+			if key != "description" {
+				out[key] = withoutDescriptions(value)
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, value := range v {
+			out[i] = withoutDescriptions(value)
+		}
+		return out
+	}
+	return schema
 }
 
 func TestAchievementStore_RowOfAnotherUserIsRefused(t *testing.T) {

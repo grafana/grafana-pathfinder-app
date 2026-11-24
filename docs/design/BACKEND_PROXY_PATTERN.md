@@ -210,10 +210,15 @@ failure backoff; caller credentials never reach the CDN.
 
 Achievement schemas are copied from the backend revision used by the merged
 store tests (`84c582fdae1916910e5197a44bd0078018315135`, backend PR #146), plus
-the required `points` field on AchievementProgress that the kind does not serve
-yet. Their resource names, versions, schemas, and award create-only role are preserved.
+the required `points` field on AchievementProgress. The in-repo kind
+(`kinds/achievementprogress.cue`) declares the same spec, and
+`TestAchievementFixturesMatchTheRegisteredKinds` keeps the two equal; the backend
+repository adds `points` in
+[grafana-pathfinder-backend#179](https://github.com/grafana/grafana-pathfinder-backend/pull/179).
+Their resource names, versions, schemas, and award create-only role are preserved.
 The local SDK provider registers these kinds; this is not evidence of Cloud
-registration or deployment. There is no new achievement frontend in this change.
+registration or deployment. A host that rejects an undeclared field answers a
+progress write with 422; the store logs a warning naming the apiserver's cause. There is no new achievement frontend in this change.
 
 ### Local achievement acceptance
 

@@ -57,6 +57,10 @@ achievementprogressv1alpha1: achievementProgressKind & {
 			// 1,040-byte unit-key limit, but maxLength counts characters, so it
 			// admits every unit within that byte limit and some longer in bytes.
 			units: list.MaxItems(200) & [...string & strings.MaxRunes(520)]
+			// points is earned toward the lowest catalog tier tierIds does not hold.
+			// It resets to 0 when that tier is earned, so it stays below the tier's
+			// goal, which is at most 200.
+			points: int & >=0 & <=199 | *0
 
 			// ---------------------------------------------------------------
 			// Writer-stamped fields (required).

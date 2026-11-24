@@ -145,6 +145,7 @@ func (s *AchievementStore) CreateProgress(ctx context.Context, person achievemen
 	if s.client.IsConflict(err) {
 		return achievements.Progress{}, achievements.ErrExists
 	}
+	s.warnIfRejected(p.AchievementID, err)
 	return s.writtenProgress(body, err)
 }
 
@@ -163,6 +164,7 @@ func (s *AchievementStore) SaveProgress(ctx context.Context, person achievements
 		return achievements.Progress{}, achievements.ErrConflict
 	}
 	if err != nil {
+		s.warnIfRejected(p.AchievementID, err)
 		return achievements.Progress{}, err
 	}
 	stored, err := s.decodeProgress(body)
@@ -245,6 +247,13 @@ func (s *AchievementStore) acknowledged(obj achievementObject[achievementProgres
 	return row, nil
 }
 
+// A host that rejects a field it does not declare never acknowledges the write, so acknowledged cannot report it.
+func (s *AchievementStore) warnIfRejected(achievementID string, err error) {
+	if cause, ok := s.client.Rejection(err); ok {
+		s.logger.Warn("the AchievementProgress kind on this backend rejected a progress write", "achievementId", achievementID, "cause", cause)
+	}
+}
+
 func (s *AchievementStore) decodeProgress(body []byte) (achievementObject[achievementProgressSpec], error) {
 	var obj achievementObject[achievementProgressSpec]
 	if err := json.Unmarshal(body, &obj); err != nil {
@@ -300,6 +309,8 @@ type AchievementResourceClient interface {
 	Replace(context.Context, string, string, string, string, []byte, int64) ([]byte, error)
 	IsConflict(error) bool
 	IsAbsent(error, string) bool
+	// Rejection returns the apiserver's cause when it refused a write as invalid.
+	Rejection(error) (string, bool)
 }
 
 func (s *AchievementStore) LoadAward(ctx context.Context, person achievements.Person, achievementID, tierID string) (achievements.Award, bool, error) {
