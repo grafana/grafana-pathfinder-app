@@ -2,7 +2,7 @@
  * App Platform Learning Paths Adapter
  *
  * Synthesizes LearningPath-shaped entries from the App Platform custom-guide
- * catalogue (pkg/plugin/custom_guide_repository.go) so private paths/journeys
+ * catalogue (pkg/provider/catalogue.go) so private paths/journeys
  * appear on the My Learning homepage at runtime, alongside the bundled
  * paths.json/paths-cloud.json scaffold.
  *

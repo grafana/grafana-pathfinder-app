@@ -13,9 +13,9 @@ import type { Recommendation } from '../types/context.types';
 export const SUGGESTIONS_UPDATED_EVENT = 'pathfinder-suggestions-updated';
 
 class GlobalSuggestionState {
-  public setSuggestions(suggestions: Recommendation[]): void {
+  public setSuggestions(suggestions: Recommendation[], group?: { groupTitle: string; pathname: string }): void {
     try {
-      sessionStorage.setItem(StorageKeys.SUGGESTIONS, JSON.stringify(suggestions));
+      sessionStorage.setItem(StorageKeys.SUGGESTIONS, JSON.stringify(group ? { ...group, suggestions } : suggestions));
     } catch {
       logger.warn('[Pathfinder] Failed to persist suggestions to sessionStorage');
     }
@@ -30,7 +30,17 @@ class GlobalSuggestionState {
         return [];
       }
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      if (
+        parsed?.pathname !== window.location.pathname ||
+        typeof parsed?.groupTitle !== 'string' ||
+        !Array.isArray(parsed?.suggestions)
+      ) {
+        return [];
+      }
+      return parsed.suggestions.map((suggestion: Recommendation) => ({ ...suggestion, groupTitle: parsed.groupTitle }));
     } catch {
       return [];
     }

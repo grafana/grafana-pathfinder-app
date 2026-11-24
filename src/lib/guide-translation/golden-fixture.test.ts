@@ -84,9 +84,9 @@ function translatableSites(guide: ContentJson): TranslatableSite[] {
   });
 }
 
-function sidecarValue(sidecar: TranslationSidecar, site: TranslatableSite): string | undefined {
+async function sidecarValue(sidecar: TranslationSidecar, site: TranslatableSite): Promise<string | undefined> {
   const entry = sidecar.blocks?.[site.blockId];
-  if (!entry || !isEntryReviewed(entry)) {
+  if (!entry || !(await isEntryReviewed(entry))) {
     return undefined;
   }
   const value = site.stepId === undefined ? entry[site.field] : entry.steps?.[site.stepId]?.[site.field];
@@ -172,20 +172,20 @@ describe('golden fixture package', () => {
     expect(ja.manifest?._sourceHash).toBe(await hashManifestSource(manifest));
   });
 
-  it('has a complete, reviewed ja sidecar', () => {
+  it('has a complete, reviewed ja sidecar', async () => {
     for (const site of translatableSites(content)) {
-      expect(sidecarValue(ja, site)).toEqual(expect.any(String));
+      expect(await sidecarValue(ja, site)).toEqual(expect.any(String));
     }
-    expect(isEntryReviewed(ja.guide)).toBe(true);
+    expect(await isEntryReviewed(ja.guide)).toBe(true);
     expect(ja.guide?.title).toEqual(expect.any(String));
-    expect(isEntryReviewed(ja.manifest)).toBe(true);
+    expect(await isEntryReviewed(ja.manifest)).toBe(true);
     expect(ja.manifest?.description).toEqual(expect.any(String));
     expect(ja.manifest?.category).toEqual(expect.any(String));
   });
 
-  it('has a sparse ja-JP sidecar that overrides two fields', () => {
-    const overrides = translatableSites(content).filter((site) => sidecarValue(jaJP, site) !== undefined);
-    expect(overrides).toHaveLength(2);
+  it('has a sparse ja-JP sidecar that overrides two fields', async () => {
+    const values = await Promise.all(translatableSites(content).map((site) => sidecarValue(jaJP, site)));
+    expect(values.filter((value) => value !== undefined)).toHaveLength(2);
     expect(jaJP.guide).toBeUndefined();
     expect(jaJP.manifest).toBeUndefined();
   });
@@ -212,16 +212,17 @@ describe.each([
     expect(structureOf(compiled)).toEqual(structureOf(content));
   });
 
-  it('takes each field from the most specific reviewed sidecar', () => {
+  it('takes each field from the most specific reviewed sidecar', async () => {
     const canonicalSites = translatableSites(content);
     const compiledSites = translatableSites(compiled);
     expect(compiledSites.map(({ value: _value, ...site }) => site)).toEqual(
       canonicalSites.map(({ value: _value, ...site }) => site)
     );
-    canonicalSites.forEach((site, index) => {
-      const expected = chain.map((sidecar) => sidecarValue(sidecar, site)).find((value) => value !== undefined);
+    for (const [index, site] of canonicalSites.entries()) {
+      const values = await Promise.all(chain.map((sidecar) => sidecarValue(sidecar, site)));
+      const expected = values.find((value) => value !== undefined);
       expect(compiledSites[index]?.value).toBe(expected ?? site.value);
-    });
+    }
   });
 
   it('carries the translated title and the root annotation', () => {

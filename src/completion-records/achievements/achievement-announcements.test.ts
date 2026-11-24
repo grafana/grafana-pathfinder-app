@@ -10,7 +10,7 @@ import {
   type AchievementDefinitions,
 } from './achievement-announcements';
 
-const CONTRACT_DIR = path.resolve(__dirname, '..', '..', '..', 'pkg', 'plugin', 'testdata', 'contract');
+const CONTRACT_DIR = path.resolve(__dirname, '..', '..', '..', 'pkg', 'provider', 'testdata', 'contract');
 
 function eventsFixture(name: string) {
   return AchievementEventsResponseWireSchema.parse(

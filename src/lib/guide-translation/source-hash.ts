@@ -63,7 +63,7 @@ export function canonicalGuideTitleSource(title: string): string {
   return JSON.stringify(pickFields({ title }, ['title']));
 }
 
-async function hashCanonical(serialized: string): Promise<string> {
+export async function hashCanonical(serialized: string): Promise<string> {
   return `${SOURCE_HASH_PREFIX}${await hashString(serialized)}`;
 }
 

@@ -41,10 +41,11 @@ export function isSourceEvent(body: AchievementEventBody): body is SourceEventBo
 
 /** "Reset all learning progress" withdraws guide events only: a source event is not learning progress. */
 export function discardQueuedGuideEvents(storage: QueueStorage<AchievementEventBody>): void {
-  for (const item of storage.list()) {
-    if (!isSourceEvent(item.body)) {
-      storage.remove(item.id);
-    }
+  const sourceItems = storage.list().filter((item) => isSourceEvent(item.body));
+  // `clear` also drops the drain lease, so a tab mid-drain fails `renewLease` and stops sending withdrawn events.
+  storage.clear();
+  for (const item of sourceItems) {
+    storage.put(item);
   }
 }
 

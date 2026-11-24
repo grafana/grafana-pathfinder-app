@@ -22,6 +22,16 @@ it('is off by default and reads the flag once per page load', () => {
   expect(mocked).toHaveBeenCalledWith(GUIDE_TRANSLATIONS_FLAG, false);
 });
 
+it('reads the flag again after the cache is reset', () => {
+  mocked.mockReturnValue(false);
+  expect(isGuideTranslationsEnabled()).toBe(false);
+  mocked.mockReturnValue(true);
+  expect(isGuideTranslationsEnabled()).toBe(false);
+  resetGuideTranslationsFlagCache();
+  expect(isGuideTranslationsEnabled()).toBe(true);
+  expect(mocked).toHaveBeenCalledTimes(2);
+});
+
 it('turns on when the flag is enabled for the stack', () => {
   mocked.mockReturnValue(true);
   expect(isGuideTranslationsEnabled()).toBe(true);

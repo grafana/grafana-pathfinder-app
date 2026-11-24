@@ -4,7 +4,7 @@ import { t } from '@grafana/i18n';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { testIds } from '../../constants/testIds';
 import type { HubResume, HubStats } from '../../learning-paths';
-import { FeaturedGuide } from './FeaturedGuide';
+import { FeaturedGuides } from './FeaturedGuides';
 import { CustomGuides } from './CustomGuides';
 import type { CustomHubGuide } from './custom-guides';
 import { GuideRow, type HubGuide } from './GuideRow';
@@ -20,7 +20,8 @@ export type HubSource = 'header' | HubTile;
 
 interface SidebarHubProps {
   userName?: string;
-  /** The top recommendation first, then the rest in order. */
+  featuredCount?: number;
+  groupTitle?: string;
   guides: HubGuide[];
   resume: HubResume | null;
   stats: HubStats;
@@ -36,6 +37,8 @@ interface SidebarHubProps {
 export function SidebarHub({
   userName,
   guides,
+  featuredCount = 1,
+  groupTitle,
   resume,
   stats,
   customGuides,
@@ -48,7 +51,8 @@ export function SidebarHub({
 }: SidebarHubProps) {
   const styles = useStyles2(getSidebarHubStyles);
   const { pending, run } = useGuardedLaunch();
-  const [featured, ...rest] = guides;
+  const featured = guides.slice(0, featuredCount);
+  const rest = guides.slice(featuredCount);
   const more = isLoadingGuides ? [] : rest.slice(0, MORE_RECOMMENDED_COUNT);
   const other = isLoadingGuides ? [] : rest.slice(MORE_RECOMMENDED_COUNT);
 
@@ -92,13 +96,8 @@ export function SidebarHub({
           <SkeletonLoader type="recommendations" />
         </div>
       ) : (
-        featured && (
-          <FeaturedGuide
-            guide={featured}
-            disabled={pending}
-            onLaunch={() => run(featured.onLaunch)}
-            onOpenModule={(module) => run(() => featured.expansion?.onOpenModule(module))}
-          />
+        featured.length > 0 && (
+          <FeaturedGuides key={groupTitle} title={groupTitle} guides={featured} disabled={pending} run={run} />
         )
       )}
 

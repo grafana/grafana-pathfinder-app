@@ -26,7 +26,7 @@ const BASE_URL = 'https://interactive-learning.grafana.net/packages/';
 // while the CDN serves each under a differently-named, shared-template URL
 // slug ("prepare-configuration") — the drift resolveOnlineAssignmentCard
 // exists to translate, mirroring resolveMilestoneGuideID in
-// pkg/plugin/package_recommendations.go.
+// pkg/publiccontent/recommendations.go.
 const PACKAGES: OnlinePackageEntry[] = [
   pkg({
     id: 'postgresql-data-source-lj',
