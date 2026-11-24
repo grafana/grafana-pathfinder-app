@@ -194,6 +194,35 @@ describe('runRenameBlock', () => {
     expect(block.verify).toBe('section-completed:install,section-completed:install');
   });
 
+  it('keeps a successCriteria token whole when it contains a comma', async () => {
+    const dir = await writePackage([
+      section('setup'),
+      {
+        type: 'challenge',
+        id: 'check',
+        mode: 'standard',
+        title: 'Check',
+        brief: 'Name it',
+        successCriteria: 'has-dashboard-named:Intro, section-completed:setup',
+      },
+      {
+        type: 'challenge',
+        id: 'second',
+        mode: 'standard',
+        title: 'Second',
+        brief: 'Finish setup',
+        successCriteria: 'section-completed:setup',
+      },
+    ]);
+
+    const result = await runRenameBlock({ dir, id: 'setup', newId: 'install' });
+
+    expect(result.status === 'ok' && result.data?.referencesRewritten).toEqual(['blocks[2].successCriteria']);
+    const blocks = readPackage(dir).content.blocks as any[];
+    expect(blocks[1].successCriteria).toBe('has-dashboard-named:Intro, section-completed:setup');
+    expect(blocks[2].successCriteria).toBe('section-completed:install');
+  });
+
   it('lists a field once when it holds several matching tokens', async () => {
     const dir = await writePackage([
       section('setup'),

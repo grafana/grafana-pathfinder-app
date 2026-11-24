@@ -20,6 +20,8 @@ const SECTION_COMPLETED = ParameterizedRequirementPrefix.SECTION_COMPLETED;
 // A section renders as `section-<id>`, and the section check adds that prefix unless the ref already has it.
 const SECTION_PREFIX = 'section-';
 const CONDITION_KEYS = new Set(['requirements', 'objectives', 'conditions', 'verify', 'successCriteria']);
+// A challenge's successCriteria is one requirement token, so it is never split on commas.
+const SINGLE_TOKEN_KEYS = new Set(['successCriteria']);
 
 export const RenameBlockCommand = z.object({
   dir: z.string().describe('package directory').meta({ role: 'io' }),
@@ -63,7 +65,7 @@ function rewriteToken(part: string, path: string, scan: RenameScan): string {
   return part.replace(token, () => next);
 }
 
-// Only a string field holds several comma-separated conditions. Each array entry is one condition.
+// Only a `verify`-style string field holds several comma-separated conditions. Each array entry is one condition.
 function rewriteConditionString(value: string, path: string, scan: RenameScan): string {
   return value
     .split(',')
@@ -93,7 +95,9 @@ function rewriteReferences(node: unknown, path: string, scan: RenameScan): void 
   const record = node as Record<string, unknown>;
   for (const [key, value] of Object.entries(record)) {
     const childPath = `${path}.${key}`;
-    if (CONDITION_KEYS.has(key) && typeof value === 'string') {
+    if (SINGLE_TOKEN_KEYS.has(key) && typeof value === 'string') {
+      record[key] = rewriteToken(value, childPath, scan);
+    } else if (CONDITION_KEYS.has(key) && typeof value === 'string') {
       record[key] = rewriteConditionString(value, childPath, scan);
     } else if (CONDITION_KEYS.has(key) && Array.isArray(value)) {
       record[key] = value.map((entry, i) =>
