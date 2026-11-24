@@ -40,7 +40,7 @@ env:
 jobs:
   cd:
     name: CD
-    if: ${{ inputs.sdk-only-version == '' }}
+    if: ${{ inputs.environment == 'ops' && inputs.branch == '05f7490a55cc8dda092b4bd5f556289ae4318657' && !inputs.docs-only && inputs.sdk-only-version == '' }}
     uses: grafana/plugin-ci-workflows/.github/workflows/cd.yml@ci-cd-workflows/v12.1.1
     permissions:
       contents: write
@@ -51,6 +51,7 @@ jobs:
       branch: ${{ github.event.inputs.branch }}
       environment: ${{ github.event.inputs.environment }}
       docs-only: ${{ fromJSON(github.event.inputs.docs-only) }}
+      trigger-argo: false
       scopes: universal
       grafana-cloud-deployment-type: provisioned
       argo-workflow-slack-channel: '#pathfinder-app-release'
@@ -61,47 +62,3 @@ jobs:
 
       # TODO: add here any other CI custom inputs you may need:
       #   https://enghub.grafana-ops.net/docs/default/component/grafana-plugins-platform/plugins-ci-github-actions/010-plugins-ci-github-actions/#customizing-the-workflows-with-inputs
-
-  # Bumps the plugin's pinned version in deployment_tools, and records its app-sdk manifest, with the
-  # grafana-pathfinder-app workflow template of the appplugins-cd Argo namespace. It opens an auto-merging
-  # pull request. See ksonnet/environments/appplugins-cd in grafana/deployment_tools.
-  update-plugin-version:
-    name: Update grafana-pathfinder-app in deployment_tools
-    needs: cd
-    if: >-
-      ${{ !cancelled() && (
-        (inputs.sdk-only-version != '' && needs.cd.result == 'skipped') ||
-        (needs.cd.result == 'success' && inputs.environment == 'dev' && !inputs.docs-only &&
-          (inputs.branch == 'main' || inputs.deploy-sdk-to-dev))
-      ) }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Validate the SDK deployment
-        shell: bash
-        env:
-          ENVIRONMENT: ${{ inputs.environment }}
-          DOCS_ONLY: ${{ inputs.docs-only }}
-          PLUGIN_VERSION: ${{ inputs.sdk-only-version || fromJSON(needs.cd.outputs.plugin).version }}
-        run: |
-          if [[ "$ENVIRONMENT" != dev || "$DOCS_ONLY" == true ]]; then
-            echo "::error::SDK deployment requires environment=dev and docs-only=false."
-            exit 1
-          fi
-          version_pattern='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
-          if ! [[ "$PLUGIN_VERSION" =~ $version_pattern ]]; then
-            echo "::error::Enter an exact plugin version such as 2.29.0 or 2.29.0+<commit>."
-            exit 1
-          fi
-
-      - name: Trigger the deployment_tools workflow
-        uses: grafana/shared-workflows/actions/trigger-argo-workflow@5a212d56e9d224851dc4b3c2643bbc5bac484d5d # trigger-argo-workflow/v2.0
-        with:
-          instance: ops
-          namespace: appplugins-cd
-          workflow_template: grafana-pathfinder-app
-          parameters: |
-            dockertag=${{ inputs.sdk-only-version || fromJSON(needs.cd.outputs.plugin).version }}
-            prCommentContext= Triggered by ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}.
