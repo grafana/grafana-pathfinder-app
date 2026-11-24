@@ -40,6 +40,7 @@ import { renameIdSpec } from './commands/rename-id';
 import { requirementsGroup } from './commands/requirements';
 import { schemaSpec } from './commands/schema';
 import { setManifestSpec } from './commands/set-manifest';
+import { stampIdsSpec } from './commands/stamp-ids';
 import { syncTranslationsSpec } from './commands/sync-translations';
 import { validateCliSpec } from './commands/validate';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
@@ -145,6 +146,7 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
     shorts: { output: 'o' },
     negatable: { lint: 'Suppress lint output' },
   },
+  'stamp-ids': { positionals: ['dir'] },
   'sync-translations': {
     positionals: ['dir'],
     placeholders: { locale: 'tag', accept: 'entry...' },
@@ -191,6 +193,7 @@ const RENDERED: Record<string, Command> = {
   'build-stats': mountCommander(buildStatsSpec, PRESENTATIONS['build-stats']),
   'build-snippets': mountCommander(buildSnippetsSpec, PRESENTATIONS['build-snippets']),
   'build-graph': mountCommander(buildGraphSpec, PRESENTATIONS['build-graph']),
+  'stamp-ids': mountCommander(stampIdsSpec, PRESENTATIONS['stamp-ids']),
   'sync-translations': mountCommander(syncTranslationsSpec, PRESENTATIONS['sync-translations']),
   schema: mountCommander(schemaSpec, PRESENTATIONS.schema),
   'find-guides': mountCommander(findGuidesSpec, PRESENTATIONS['find-guides']),
