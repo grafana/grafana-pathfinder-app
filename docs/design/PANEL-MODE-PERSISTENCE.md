@@ -38,9 +38,9 @@ their content-based surface selection, as do shipped Learn Home launches.
 
 ## Companion guide for authoring
 
-**Open beside guide editor** is an opt-in exception to the single-surface workflow. It keeps the primary surface in sidebar mode and displays a separate, transient reader in the existing floating panel shell. It does not call any panel-mode mutator, publish sidebar mount/unmount events, restore the shared tab workspace, or subscribe to general guide-launch or keyboard-shortcut channels.
+**Create your first guide** is a dedicated authoring action, not a general reader option. It opens only the bundled `create-your-first-guide` lesson beside the editor. It keeps the primary surface in sidebar mode and uses the existing floating panel shell. It does not change panel mode or subscribe to general guide-launch or keyboard-shortcut channels.
 
-`global-state/companion-guide.ts` holds the loaded tab snapshot in memory. `FloatingPanelManager` mounts a `CompanionGuidePanel` alongside the sidebar. Its panel model uses `persistTabs: false`, so navigation and reset operations cannot overwrite the editor's shared tab workspace. Completion tracking still uses the guide's normal identity. The companion waits for the editor to mount before rendering instructional steps, so their requirements can find its controls.
+`global-state/companion-guide.ts` creates the lesson tab from bundled content and holds it in memory. Its `openAuthoringGuide()` entry point accepts no tab, URL, or content argument. `FloatingPanelManager` mounts a `CompanionGuidePanel` alongside the sidebar. Its panel model uses `persistTabs: false`, so navigation and reset operations cannot overwrite the editor's shared tab workspace. Completion tracking still uses the guide's normal identity. The companion waits for the editor to mount before rendering instructional steps, so their requirements can find its controls.
 
 Closing the companion clears only that reader. Refreshing clears its in-memory state. A normal switch to floating or full-screen mode closes the companion and follows the existing handoff rules. Dock and full-screen controls are omitted from the companion shell to avoid replacing the editor unexpectedly.
 

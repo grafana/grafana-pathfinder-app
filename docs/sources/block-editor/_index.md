@@ -44,15 +44,13 @@ The block editor lives inside the Interactive learning sidebar.
 
 If **Create guide** is missing, check that you are signed in with the Editor or Admin role.
 
-## Follow a guide while you edit
+## Create your first guide with a lesson
 
-Editors and Admins can keep a guide open beside the editor:
+Editors and Admins can select **Create your first guide** in an empty editor or its **More actions** menu. This action opens only the bundled authoring lesson beside the current draft. Other guides cannot use this layout.
 
-1. Open a guide and wait for it to load.
-1. Select **More options** > **Open beside guide editor**.
-1. Move or resize the floating guide so you can see the editor controls.
+The lesson covers Markdown, recording, selector checks, show-only highlights, Preview, and draft storage. It does not publish the practice guide.
 
-The editor opens your current draft. This action does not copy the instructional guide into your draft. Closing the floating guide leaves the editor open. The floating guide does not replace your saved tab workspace or change your panel-mode preference. A page refresh closes this companion window.
+Move or resize the lesson window to see the editor controls. Opening the lesson does not replace the draft or saved tab workspace. Closing the lesson leaves the editor open. A page refresh closes the lesson window.
 
 The normal **Pop out** action still moves the whole panel between surfaces.
 

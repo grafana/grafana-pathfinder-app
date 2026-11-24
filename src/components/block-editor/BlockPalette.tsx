@@ -241,6 +241,7 @@ export interface BlockPaletteProps {
   excludeTypes?: BlockType[];
   /** Whether to render as an embedded trigger (fills parent, no border - parent handles styling) */
   embedded?: boolean;
+  triggerTestId?: string;
 }
 
 /**
@@ -252,6 +253,7 @@ export function BlockPalette({
   compact = false,
   excludeTypes = [],
   embedded = false,
+  triggerTestId = testIds.blockEditor.addBlockButton,
 }: BlockPaletteProps) {
   const styles = useStyles2(getPaletteModalStyles);
   const [isOpen, setIsOpen] = useState(false);
@@ -358,7 +360,7 @@ export function BlockPalette({
         type="button"
         aria-haspopup="dialog"
         aria-expanded={isOpen}
-        data-testid={testIds.blockEditor.addBlockButton}
+        data-testid={triggerTestId}
       >
         <Icon name="plus" size={compact ? 'sm' : 'md'} />
         <span>Add Block</span>

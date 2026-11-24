@@ -1647,6 +1647,9 @@ export class ContextService {
       if (indexData && indexData.interactives && Array.isArray(indexData.interactives)) {
         // Filter interactives that match the current URL/path and platform
         const relevantInteractives = indexData.interactives.filter((interactive: BundledInteractive) => {
+          if (interactive.requiresEditor && !['Editor', 'Admin'].includes(config.bootData?.user?.orgRole ?? '')) {
+            return false;
+          }
           // First check URL match
           let urlMatches = false;
           if (Array.isArray(interactive.url)) {

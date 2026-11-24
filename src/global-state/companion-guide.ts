@@ -1,23 +1,29 @@
+import content from '../bundled-interactives/create-your-first-guide/content.json';
+import manifest from '../bundled-interactives/create-your-first-guide/manifest.json';
 import { COMPANION_GUIDE_CHANGE_EVENT } from '../lib/event-names';
 import type { LearningJourneyTab } from '../types/content-panel.types';
 
 let guide: LearningJourneyTab | null = null;
 
-export function canOpenCompanionGuide(tab: LearningJourneyTab | null | undefined): tab is LearningJourneyTab {
-  return Boolean(
-    tab &&
-    (tab.type === 'docs' || tab.type === 'interactive' || tab.type === 'learning-journey') &&
-    tab.content &&
-    !tab.isLoading &&
-    !tab.error
-  );
-}
-
-export function openCompanionGuide(tab: LearningJourneyTab): void {
-  if (!canOpenCompanionGuide(tab)) {
-    return;
-  }
-  guide = { ...tab };
+export function openAuthoringGuide(): void {
+  const url = 'bundled:create-your-first-guide/content.json';
+  guide = {
+    id: 'authoring-instructions',
+    type: 'interactive',
+    title: content.title,
+    baseUrl: url,
+    currentUrl: url,
+    isLoading: false,
+    error: null,
+    content: {
+      content: JSON.stringify(content),
+      type: 'interactive',
+      url,
+      metadata: { title: content.title, packageManifest: manifest },
+      lastFetched: new Date().toISOString(),
+      isNativeJson: true,
+    },
+  };
   document.dispatchEvent(new CustomEvent(COMPANION_GUIDE_CHANGE_EVENT, { detail: { open: true } }));
 }
 

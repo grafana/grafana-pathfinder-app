@@ -354,6 +354,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
       '[data-block-editor]',
       `[data-testid="${testIds.blockEditor.container}"]`,
       '[data-record-overlay]', // Stop recording button and overlay elements
+      '[data-pathfinder-content]', // Instructional companions are not part of the recorded procedure.
     ],
     []
   );

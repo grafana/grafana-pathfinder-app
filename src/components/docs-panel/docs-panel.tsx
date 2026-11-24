@@ -88,7 +88,8 @@ import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { coerceLaunchSource, toAnalyticsLaunchSource, type LaunchSource } from '../../recovery';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
-import { panelModeManager } from '../../global-state/panel-mode';
+import { panelModeManager, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
+import { openAuthoringGuide } from '../../global-state/companion-guide';
 import { cancelCatalogActivation } from '../../global-state/package-browser';
 import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
@@ -440,6 +441,18 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     packageInfo: PackageOpenInfo | undefined,
     prepare: boolean
   ): Promise<void> {
+    if (
+      ['bundled:create-your-first-guide', 'bundled:create-your-first-guide/content.json'].includes(url) &&
+      isCurrentUserEditor()
+    ) {
+      this.openEditorTab();
+      if (panelModeManager.getMode() !== 'sidebar') {
+        await this.saveTabsToStorage();
+        await requestSidebarHandoffAndWait();
+      }
+      openAuthoringGuide();
+      return;
+    }
     const { openGuideInSidebar } = await import('./utils/open-prepared-guide');
     if (!prepare) {
       if (panelModeManager.getMode() !== 'sidebar') {

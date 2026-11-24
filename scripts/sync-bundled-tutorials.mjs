@@ -90,7 +90,9 @@ export function syncBundledTutorials(source, { root = appRoot, revision, validat
   const runCli = (...args) => execFileSync(process.execPath, [cli, ...args], { cwd: root, stdio: 'pipe' });
   try {
     cpSync(bundled, stage, { recursive: true });
-    const index = [];
+    const index = readJson(join(bundled, 'index.json')).interactives.filter(
+      (entry) => !config.some((tutorial) => tutorial.id === entry.id)
+    );
     const changed = [];
     for (const entry of config) {
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.id)) {

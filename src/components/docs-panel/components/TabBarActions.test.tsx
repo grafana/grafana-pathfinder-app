@@ -10,8 +10,6 @@ import { currentPlatform } from '../../../lib/platform';
 import { testIds } from '../../../constants/testIds';
 import { PLUGIN_BASE_URL } from '../../../constants';
 import { useIsAssistantAvailable } from '../../../integrations/assistant-integration';
-import { getCompanionGuide, closeCompanionGuide } from '../../../global-state/companion-guide';
-import { panelModeManager } from '../../../global-state/panel-mode';
 
 jest.mock('../../../integrations/assistant-integration', () => ({ useIsAssistantAvailable: jest.fn(() => false) }));
 
@@ -375,34 +373,18 @@ describe('TabBarActions', () => {
     });
   });
 
-  describe('guide beside editor', () => {
-    beforeEach(() => {
-      closeCompanionGuide();
-      jest.spyOn(panelModeManager, 'getMode').mockReturnValue('sidebar');
-    });
-    afterEach(() => jest.restoreAllMocks());
-
-    it('opens a loaded guide independently and focuses the editor without closing the sidebar', () => {
-      const onOpenEditorTab = jest.fn();
-      const tab = makeTab();
-      render(<TabBarActions activeTab={tab} isEditorUser onOpenEditorTab={onOpenEditorTab} />);
-      fireEvent.click(screen.getByRole('button', { name: 'More options' }));
-      fireEvent.click(screen.getByText('Open beside guide editor'));
-      expect(getCompanionGuide()).toEqual(tab);
-      expect(onOpenEditorTab).toHaveBeenCalledTimes(1);
-      expect(mockPublish).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'close-extension-sidebar' }));
-    });
-
-    it.each([
-      { editor: false, tab: makeTab() },
-      { editor: true, tab: makeTab({ type: 'editor' }) },
-      { editor: true, tab: makeTab({ isLoading: true }) },
-      { editor: true, tab: makeTab({ error: 'Failed' }) },
-    ])('hides the option for ineligible contexts', ({ editor, tab }) => {
-      render(<TabBarActions activeTab={tab} isEditorUser={editor} onOpenEditorTab={jest.fn()} />);
-      fireEvent.click(screen.getByRole('button', { name: 'More options' }));
-      expect(screen.queryByText('Open beside guide editor')).not.toBeInTheDocument();
-    });
+  it.each([
+    makeTab(),
+    makeTab({
+      baseUrl: 'bundled:create-your-first-guide/content.json',
+      currentUrl: 'bundled:create-your-first-guide/content.json',
+    }),
+  ])('never offers companion mode in a reader menu, including the authoring lesson', (tab) => {
+    const onOpenEditorTab = jest.fn();
+    render(<TabBarActions activeTab={tab} isEditorUser onOpenEditorTab={onOpenEditorTab} />);
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.queryByText('Open beside guide editor')).not.toBeInTheDocument();
+    expect(onOpenEditorTab).not.toHaveBeenCalled();
   });
 
   describe('guide editor menu item', () => {

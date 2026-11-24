@@ -3,6 +3,7 @@ import { render, screen, act, fireEvent, within } from '@testing-library/react';
 import { BlockEditorHeader } from './BlockEditorHeader';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
 import { testIds } from '../../constants/testIds';
+import { closeCompanionGuide, getCompanionGuide } from '../../global-state/companion-guide';
 
 // Surface Grafana's Badge `color`/`icon` props as data-attributes so a color
 // regression (e.g. Draft reverting to purple) fails loudly. `text` passes through
@@ -62,6 +63,24 @@ describe('BlockEditorHeader: pop out / dock (in the more-actions kebab)', () => 
 
   const openKebab = () => fireEvent.click(screen.getByTestId(testIds.blockEditor.moreActionsButton));
   const popOutItem = () => screen.getByTestId('pathfinder-block-editor-toggle-popout');
+
+  it('opens the authoring lesson alongside the current editor without starting a new guide', () => {
+    getModeSpy.mockReturnValue('sidebar');
+    closeCompanionGuide();
+    render(<BlockEditorHeader {...baseProps} />);
+    openKebab();
+    fireEvent.click(screen.getByText('Create your first guide', { exact: true }));
+    expect(getCompanionGuide()?.title).toBe('Create your first interactive guide');
+    expect(baseProps.onNewGuide).not.toHaveBeenCalled();
+    closeCompanionGuide();
+  });
+
+  it.each(['floating', 'fullscreen'] as const)('does not offer a companion in %s mode', (mode) => {
+    getModeSpy.mockReturnValue(mode);
+    render(<BlockEditorHeader {...baseProps} />);
+    openKebab();
+    expect(screen.queryByText('Create your first guide', { exact: true })).not.toBeInTheDocument();
+  });
 
   it('shows "Pop out" in the kebab when the panel is in sidebar mode', () => {
     getModeSpy.mockReturnValue('sidebar');
@@ -255,6 +274,13 @@ describe('BlockEditorHeader: toolbar row + undo/redo', () => {
     expect(screen.getByRole('radio', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Preview' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'JSON' })).toBeInTheDocument();
+  });
+
+  it('handles direct activation of the Preview control', () => {
+    const onSetViewMode = jest.fn();
+    render(<BlockEditorHeader {...baseProps} viewMode="edit" onSetViewMode={onSetViewMode} />);
+    fireEvent.click(screen.getByRole('radio', { name: 'Preview' }));
+    expect(onSetViewMode).toHaveBeenCalledWith('preview');
   });
 
   it('shows undo/redo in edit mode, disabled when there is no history', () => {

@@ -239,6 +239,7 @@ jest.mock('../../hooks', () => ({}));
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { tabStorage } from '../../lib/user-storage';
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import { closeCompanionGuide, getCompanionGuide } from '../../global-state/companion-guide';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
 import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
 import { resolveActiveMilestoneSequence } from '../../docs-retrieval';
@@ -286,6 +287,37 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
     setupRestoreMocks();
   });
+
+  it.each(['bundled:create-your-first-guide', 'bundled:create-your-first-guide/content.json'])(
+    'opens the authoring recommendation beside the existing editor (%s)',
+    async (url) => {
+      const user = jest.requireMock('@grafana/runtime').config.bootData.user;
+      const previousRole = user.orgRole;
+      user.orgRole = 'Editor';
+      closeCompanionGuide();
+      try {
+        const panel = new CombinedLearningJourneyPanel({}, { persistTabs: false });
+        panel.openEditorTab();
+        panel.updateEditorTabTitle('Existing draft');
+        const tabs = panel.state.tabs;
+        const openDocs = jest.spyOn(panel, 'openDocsPage');
+        await (panel as any).openRecommendation(
+          url,
+          'Create your first interactive guide',
+          'recommender',
+          undefined,
+          true
+        );
+        expect(panel.state.tabs).toBe(tabs);
+        expect(panel.state.tabs.find((tab) => tab.id === panel.state.activeTabId)?.title).toBe('Existing draft');
+        expect(openDocs).not.toHaveBeenCalled();
+        expect(getCompanionGuide()?.currentUrl).toBe('bundled:create-your-first-guide/content.json');
+      } finally {
+        closeCompanionGuide();
+        user.orgRole = previousRole;
+      }
+    }
+  );
 
   it('does not persist an ephemeral reader over the editor workspace', async () => {
     const panel = new CombinedLearningJourneyPanel({}, { persistTabs: false });

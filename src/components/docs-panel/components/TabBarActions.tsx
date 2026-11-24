@@ -27,8 +27,6 @@ import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import { useIsAssistantAvailable } from '../../../integrations/assistant-integration';
 import { buildSidebarGuideLink } from '../../../utils/guide-share-link';
 import { CustomizeGuideModal } from './CustomizeGuideModal';
-import { canOpenCompanionGuide, openCompanionGuide } from '../../../global-state/companion-guide';
-import { panelModeManager } from '../../../global-state/panel-mode';
 
 const previewMenuItemClass = css({
   flexDirection: 'row',
@@ -241,23 +239,6 @@ export const TabBarActions: React.FC<TabBarActionsProps> = ({
             {isEditorUser && onOpenEditorTab && (
               <Menu.Item label={t('docsPanel.createGuide', 'Create guide')} icon="plus" onClick={handleEditorClick} />
             )}
-            {isEditorUser &&
-              onOpenEditorTab &&
-              panelModeManager.getMode() === 'sidebar' &&
-              canOpenCompanionGuide(activeTab) && (
-                <Menu.Item
-                  label={t('docsPanel.openBesideEditor', 'Open beside guide editor')}
-                  icon="columns"
-                  onClick={() => {
-                    openCompanionGuide(activeTab);
-                    onOpenEditorTab();
-                    reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                      action: 'open_companion_guide',
-                      source: 'header_menu',
-                    });
-                  }}
-                />
-              )}
             {kioskEnabled && (
               <Menu.Item
                 label={t('docsPanel.kioskMode', 'Kiosk mode')}

@@ -11,15 +11,18 @@ import { getActiveTabUrl, setActiveTabUrl } from '../global-state/content-key';
  * the same reason as `useGlobalActiveTabExposure`: children restore progress in
  * passive effects and must see this key.
  *
- * Cleanup clears only the typed state: the sidebar writes only the window
- * global and can legitimately hold this same key, so clearing the global
- * would erase the sidebar's key on a surface-to-sidebar handoff.
+ * Default cleanup leaves the sidebar's legacy global intact during handoff.
+ * Nested previews restore the previous key so a companion keeps its progress.
  */
-export function usePublishSurfaceContentKey(contentKey: string | undefined): void {
+export function usePublishSurfaceContentKey(
+  contentKey: string | undefined,
+  { restorePrevious = false }: { restorePrevious?: boolean } = {}
+): void {
   useLayoutEffect(() => {
     if (!contentKey) {
       return;
     }
+    const previousKey = getActiveTabUrl();
     try {
       setActiveTabUrl(contentKey);
       window.__DocsPluginActiveTabUrl = contentKey;
@@ -29,7 +32,11 @@ export function usePublishSurfaceContentKey(contentKey: string | undefined): voi
     return () => {
       if (getActiveTabUrl() === contentKey) {
         setActiveTabUrl(undefined);
+        if (restorePrevious && window.__DocsPluginActiveTabUrl === contentKey) {
+          setActiveTabUrl(previousKey);
+          Reflect.set(window, '__DocsPluginActiveTabUrl', previousKey);
+        }
       }
     };
-  }, [contentKey]);
+  }, [contentKey, restorePrevious]);
 }

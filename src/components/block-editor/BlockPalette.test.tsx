@@ -20,6 +20,14 @@ describe('BlockPalette', () => {
     expect(screen.getByTestId(testIds.blockEditor.blockTypeButton('markdown'))).toBeInTheDocument();
   };
 
+  it('lets a nested section expose its own stable add-block target', () => {
+    const onSelect = jest.fn();
+    render(<BlockPalette onSelect={onSelect} triggerTestId={testIds.blockEditor.sectionNestedAddButton} embedded />);
+    fireEvent.click(screen.getByTestId(testIds.blockEditor.sectionNestedAddButton));
+    fireEvent.click(screen.getByTestId(testIds.blockEditor.blockTypeButton('interactive')));
+    expect(onSelect).toHaveBeenCalledWith('interactive', undefined);
+  });
+
   it('offers the challenge block under Interactive', () => {
     openPalette();
 

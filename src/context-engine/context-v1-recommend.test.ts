@@ -116,6 +116,31 @@ const PLUGIN_CONFIG = {
   acceptedTermsAndConditions: true,
 };
 
+it.each(['Editor', 'Admin', 'Viewer', ''])(
+  'recommends the bundled authoring lesson only to authors (%s)',
+  async (role) => {
+    const index = jest.requireMock('../bundled-interactives/index.json');
+    const entry = jest
+      .requireActual('../bundled-interactives/index.json')
+      .interactives.find((item: { id: string }) => item.id === 'create-your-first-guide');
+    const user = jest.requireMock('@grafana/runtime').config.bootData.user;
+    const previousRole = user.orgRole;
+    index.interactives.push(entry);
+    user.orgRole = role;
+    try {
+      const recommendations = await (ContextService as any).getBundledInteractiveRecommendations(
+        makeContextData({ currentPath: '/' })
+      );
+      expect(recommendations.some((rec: Recommendation) => rec.url === 'bundled:create-your-first-guide')).toBe(
+        role === 'Editor' || role === 'Admin'
+      );
+    } finally {
+      index.interactives.pop();
+      user.orgRole = previousRole;
+    }
+  }
+);
+
 function makeContextData(overrides: Partial<ContextData> = {}): ContextData {
   return {
     currentPath: '/alerting',

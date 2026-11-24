@@ -24,6 +24,8 @@ import type {
   PreviewTarget,
 } from './types';
 import { testIds } from '../../constants/testIds';
+import { usePanelModeControls } from '../../global-state/use-panel-mode';
+import { openAuthoringGuide } from '../../global-state/companion-guide';
 
 export interface BlockEditorContentProps {
   /** Current view mode */
@@ -101,6 +103,7 @@ export function BlockEditorContent({
   const { isSelectionMode, selectedBlockIds } = operations;
   const selectedCount = selectedBlockIds.size;
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = React.useState(false);
+  const { panelMode } = usePanelModeControls();
   const selectedLabel = `${selectedCount} block${selectedCount === 1 ? '' : 's'} selected`;
   const deleteLabel = `Delete ${selectedCount} block${selectedCount === 1 ? '' : 's'}`;
 
@@ -214,7 +217,12 @@ export function BlockEditorContent({
         <div className={styles.emptyState}>
           <div className={styles.emptyStateIcon}>📄</div>
           <p className={styles.emptyStateText}>Your guide is empty. Add your first block to get started.</p>
-          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+            {panelMode === 'sidebar' && (
+              <Button variant="primary" onClick={openAuthoringGuide} icon="book-open">
+                Create your first guide
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={onLoadTemplate}
