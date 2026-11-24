@@ -48,7 +48,7 @@ export function FullScreenLayout({
   guideType,
   hasActiveGuide,
   onExit,
-  backLabel = 'Back to sidebar',
+  backLabel = t('fullScreen.backToSidebar', 'Back to sidebar'),
   onGoFloating,
   subHeader,
   assistant,

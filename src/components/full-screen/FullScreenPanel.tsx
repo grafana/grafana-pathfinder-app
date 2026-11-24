@@ -7,6 +7,7 @@ import {
   type SceneObjectState,
 } from '@grafana/scenes';
 import { getAppEvents, locationService } from '@grafana/runtime';
+import { t } from '@grafana/i18n';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset, useAutoOpenListener, useAssistantPathfinderListener } from '../docs-panel/hooks';
@@ -388,7 +389,11 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       content?.metadata.learningJourney || content?.metadata.journeyManifest || content?.metadata.trackMemberBaseUrl
     );
   const returnsToLearning = isCoverPage || isCourseModule;
-  const backLabel = courseOverviewUrl ? 'Back to course' : returnsToLearning ? 'Back to learning' : 'Back to sidebar';
+  const backLabel = courseOverviewUrl
+    ? t('fullScreen.backToCourse', 'Back to course')
+    : returnsToLearning
+      ? t('fullScreen.backToLearning', 'Back to learning')
+      : t('fullScreen.backToSidebar', 'Back to sidebar');
   const handleBack = useCallback(() => {
     if (returnsToLearning && activeTab) {
       void navigateToCourseOverview(panel, activeTab.id, courseOverviewUrl);
@@ -401,10 +406,15 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const tabBaseUrl = activeTab?.baseUrl;
   useEffect(() => {
     const page = sceneGraph.getAncestor(_props.model, SceneAppPage);
-    const learnPage = new SceneAppPage({ title: 'Learn', url: PLUGIN_BASE_URL, routePath: '/', preserveUrlKeys: [] });
+    const learnPage = new SceneAppPage({
+      title: t('fullScreen.learn', 'Learn'),
+      url: PLUGIN_BASE_URL,
+      routePath: '/',
+      preserveUrlKeys: [],
+    });
     const catalogPage = new URL(courseReturnPath, window.location.origin).pathname.endsWith('/browse')
       ? new SceneAppPage({
-          title: 'Explore learning',
+          title: t('fullScreen.exploreLearning', 'Explore learning'),
           url: courseReturnPath,
           routePath: 'browse',
           preserveUrlKeys: [],
