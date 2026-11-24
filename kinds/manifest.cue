@@ -95,7 +95,7 @@ manifest: {
 }
 
 // v1alpha1 is the v1alpha1 version of the app's API.
-// It includes kinds which the v1alpha1 API serves, and (future) custom routes served globally from the v1alpha1 version.
+// It includes kinds which the v1alpha1 API serves, and the namespaced SDK backend routes.
 v1alpha1: {
  routes: namespaced: {
 "/backend/api/v1/achievements/events": "POST": {name: "createBackendAchievementEvent", request: {...}, responseMetadata: typeMeta: false, response: {...}}
