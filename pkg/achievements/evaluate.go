@@ -15,6 +15,10 @@ const maxUnitIDBytes = 520
 // digestMarker starts the key of a unit too long to store whole; a length-prefixed key starts with a digit.
 const digestMarker = "#"
 
+// maxEventIDs bounds Progress.EventIDs: one id per ledger entry, and at most
+// one more per held tier, for an event that held it without a ledger entry.
+const maxEventIDs = maxUnits + maxTiers
+
 type outcome struct {
 	decision Decision
 	// next is the progress to persist; meaningful only when changed.
@@ -42,6 +46,8 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 		return ignored(ReasonRecordNewer)
 	case current < 0:
 		return ignored(ReasonComplete)
+	case hasEventID(stored.EventIDs, ev.ID):
+		return ignored(ReasonDuplicate)
 	}
 
 	tier := &d.Tiers[current]
@@ -60,6 +66,7 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 	next := stored
 	next.SchemaVersion = ProgressSchemaVersion
 	next.Units = slices.Insert(slices.Clone(stored.Units), i, unit)
+	next.EventIDs = withEventID(stored.EventIDs, ev.ID)
 	next.Points = stored.Points + worth
 	after := held
 	var awarded []string
@@ -84,47 +91,40 @@ func (d *Definition) apply(stored Progress, stranded []Award, ev Event, written 
 	if Classify(stored) == ShapeRepairable {
 		stored = Normalize(stored)
 	}
-	healed, retried := d.heal(stored, stranded, ev)
-	var out outcome
-	if !retried {
-		out = evaluate(d, healed, ev)
-	}
-	return d.keepHeld(stored, healed, out, written, len(stranded) > 0)
+	healed := d.heal(stored, stranded)
+	return d.keepHeld(stored, healed, evaluate(d, healed, ev), ev, written, len(stranded) > 0)
 }
 
-// heal completes each stranded tier's failed save. retried reports that ev
-// brings the unit the award row records, so it is that call again and must
-// count nothing more, though a later tier may count it by another unit.
-func (d *Definition) heal(stored Progress, stranded []Award, ev Event) (Progress, bool) {
+// heal completes each stranded tier's failed save, spending the unit and the
+// event id its award row records, so the earning event's retry is a duplicate.
+func (d *Definition) heal(stored Progress, stranded []Award) Progress {
 	if len(stranded) == 0 {
-		return stored, false
+		return stored
 	}
 	held := heldSet(stored.TierIDs)
 	units := slices.Clone(stored.Units)
-	retried := false
+	ids := stored.EventIDs
 	for _, a := range stranded {
 		held[a.TierID] = true
 		if i, found := slices.BinarySearch(units, a.Unit); !found && len(units) < maxUnits {
 			units = slices.Insert(units, i, a.Unit)
 		}
-		if i := slices.IndexFunc(d.Tiers, func(t Tier) bool { return t.ID == a.TierID }); i >= 0 {
-			unit, _, reason := d.Tiers[i].score(ev)
-			retried = retried || (reason == "" && unit == a.Unit)
-		}
+		ids = withEventID(ids, a.EventID)
 	}
 	healed := stored
 	healed.SchemaVersion = ProgressSchemaVersion
 	healed.TierIDs = d.mergeHeld(stored.TierIDs, held)
 	healed.Units = units
+	healed.EventIDs = ids
 	healed.Points = 0
-	return healed, retried
+	return healed
 }
 
 // keepHeld finishes out, ev scored against healed, so the save also holds every
 // tier in written. A re-run after a conflict can find the event's unit counted
 // by another writer at a lower worth, and must not leave those awards unheld.
 // The decision reports each tier the save adds to stored's held set.
-func (d *Definition) keepHeld(stored, healed Progress, out outcome, written []string, wasHealed bool) outcome {
+func (d *Definition) keepHeld(stored, healed Progress, out outcome, ev Event, written []string, wasHealed bool) outcome {
 	if out.decision.Reason == ReasonRecordNewer {
 		return out
 	}
@@ -137,12 +137,16 @@ func (d *Definition) keepHeld(stored, healed Progress, out outcome, written []st
 	for _, id := range written {
 		after[id] = true
 	}
-	if len(after) == len(held) && !wasHealed {
+	grew := len(after) > len(held)
+	if !grew && !wasHealed {
 		return out
 	}
 	next := base
 	next.SchemaVersion = ProgressSchemaVersion
 	next.TierIDs = d.mergeHeld(base.TierIDs, after)
+	if grew {
+		next.EventIDs = withEventID(base.EventIDs, ev.ID)
+	}
 	if d.lowestUnheld(after) != d.lowestUnheld(held) {
 		next.Points = 0
 	}
@@ -215,6 +219,20 @@ func (d *Definition) decision(kind Kind, reason Reason, awarded []string, held m
 		dec.Final, dec.Units, dec.Next, dec.NextTier = false, points, &goal, d.Tiers[i].ID
 	}
 	return dec
+}
+
+func hasEventID(ids []string, id string) bool {
+	_, found := slices.BinarySearch(ids, id)
+	return found && id != ""
+}
+
+// withEventID adds id to the sorted ids unless it is empty, listed or over the bound.
+func withEventID(ids []string, id string) []string {
+	i, found := slices.BinarySearch(ids, id)
+	if id == "" || found || len(ids) >= maxEventIDs {
+		return ids
+	}
+	return slices.Insert(slices.Clone(ids), i, id)
 }
 
 func heldSet(ids []string) map[string]bool {

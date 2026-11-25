@@ -90,7 +90,7 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 			if slices.ContainsFunc(stranded, func(a Award) bool { return a.TierID == tierID }) {
 				continue
 			}
-			award := Award{AchievementID: d.ID, TierID: tierID, Entity: ev.Entity, Unit: out.unit, EarnedAt: e.now().UTC()}
+			award := Award{AchievementID: d.ID, TierID: tierID, Entity: ev.Entity, Unit: out.unit, EventID: ev.ID, EarnedAt: e.now().UTC()}
 			// A 409 is not a failure: the held set, not the create result, decides what is reported (RFC §6.3).
 			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
 				return d.unavailable(current)
@@ -117,8 +117,8 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 }
 
 // stranded reads the award rows of the lowest tiers row does not hold, stopping
-// at the first tier without one. A row that does not record its unit also stops
-// the read: holding its tier could count that unit a second time.
+// at the first tier without one. A row that does not record its unit and event
+// id also stops the read: holding its tier could count either a second time.
 func (e *Evaluator) stranded(ctx context.Context, person Person, d *Definition, row Progress) ([]Award, bool) {
 	if row.SchemaVersion > ProgressSchemaVersion {
 		return nil, true
@@ -133,7 +133,7 @@ func (e *Evaluator) stranded(ctx context.Context, person Person, d *Definition, 
 		if err != nil {
 			return nil, false
 		}
-		if !ok || a.Unit == "" {
+		if !ok || a.Unit == "" || a.EventID == "" {
 			break
 		}
 		found = append(found, a)

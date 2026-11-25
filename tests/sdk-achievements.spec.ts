@@ -106,7 +106,12 @@ test('SDK achievement writes persist and retries do not count a guide twice', as
   expect(['award', 'tier_up', 'increment']).toContain(first.decision);
   expect(first.reason).toBeUndefined();
   const stored = await (await request.get(progressRow)).json();
-  expect(stored.spec).toMatchObject({ userId: subject, units: [expect.any(String)], points: first.units });
+  expect(stored.spec).toMatchObject({
+    userId: subject,
+    units: [expect.any(String)],
+    eventIds: [event.eventId],
+    points: first.units,
+  });
   expect([...stored.spec.tierIds].sort()).toEqual([...awarded, ...first.awarded].sort());
   expect(repeat.decision).toBe('ignored');
   expect(repeat.reason).toBe('duplicate');

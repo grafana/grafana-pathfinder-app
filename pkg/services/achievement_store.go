@@ -26,8 +26,9 @@ const (
 
 	AchievementStoreMaxBytes = 256 * 1024
 
-	// The award kind's schema is fixed on the backend, so the earning unit rides as an annotation.
-	achievementAwardUnitAnnotation = "pathfinderbackend.ext.grafana.app/unit"
+	// The award kind's schema is fixed on the backend, so the earning unit and event ride as annotations.
+	achievementAwardUnitAnnotation    = "pathfinderbackend.ext.grafana.app/unit"
+	achievementAwardEventIDAnnotation = "pathfinderbackend.ext.grafana.app/event-id"
 )
 
 // Field names track kinds/achievementprogress.cue and kinds/achievementaward.cue
@@ -37,6 +38,7 @@ type achievementProgressSpec struct {
 	AchievementID  string   `json:"achievementId"`
 	TierIDs        []string `json:"tierIds"`
 	Units          []string `json:"units"`
+	EventIDs       []string `json:"eventIds,omitempty"`
 	Points         *int64   `json:"points"`
 	UpdatedAt      string   `json:"updatedAt"`
 	UserID         string   `json:"userId"`
@@ -177,6 +179,9 @@ func (s *AchievementStore) SaveProgress(ctx context.Context, person achievements
 		obj.Metadata.ResourceVersion = ""
 		return progressOf(obj), nil
 	}
+	if len(obj.Spec.EventIDs) > 0 && len(stored.Spec.EventIDs) == 0 {
+		s.logger.Warn("achievement progress rows come back without eventIds; the AchievementProgress kind on this backend does not serve them, so a re-sent event can count again toward a tier that counts it by another unit", "achievementId", p.AchievementID)
+	}
 	return s.acknowledged(stored)
 }
 
@@ -198,8 +203,15 @@ func (s *AchievementStore) CreateAward(ctx context.Context, person achievements.
 			SchemaVersion:   achievements.SchemaVersion,
 		},
 	}
+	annotations := map[string]string{}
 	if a.Unit != "" {
-		obj.Metadata.Annotations = map[string]string{achievementAwardUnitAnnotation: a.Unit}
+		annotations[achievementAwardUnitAnnotation] = a.Unit
+	}
+	if a.EventID != "" {
+		annotations[achievementAwardEventIDAnnotation] = a.EventID
+	}
+	if len(annotations) > 0 {
+		obj.Metadata.Annotations = annotations
 	}
 	payload, err := json.Marshal(obj)
 	if err != nil {
@@ -222,6 +234,7 @@ func (s *AchievementStore) progressObject(person achievements.Person, p achievem
 			AchievementID:  p.AchievementID,
 			TierIDs:        sortedDistinct(p.TierIDs),
 			Units:          sortedDistinct(p.Units),
+			EventIDs:       sortedDistinct(p.EventIDs),
 			Points:         &points,
 			UpdatedAt:      s.now().UTC().Format(time.RFC3339),
 			UserID:         person.ID,
@@ -277,6 +290,7 @@ func progressOf(obj achievementObject[achievementProgressSpec]) achievements.Pro
 		AchievementID: obj.Spec.AchievementID,
 		TierIDs:       sortedDistinct(obj.Spec.TierIDs),
 		Units:         sortedDistinct(obj.Spec.Units),
+		EventIDs:      sortedDistinct(obj.Spec.EventIDs),
 		Points:        pointsOf(obj.Spec),
 		SchemaVersion: int(obj.Spec.SchemaVersion),
 		Version:       obj.Metadata.ResourceVersion,
@@ -345,6 +359,7 @@ func (s *AchievementStore) LoadAward(ctx context.Context, person achievements.Pe
 		TierID:        obj.Spec.TierID,
 		Entity:        obj.Spec.Entity,
 		Unit:          obj.Metadata.Annotations[achievementAwardUnitAnnotation],
+		EventID:       obj.Metadata.Annotations[achievementAwardEventIDAnnotation],
 		EarnedAt:      earnedAt,
 	}, true, nil
 }

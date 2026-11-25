@@ -368,7 +368,7 @@ const guideUnitCatalogJSON = `{"achievements":[
      {"id":"silver","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]}]}]}`
 
 func guideFinished(source, id string) Event {
-	return Event{ID: "evt", Entity: "guides", Action: "completed", Context: map[string]any{"guideSource": source, "guideId": id}}
+	return Event{ID: "evt-" + source + "/" + id, Entity: "guides", Action: "completed", Context: map[string]any{"guideSource": source, "guideId": id}}
 }
 
 func TestEvaluateCompoundUnitIDsCannotCollide(t *testing.T) {
@@ -412,7 +412,9 @@ func TestEvaluateKeepsDistinctOverLongKeysDistinct(t *testing.T) {
 	if !second.changed || len(second.next.Units) != 2 || second.next.Units[0] == second.next.Units[1] {
 		t.Errorf("two over-long guides = %+v units %q, want two distinct counted units", second.decision, second.next.Units)
 	}
-	again := evaluate(d, second.next, guideFinished(long('s', "a"), long('i', "b")))
+	repeat := guideFinished(long('s', "a"), long('i', "b"))
+	repeat.ID = "evt-repeat"
+	again := evaluate(d, second.next, repeat)
 	if again.decision.Reason != ReasonDuplicate && again.decision.Reason != ReasonComplete {
 		t.Errorf("the same over-long guide again = %+v, want it ignored", again.decision)
 	}

@@ -47,6 +47,10 @@ type Progress struct {
 	// ("guide:7:bundled4:tour"). Stores must return Units sorted ascending and
 	// distinct, which the evaluator binary-searches.
 	Units []string
+	// EventIDs lists the events counted, so a re-sent one counts nothing more
+	// whatever unit it brings. Stores must return it sorted ascending and
+	// distinct; older rows have none.
+	EventIDs []string
 	// Points is earned toward the lowest tier TierIDs does not hold, and resets
 	// to 0 when that tier is earned.
 	Points        int
@@ -62,9 +66,11 @@ type Award struct {
 	AchievementID string
 	TierID        string
 	Entity        string
-	// Unit is the ledger key the earning event counted, so a progress save that
-	// failed after the award can be completed. Empty on rows that predate it.
+	// Unit and EventID are the ledger key and the id of the earning event, so a
+	// progress save that failed after the award can be completed. Both are empty
+	// on rows that predate them.
 	Unit     string
+	EventID  string
 	EarnedAt time.Time
 }
 

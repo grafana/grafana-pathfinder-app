@@ -351,8 +351,8 @@ func TestEvaluateADuplicateDuringAnotherEventsSaveCountsTheEarningUnitOnce(t *te
 		t.Errorf("duplicate = %+v earning = %+v, want bronze reported once, by the save that held it", duplicate, earning)
 	}
 	row := store.progress["well-rounded"]
-	if !equalStrings(row.TierIDs, []string{"bronze"}) || len(row.Units) != 2 || row.Points != 0 || len(store.awards) != 1 {
-		t.Errorf("row = %+v awards = %d, want bronze from two categories, nothing toward silver and one award", row, len(store.awards))
+	if !equalStrings(row.TierIDs, []string{"bronze"}) || len(row.Units) != 2 || !equalStrings(row.EventIDs, []string{"evt-docs"}) || row.Points != 0 || len(store.awards) != 1 {
+		t.Errorf("row = %+v awards = %d, want bronze from two categories, the earning event spent, nothing toward silver and one award", row, len(store.awards))
 	}
 }
 
@@ -424,7 +424,7 @@ func TestEvaluateConflict(t *testing.T) {
 				}
 			}
 		}
-		decisions := mustEvaluate(t, newTestEvaluator(t, store, &fakePolicy{}), starredDashboard("x", 3))
+		decisions := mustEvaluate(t, newTestEvaluator(t, store, &fakePolicy{}), withID(starredDashboard("x", 3), "evt-x-starred"))
 		want := `{"achievementId":"dash-builder","decision":"award","awarded":["gold"],"final":true,"units":0,"next":null}`
 		if got := decisionJSON(t, decisionFor(t, decisions, "dash-builder")); got != want {
 			t.Errorf("decision\n got %s\nwant %s", got, want)
@@ -432,6 +432,9 @@ func TestEvaluateConflict(t *testing.T) {
 		row := store.progress["dash-builder"]
 		if !equalStrings(row.TierIDs, []string{"bronze", "silver", "gold"}) || row.Points != 0 || !equalStrings(row.Units, dash("x")) {
 			t.Errorf("row = %+v, want gold held, points reset and the unit counted once", row)
+		}
+		if !equalStrings(row.EventIDs, []string{"evt-x", "evt-x-starred"}) {
+			t.Errorf("event ids = %v, want both events spent: one counted the unit, the other earned gold", row.EventIDs)
 		}
 		if _, ok := store.awards["dash-builder/gold"]; !ok || len(store.awards) != 1 {
 			t.Errorf("awards = %+v", store.awards)

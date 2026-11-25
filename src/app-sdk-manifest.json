@@ -2022,6 +2022,16 @@
                                         "minLength": 1,
                                         "type": "string"
                                     },
+                                    "eventIds": {
+                                        "description": "eventIds is the set of ids of the events counted: one per units entry,\nand at most one per held tier, for an event that earned the tier\nafter another event had counted its unit. A posted event whose id is\nlisted counts nothing more. Event ids are 1 to 64 bytes, so 64\ncharacters admits every one. The writer keeps the set sorted and\ndistinct. Rows stored before this field existed have none.",
+                                        "items": {
+                                            "maxLength": 64,
+                                            "minLength": 1,
+                                            "type": "string"
+                                        },
+                                        "maxItems": 210,
+                                        "type": "array"
+                                    },
                                     "orgId": {
                                         "description": "orgId is the Grafana organization the write originated from.",
                                         "type": "integer"
