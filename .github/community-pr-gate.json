@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "repository": "grafana/grafana-pathfinder-app",
-  "internal_author_policy": "explicit_internal_handles",
+  "internal_author_policy": "repository_write_access",
   "ci_config_prefix": ".github/",
   "cla": {
     "context": "license/cla",
@@ -11,10 +11,8 @@
   "scanner": {
     "minimum_blocking_severity": "High"
   },
-  "review_skill": ".cursor/skills/review/SKILL.md",
-  "review_policy": "docs/design/PR_REVIEW.md",
+  "review_skill": ".cursor/skills/review-lite/SKILL.md",
+  "review_policy": ".cursor/skills/review-lite/references/security.md",
   "contributor_guide": "https://github.com/grafana/grafana-pathfinder-app/blob/main/CONTRIBUTING.md",
-  "internal_handles": ["Jayclifford345", "tomglenn", "leslie-heinzen", "moxious", "Spidy88", "dgehring-grafana"],
-  "write_access_is_internal": true,
   "blocker_priority": ["cla", "signing"]
 }

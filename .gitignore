@@ -79,3 +79,7 @@ src/**/*.js.map
 /.env.local
 /.env.*.local
 /.planning/
+
+# Python review helper caches
+__pycache__/
+*.pyc
