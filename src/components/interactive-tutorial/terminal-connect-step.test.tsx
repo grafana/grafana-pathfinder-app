@@ -1,20 +1,8 @@
-/**
- * Tests for the TerminalConnectStep component, with and without `gcx`.
- *
- * The interesting behaviour is all in the refusal paths. Minting needs
- * `serviceaccounts:create` — Admin by default, while sandbox sessions are open
- * to Editors — so "Grafana said no" is the *ordinary* case, and it must reveal
- * the paste field rather than fail the step. Equally, the step must not tick
- * itself off merely because the terminal connected: the commands it exists to
- * enable would still fail unauthenticated.
- */
-
 import React from 'react';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { CodaError } from '@grafana/coda-client';
 
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
-import { resetGcxCredentialStore, runGcxCredential } from '../../integrations/coda/gcx-credential-store';
+import { resetGcxCredentialStore } from '../../integrations/coda/gcx-credential-store';
 import { testIds } from '../../constants/testIds';
 
 jest.mock('@grafana/ui', () => ({
@@ -130,19 +118,7 @@ jest.mock('../../integrations/coda/coda-api', () => ({
   canMintGrafanaToken: () => mockCanMint,
 }));
 
-const CREDENTIAL = {
-  path: '/home/ubuntu/.config/gcx/config.yaml',
-  contextName: 'coda',
-  server: 'https://grafana.example.com',
-};
-
 const STEP_ID = 'step-1';
-
-/** Pathfinder names both, so neither is the client's login-derived default. */
-const mintOptions = (sessionId: string) => ({
-  serviceAccountName: 'coda-gcx-u7',
-  tokenName: `coda-${sessionId}`,
-});
 
 /** Connect resolves a session id and the context reports connected, as it does live. */
 function connectResolves(sessionId: string | null = 's_abc') {
@@ -266,280 +242,17 @@ describe('without gcx', () => {
   });
 });
 
-describe('with gcx', () => {
-  it('declares credential provisioning before any connect action', () => {
-    renderStep({ gcx: true });
-    expect(screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID))).toHaveAttribute(
-      'data-test-terminal-gcx',
-      'true'
-    );
-    expect(mockProvisionGcx).not.toHaveBeenCalled();
-  });
-
-  it('provisions against the session id openTerminal resolved, not the rendered one', async () => {
-    // Reading `sessionId` off the render can hand back the session being torn
-    // down when the requested VM differs from the live one.
-    connectResolves('s_resolved');
-    mockSessionId = 's_stale';
-    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
-    renderStep({ gcx: true });
-
-    fireEvent.click(screen.getByText('Try in terminal'));
-
-    await waitFor(() => expect(mockProvisionGcx).toHaveBeenCalledWith('s_resolved', mintOptions('s_resolved')));
-  });
-
-  it('reports the file, context and server it wrote, then completes', async () => {
-    connectResolves();
-    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
-    const onComplete = jest.fn();
-    renderStep({ gcx: true, onComplete });
-
-    fireEvent.click(screen.getByText('Try in terminal'));
-
-    const ready = await screen.findByTestId(testIds.interactive.gcxReady(STEP_ID));
-    expect(ready.textContent).toContain('/home/ubuntu/.config/gcx/config.yaml');
-    expect(ready.textContent).toContain('coda');
-    expect(ready.textContent).toContain('https://grafana.example.com');
-    expect(onComplete).toHaveBeenCalled();
-  });
-
-  it('does not complete on connection alone', async () => {
-    connectResolves();
-    // Never settles: the credential is still in flight.
-    mockProvisionGcx.mockReturnValue(new Promise(() => {}));
-    const onComplete = jest.fn();
-    renderStep({ gcx: true, onComplete });
-
-    fireEvent.click(screen.getByText('Try in terminal'));
-
-    await waitFor(() => expect(mockProvisionGcx).toHaveBeenCalled());
-    expect(onComplete).not.toHaveBeenCalled();
-    expect(mockMarkStepCompleted).not.toHaveBeenCalled();
-  });
-
-  it('reveals the paste field on mint_forbidden, without completing', async () => {
-    connectResolves();
-    mockProvisionGcx.mockRejectedValue(new CodaError('no', 'mint_forbidden', 403));
-    const onComplete = jest.fn();
-    renderStep({ gcx: true, onComplete });
-
-    fireEvent.click(screen.getByText('Try in terminal'));
-
-    const error = await screen.findByTestId(testIds.interactive.gcxError(STEP_ID));
-    expect(error.textContent).toMatch(/[Pp]aste/);
-    expect(screen.getByTestId(testIds.interactive.gcxTokenInput(STEP_ID))).toBeInTheDocument();
-    expect(onComplete).not.toHaveBeenCalled();
-  });
-
-  it('installs a pasted token and completes', async () => {
-    connectResolves();
-    mockProvisionGcx.mockRejectedValueOnce(new CodaError('no', 'mint_forbidden', 403));
-    const onComplete = jest.fn();
-    renderStep({ gcx: true, onComplete });
-
-    fireEvent.click(screen.getByText('Try in terminal'));
-    await screen.findByTestId(testIds.interactive.gcxTokenInput(STEP_ID));
-
-    mockProvisionGcx.mockResolvedValueOnce(CREDENTIAL);
-    fireEvent.change(screen.getByTestId(testIds.interactive.gcxTokenInput(STEP_ID)), {
-      target: { value: '  glsa_pasted  ' },
-    });
-    fireEvent.click(screen.getByTestId(testIds.interactive.gcxInstallButton(STEP_ID)));
-
-    await waitFor(() => expect(onComplete).toHaveBeenCalled());
-    expect(mockProvisionGcx).toHaveBeenLastCalledWith('s_abc', { token: 'glsa_pasted' });
-  });
-
-  it('will not install an empty token', async () => {
-    connectResolves();
-    mockProvisionGcx.mockRejectedValue(new CodaError('no', 'mint_forbidden', 403));
-    renderStep({ gcx: true });
-
-    fireEvent.click(screen.getByText('Try in terminal'));
-    await screen.findByTestId(testIds.interactive.gcxTokenInput(STEP_ID));
-
-    expect(screen.getByTestId(testIds.interactive.gcxInstallButton(STEP_ID))).toBeDisabled();
-  });
-
-  it('still offers minting when Grafana is unlikely to allow it', async () => {
-    // The role check is a hint, not an authorisation answer — RBAC can grant
-    // `serviceaccounts:create` without the Admin basic role.
-    mockCanMint = false;
-    mockTerminalStatus = 'connected';
-    mockSessionId = 's_abc';
-    renderStep({ gcx: true });
-
-    expect(screen.getByTestId(testIds.interactive.gcxMintButton(STEP_ID))).toBeInTheDocument();
-    expect(screen.getByTestId(testIds.interactive.gcxTokenInput(STEP_ID))).toBeInTheDocument();
-    expect(screen.getByText(/usually needs an admin/i)).toBeInTheDocument();
-  });
-
-  it('names an old Coda plugin when the route 404s on a live session', async () => {
-    // The session connected moments ago, so session_not_found means the route
-    // is absent, not the session. There is no capability flag to detect it.
-    connectResolves();
-    mockProvisionGcx.mockRejectedValue(new CodaError('Session not found', 'session_not_found', 404));
-    renderStep({ gcx: true });
-
-    fireEvent.click(screen.getByText('Try in terminal'));
-
-    const error = await screen.findByTestId(testIds.interactive.gcxError(STEP_ID));
-    expect(error.textContent).toMatch(/too old/);
-    expect(error.textContent).toMatch(/1\.3\.0/);
-  });
-
-  it('uses the shared code sentence for any other backend refusal', async () => {
-    connectResolves();
-    mockProvisionGcx.mockRejectedValue(new CodaError('nope', 'rate_limited', 429));
-    renderStep({ gcx: true });
-
-    const error = await (fireEvent.click(screen.getByText('Try in terminal')),
-    screen.findByTestId(testIds.interactive.gcxError(STEP_ID)));
-    expect(error.textContent).toMatch(/Too many sandbox requests/);
-  });
-
-  it('lets the learner continue without gcx rather than dead-ending the guide', async () => {
-    connectResolves();
-    mockProvisionGcx.mockRejectedValue(new CodaError('no', 'mint_forbidden', 403));
-    const onComplete = jest.fn();
-    renderStep({ gcx: true, onComplete });
-
-    fireEvent.click(screen.getByText('Try in terminal'));
-    // Wait for the refusal to land before taking the button: the skip is
-    // offered from `idle` too, and that node is replaced when the form
-    // re-renders around the error.
-    await screen.findByTestId(testIds.interactive.gcxError(STEP_ID));
-    fireEvent.click(screen.getByTestId(testIds.interactive.gcxSkipButton(STEP_ID)));
-
-    expect(onComplete).toHaveBeenCalled();
-    expect(mockReportAppInteraction).toHaveBeenCalledWith(
-      'gcx_setup_skipped',
-      expect.objectContaining({ state: 'needs_token', interaction_location: 'terminal_connect_step' })
-    );
-    expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
-    expect(mockReportStepSkipped).toHaveBeenCalledWith(
-      { targetAction: 'terminal-connect', interactionLocation: 'terminal_connect_step', skipReason: 'after_failure' },
-      expect.objectContaining({ stepId: STEP_ID })
-    );
-    expect(mockMarkStepCompleted).toHaveBeenCalledWith(STEP_ID, undefined, 'skipped');
-  });
-
-  it('reports a gcx skip taken before any setup attempt as a user skip', () => {
-    mockTerminalStatus = 'connected';
-    mockSessionId = 's_abc';
-    renderStep({ gcx: true });
-
-    fireEvent.click(screen.getByTestId(testIds.interactive.gcxSkipButton(STEP_ID)));
-
-    expect(mockReportStepSkipped).toHaveBeenCalledTimes(1);
-    expect(mockReportStepSkipped).toHaveBeenCalledWith(
-      { targetAction: 'terminal-connect', interactionLocation: 'terminal_connect_step', skipReason: 'user' },
-      expect.objectContaining({ stepId: STEP_ID })
-    );
-  });
-
-  it('does not offer Continue while the credential is still outstanding', async () => {
-    mockTerminalStatus = 'connected';
-    mockSessionId = 's_abc';
-    renderStep({ gcx: true });
-
-    // The plain "Continue" would tick the step off with gcx unconfigured.
-    expect(screen.queryByTestId(testIds.interactive.terminalSkipButton(STEP_ID))).not.toBeInTheDocument();
-    expect(screen.getByTestId(testIds.interactive.gcxMintButton(STEP_ID))).toBeInTheDocument();
-  });
-
-  it('asks for no credential when the sandbox never connected, and offers Connect again', async () => {
-    connectResolves(null);
-    renderStep({ gcx: true });
-
-    fireEvent.click(screen.getByText('Try in terminal'));
-
-    await waitFor(() => expect(mockOpenTerminal).toHaveBeenCalled());
-    expect(mockProvisionGcx).not.toHaveBeenCalled();
-    // The terminal owns the connection error; the step just stays retryable.
-    expect(screen.getByText('Try in terminal')).toBeInTheDocument();
-    expect(screen.queryByTestId(testIds.interactive.gcxError(STEP_ID))).not.toBeInTheDocument();
-  });
+it('opens the terminal for a previously published GCX step without provisioning a credential', async () => {
+  connectResolves();
+  const onComplete = jest.fn();
+  renderStep({ gcx: true, onComplete });
+  fireEvent.click(screen.getByText('Try in terminal'));
+  await waitFor(() => expect(onComplete).toHaveBeenCalled());
+  expect(mockProvisionGcx).not.toHaveBeenCalled();
+  expect(screen.queryByTestId(testIds.interactive.gcxTokenInput(STEP_ID))).not.toBeInTheDocument();
 });
 
-// One store serves the guide step and terminal toolbar, so readiness is shared
-// by session. Completion stays with the step that requested the install.
-describe('a credential installed elsewhere', () => {
-  it('leaves an ordinary connect step alone', async () => {
-    mockTerminalStatus = 'connected';
-    mockSessionId = 's_abc';
-    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
-    const onComplete = jest.fn();
-    renderStep({ onComplete });
-
-    await act(async () => {
-      await runGcxCredential('s_abc');
-    });
-
-    expect(onComplete).not.toHaveBeenCalled();
-    expect(mockMarkStepCompleted).not.toHaveBeenCalled();
-    // Nor does it borrow the other step's ready line.
-    expect(screen.queryByTestId(testIds.interactive.gcxReady(STEP_ID))).not.toBeInTheDocument();
-    // It still completes the way it always did.
-    expect(screen.getByTestId(testIds.interactive.terminalSkipButton(STEP_ID))).toBeInTheDocument();
-  });
-
-  it('shares readiness without completing a gcx step that did not request the run', async () => {
-    mockTerminalStatus = 'connected';
-    mockSessionId = 's_abc';
-    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
-    const onComplete = jest.fn();
-    renderStep({ gcx: true, onComplete });
-
-    await act(async () => {
-      await runGcxCredential('s_abc');
-    });
-
-    expect(onComplete).not.toHaveBeenCalled();
-    expect(screen.getByTestId(testIds.interactive.gcxReady(STEP_ID))).toBeInTheDocument();
-    expect(screen.getByTestId(testIds.interactive.terminalSkipButton(STEP_ID))).toBeInTheDocument();
-  });
-
-  it('completes only the co-mounted step that requested the install', async () => {
-    mockTerminalStatus = 'connected';
-    mockSessionId = 's_abc';
-    mockProvisionGcx.mockResolvedValue(CREDENTIAL);
-    const onCompleteA = jest.fn();
-    const onCompleteB = jest.fn();
-    render(
-      <>
-        <TerminalConnectStep stepId="step-a" gcx onComplete={onCompleteA} vmTemplate="vm-aws" />
-        <TerminalConnectStep stepId="step-b" gcx onComplete={onCompleteB} vmTemplate="vm-aws-sample-app" />
-      </>
-    );
-
-    fireEvent.click(screen.getByTestId(testIds.interactive.gcxMintButton('step-a')));
-
-    await waitFor(() => expect(onCompleteA).toHaveBeenCalledTimes(1));
-    expect(onCompleteB).not.toHaveBeenCalled();
-    expect(screen.getByTestId(testIds.interactive.gcxReady('step-b'))).toBeInTheDocument();
-    expect(screen.getByTestId(testIds.interactive.terminalSkipButton('step-b'))).toBeInTheDocument();
-  });
-});
-
-// Do Section never reaches this handle for a `terminal-connect` step — the
-// schema's `refTarget` is 'none', so no ref is attached, and `pausesSectionRun`
-// stops the run before execution (see `step-type-registry.test.ts`). These
-// cover the handle for any direct caller.
 describe('the executeStep handle', () => {
-  it('refuses to report success while the credential is outstanding', async () => {
-    mockTerminalStatus = 'connected';
-    mockSessionId = 's_abc';
-    mockProvisionGcx.mockReturnValue(new Promise(() => {}));
-    const ref = React.createRef<{ executeStep: () => Promise<boolean> }>();
-    render(<TerminalConnectStep stepId={STEP_ID} gcx ref={ref} />);
-
-    await act(async () => {
-      await expect(ref.current!.executeStep()).resolves.toBe(false);
-    });
-  });
-
   it('reports success for a connected terminal when gcx was not asked for', async () => {
     mockTerminalStatus = 'connected';
     mockSessionId = 's_abc';

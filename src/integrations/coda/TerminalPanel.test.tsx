@@ -147,7 +147,7 @@ it('keeps the toolbar extension request mounted across collapse and retry', asyn
   try {
     openPanel();
     const extension = await screen.findByRole('button', { name: 'Extend by 30 minutes' });
-    expect(extension.parentElement).toBe(screen.getByTestId(testIds.codaTerminal.gcxButton).parentElement);
+    expect(screen.queryByTestId(testIds.codaTerminal.gcxButton)).not.toBeInTheDocument();
     fireEvent.click(extension);
     expect(screen.getByRole('button', { name: 'Extending…' })).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(screen.getByTestId(testIds.codaTerminal.collapseButton));

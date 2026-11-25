@@ -10,7 +10,7 @@ import { SandboxLifetime } from './SandboxLifetime';
  */
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
-import { useStyles2, Spinner, Icon, IconButton, Button, Input, Modal, Dropdown, Menu } from '@grafana/ui';
+import { useStyles2, Spinner, Icon, IconButton, Button, Input, Dropdown, Menu } from '@grafana/ui';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -23,8 +23,6 @@ import { useTerminalLive, ConnectionStatus } from './useTerminalLive.hook';
 import { useTerminalContext } from './TerminalContext';
 import { getTerminalPanelStyles } from './terminal-panel.styles';
 import { testIds } from '../../constants/testIds';
-import { GcxReadyLine, GcxSetupPanel } from './GcxSetupPanel';
-import { useGcxCredential } from './useGcxCredential.hook';
 import {
   setTerminalOpen,
   getTerminalHeight,
@@ -66,7 +64,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const [height, setHeight] = useState(() => getTerminalHeight());
   const [isResizing, setIsResizing] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-  const [showGcx, setShowGcx] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Grafana Live connection - pass ref, not current value (React hooks/refs rule)
@@ -91,7 +88,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const terminalCtx = useTerminalContext();
   const unregisterTerminal = terminalCtx?._unregister;
   useEffect(() => () => unregisterTerminal?.(), [unregisterTerminal]);
-  const gcxCredential = useGcxCredential(undefined, sessionId);
   useEffect(() => {
     terminalCtx?._register({ status, sessionId, vmId, error, connect, disconnect, sendCommand });
   }, [terminalCtx, status, sessionId, vmId, error, connect, disconnect, sendCommand]);
@@ -639,18 +635,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
 
             {/* Needs a live session: the backend writes over the SSH channel
                 the stream already owns. */}
-            <Button
-              size="sm"
-              variant="secondary"
-              className={styles.headerButton}
-              fill="text"
-              tooltip="Set up GCX in this VM"
-              disabled={status !== 'connected' || !sessionId}
-              onClick={() => setShowGcx(true)}
-              data-testid={testIds.codaTerminal.gcxButton}
-            >
-              GCX
-            </Button>
 
             <WorkspaceLink connected={status === 'connected'} vmId={vmId} className={styles.headerButton} />
 
@@ -758,41 +742,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
         {/* Terminal - always mounted to preserve connection */}
         <div className={styles.terminalWrapper} ref={terminalRef} />
       </div>
-
-      <Modal title="Use gcx in this sandbox" isOpen={showGcx} onDismiss={() => setShowGcx(false)}>
-        {gcxCredential.credential ? (
-          <>
-            <GcxReadyLine credential={gcxCredential.credential} testId={testIds.codaTerminal.gcxReady} />
-            {/* Tokens expire well inside a long session, and the VM cannot be
-                re-provisioned from here, so the form has to stay reachable. */}
-            <Button
-              size="sm"
-              variant="secondary"
-              fill="text"
-              onClick={gcxCredential.reset}
-              data-testid={testIds.codaTerminal.gcxRedo}
-            >
-              Set up again
-            </Button>
-          </>
-        ) : (
-          <GcxSetupPanel
-            state={gcxCredential.state}
-            error={gcxCredential.error}
-            offerMint={gcxCredential.offerMint}
-            mintLikely={gcxCredential.mintLikely}
-            onMint={() => void gcxCredential.run(sessionId)}
-            onInstall={(token) => void gcxCredential.run(sessionId, token)}
-            testIds={{
-              mint: testIds.codaTerminal.gcxMint,
-              tokenInput: testIds.codaTerminal.gcxToken,
-              tokenLifetime: testIds.codaTerminal.gcxTokenLifetime,
-              install: testIds.codaTerminal.gcxInstall,
-              error: testIds.codaTerminal.gcxError,
-            }}
-          />
-        )}
-      </Modal>
     </>
   );
 }

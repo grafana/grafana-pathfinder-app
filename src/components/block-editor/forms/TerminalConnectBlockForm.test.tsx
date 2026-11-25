@@ -70,26 +70,11 @@ describe('TerminalConnectBlockForm gcx', () => {
     expect(submitted(onSubmit)).not.toHaveProperty('credentials');
   });
 
-  it('emits a named credential request when the author ticks it', () => {
-    const onSubmit = renderForm();
-    fireEvent.change(screen.getByPlaceholderText(/Click the button below/), { target: { value: 'Connect' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /set up gcx/i }));
-
-    expect(submitted(onSubmit).credentials).toEqual([{ tool: 'gcx' }]);
-  });
-
   it('preserves gcx across an edit round-trip', () => {
     const onSubmit = renderForm({ type: 'terminal-connect', content: 'Connect', credentials: [{ tool: 'gcx' }] });
 
-    expect(screen.getByRole('checkbox', { name: /set up gcx/i })).toBeChecked();
+    expect(screen.queryByRole('checkbox', { name: /set up gcx/i })).not.toBeInTheDocument();
     expect(submitted(onSubmit).credentials).toEqual([{ tool: 'gcx' }]);
-  });
-
-  it('lets an author turn gcx back off', () => {
-    const onSubmit = renderForm({ type: 'terminal-connect', content: 'Connect', credentials: [{ tool: 'gcx' }] });
-    fireEvent.click(screen.getByRole('checkbox', { name: /set up gcx/i }));
-
-    expect(submitted(onSubmit)).not.toHaveProperty('credentials');
   });
 
   it('keeps gcx alongside the VM options', () => {

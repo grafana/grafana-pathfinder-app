@@ -18,10 +18,8 @@ constraints, and the `grafana-coda-app` repo's `docs/API.md` for the authoritati
 | xterm.js panel, scrollback, resize, search                      | **Pathfinder** (`src/integrations/coda/`) |
 | Guide block types (`terminal`, `terminal-connect`, `challenge`) | **Pathfinder**                            |
 | `is-terminal-active` and `coda-exit-zero:` requirements         | **Pathfinder**                            |
-| Minting a gcx token, and the UI that offers it                  | **Pathfinder** (in the browser)           |
 | Session lifecycle, VM provisioning, quota                       | `grafana-coda-app`                        |
 | SSH, relay handshake, credential handling                       | `grafana-coda-app`                        |
-| Writing the gcx config into the VM                              | `grafana-coda-app`                        |
 | Coda API URL, relay URL, enrollment key, refresh token          | `grafana-coda-app`                        |
 
 **There is no Coda Go code in this repo.** `pkg/` holds only the Pathfinder SDK backend (tenant routes
@@ -112,7 +110,12 @@ Use `isNotReady`, `isRoleForbidden` and `isUnavailable` from `coda-api.ts`.
 Timeouts default to 5 s and are capped at 120 s (the cap accommodates `setupScript` runs such as
 `apt-get install`). Output is capped at 32 KB per stream, with `truncated: true` when it overflows.
 
-## gcx credentials
+## GCX credentials
+
+The terminal and guide editor no longer offer GCX setup. Published guides that request a GCX credential open a regular terminal. The SDK workspace image provides Bash and does not include GCX.
+
+<details>
+<summary>Historical credential flow</summary>
 
 Every sandbox image ships the [`gcx`](https://github.com/grafana/gcx) CLI, and it has no credential
 until something gives it one. A `terminal-connect` block with `credentials: [{ "tool": "gcx" }]` does that: once the terminal
@@ -251,6 +254,8 @@ before releasing this frontend. Both top-level and nested terminal blocks use an
 `credentials` list containing named requests such as `{ "tool": "gcx" }`. Only `gcx` is supported;
 these objects never contain tokens. Existing bundled or local guides using `gcx: true` must replace
 that field with `credentials: [{ "tool": "gcx" }]`. The old flag was never persisted by the deployed CRD.
+
+</details>
 
 ## Requirements and a connecting terminal
 
@@ -492,7 +497,7 @@ a **new** session; the backend reuses the underlying VM when template, app, and 
 | `vmTemplate`  | string | `""` (→ `vm-aws`)   | VM template to provision                                                |
 | `vmApp`       | string | `""`                | App name for `vm-aws-sample-app`                                        |
 | `vmScenario`  | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`)               |
-| `credentials` | array  | omitted             | Also install a gcx credential — see [gcx credentials](#gcx-credentials) |
+| `credentials` | array  | omitted             | Accepted for compatibility with published guides. The terminal ignores it. |
 
 Defined in `src/types/json-guide.types.ts` and validated by `src/types/json-guide.schema.ts`. The
 block editor populates the app and scenario dropdowns from `capabilities.sampleApps` and
