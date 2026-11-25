@@ -89,4 +89,4 @@ registerLearningJourneyContentBridge({
 export { resolveAssetUrl } from './components/docs/resolve-asset-url';
 export { validateKioskDestination } from './kiosk-inputs';
 
-export { resolveActiveMilestoneSequence } from './active-milestone-sequence';
+export { resolveActiveMilestoneSequence, type ActiveMilestoneToolbarContext } from './active-milestone-sequence';

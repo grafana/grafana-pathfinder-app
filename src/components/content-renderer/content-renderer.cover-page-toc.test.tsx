@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { createTheme } from '@grafana/data';
 
 import type { RawContent } from '../../types/content.types';
 import type { LearningProgress } from '../../types/learning-paths.types';
@@ -7,6 +8,7 @@ import { testIds } from '../../constants/testIds';
 import { StorageEvents } from '../../lib/event-names';
 import { learningProgressStorage } from '../../lib/user-storage';
 import { ContentRenderer } from './content-renderer';
+import { docsContentHtml, journeyContentHtml } from '../../styles/content-html.styles';
 import { UNTRACKED_COMPLETION } from '../../test-utils/content-renderer-completion';
 
 jest.mock('@grafana/i18n', () => ({
@@ -50,6 +52,134 @@ function makeContent(overrides: Partial<RawContent> = {}): RawContent {
 }
 
 describe('ContentRenderer cover-page table of contents', () => {
+  it('applies the heading scale and reading gaps inside a lesson article', () => {
+    const cover = makeContent();
+    const theme = createTheme();
+    const content = makeContent({
+      content: `
+        <div class="orange-outline-list"><div class="icon-heading"><h2>Objective</h2></div></div>
+        <p>First paragraph</p>
+        <p>Second paragraph</p>
+        <div class="markdown-block"><p>Third paragraph</p></div>
+        <p>Fourth paragraph</p>
+        <div class="orange-outline-list"><div class="icon-heading"><h2>Introduction</h2></div></div>
+        <p>List lead-in</p>
+        <ul><li>First bullet</li><li>Second bullet</li></ul>
+        <h2>More detail</h2>
+        <h3>Example</h3>
+        <p>First subsection body</p>
+        <h3>Second example</h3>
+        <p>Second subsection body</p>
+        <div class="markdown-block"><h3>Wrapped example</h3><p>Wrapped subsection body</p></div>
+        <div class="html-block"><h2>HTML section</h2><p>HTML section body</p></div>
+        <h2>Markdown group</h2>
+        <div class="markdown-block"><h3>First in Markdown group</h3><p>Subsection body</p></div>
+        <div class="markdown-block"><p>Previous section body</p><h2>HTML group</h2></div>
+        <div class="html-block"><h3>First in HTML group</h3><p>Subsection body</p></div>
+        <h1>Summary</h1>
+      `,
+      metadata: {
+        ...cover.metadata,
+        learningJourney: { ...cover.metadata.learningJourney!, currentMilestone: 1 },
+      },
+    });
+
+    render(
+      <ContentRenderer className={journeyContentHtml(theme)} completion={UNTRACKED_COMPLETION} content={content} />
+    );
+
+    const objective = screen.getByRole('heading', { name: 'Objective' });
+    const introduction = screen.getByRole('heading', { name: 'Introduction' });
+    const moreDetail = screen.getByRole('heading', { name: 'More detail', level: 2 });
+    const summary = screen.getByRole('heading', { name: 'Summary', level: 1 });
+    const example = screen.getByRole('heading', { name: 'Example', level: 3 });
+    const secondExample = screen.getByRole('heading', { name: 'Second example', level: 3 });
+    const wrappedExample = screen.getByRole('heading', { name: 'Wrapped example', level: 3 });
+    expect(getComputedStyle(summary).fontSize).toBe(theme.typography.xxl.fontSize);
+    expect(getComputedStyle(objective).fontSize).toBe(theme.typography.xl.fontSize);
+    expect(getComputedStyle(example).fontSize).toBe(theme.typography.lg.fontSize);
+    expect(getComputedStyle(example).marginTop).toBe(theme.spacing(3));
+    expect(getComputedStyle(secondExample).marginTop).toBe(theme.spacing(5.5));
+    expect(getComputedStyle(secondExample).marginBottom).toBe(theme.spacing(1.5));
+    expect(getComputedStyle(wrappedExample).marginTop).toBe(theme.spacing(5.5));
+    expect(getComputedStyle(screen.getByRole('heading', { name: 'HTML section' })).marginTop).toBe(theme.spacing(5.5));
+    expect(getComputedStyle(screen.getByRole('heading', { name: 'First in Markdown group' })).marginTop).toBe(
+      theme.spacing(3)
+    );
+    expect(getComputedStyle(screen.getByRole('heading', { name: 'First in HTML group' })).marginTop).toBe(
+      theme.spacing(3)
+    );
+    expect(getComputedStyle(objective).marginBottom).toBe(theme.spacing(1.5));
+    expect(getComputedStyle(screen.getByText('First paragraph')).marginBottom).toBe(theme.spacing(2));
+    expect(getComputedStyle(screen.getByText('Second paragraph')).marginBottom).toBe(theme.spacing(2));
+    expect(getComputedStyle(screen.getByText('Third paragraph')).marginBottom).toBe(theme.spacing(2));
+    expect(getComputedStyle(screen.getByText('List lead-in')).marginBottom).toBe(theme.spacing(1));
+    expect(getComputedStyle(introduction).marginTop).toBe(theme.spacing(5.5));
+    expect(getComputedStyle(moreDetail).marginTop).toBe(theme.spacing(5.5));
+    expect(getComputedStyle(screen.getByText('First bullet')).marginBottom).toBe(theme.spacing(1));
+  });
+
+  it.each([
+    ['tip', 'success'],
+    ['note', 'info'],
+    ['warning', 'warning'],
+    ['caution', 'warning'],
+  ])('renders a %s admonition with an icon and preserves its content', (kind, tone) => {
+    const cover = makeContent();
+    const content = makeContent({
+      content: `
+        <div class="admonition admonition-${kind}" id="lesson-summary">
+          <blockquote><div class="admonition-title">Lesson summary</div><p>Read the <strong>summary</strong>.</p></blockquote>
+        </div>
+        <blockquote><p>Regular quotation</p></blockquote>
+      `,
+      metadata: {
+        ...cover.metadata,
+        learningJourney: { ...cover.metadata.learningJourney!, currentMilestone: 1 },
+      },
+    });
+
+    render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={content} />);
+
+    const admonition = screen.getByText('Lesson summary').closest('.admonition');
+    expect(admonition).toHaveAttribute('id', 'lesson-summary');
+    expect(admonition).toHaveAttribute('data-guide-admonition', tone);
+    expect(admonition?.querySelector('.guide-admonition-icon')).toHaveAttribute('aria-hidden', 'true');
+    expect(admonition).toContainElement(screen.getByText('summary', { selector: 'strong' }));
+    expect(screen.getByText('Regular quotation').closest('[data-guide-admonition]')).toBeNull();
+  });
+
+  it.each([
+    { surface: 'compact cover', currentMilestone: 0, fullPageOverview: false, border: 'solid' },
+    { surface: 'full-page cover', currentMilestone: 0, fullPageOverview: true, border: 'solid' },
+    { surface: 'lesson', currentMilestone: 1, fullPageOverview: false, border: '' },
+  ])('scopes the orange heading border to the cover ($surface)', ({ currentMilestone, fullPageOverview, border }) => {
+    const cover = makeContent();
+    const content = makeContent({
+      content: '<div class="orange-outline-list"><div class="icon-heading"><h2>Objective</h2></div></div>',
+      metadata: {
+        ...cover.metadata,
+        learningJourney: { ...cover.metadata.learningJourney!, currentMilestone },
+      },
+    });
+
+    render(
+      <ContentRenderer
+        className={fullPageOverview ? undefined : journeyContentHtml(createTheme())}
+        fullPageOverview={fullPageOverview}
+        completion={UNTRACKED_COMPLETION}
+        content={content}
+      />
+    );
+
+    if (fullPageOverview) {
+      fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    }
+
+    const heading = screen.getByRole('heading', { name: 'Objective', level: fullPageOverview ? 3 : 2 });
+    expect(getComputedStyle(heading.closest('.orange-outline-list')!).borderTopStyle).toBe(border);
+  });
+
   it('renders on a learning journey cover with milestones', () => {
     render(<ContentRenderer completion={UNTRACKED_COMPLETION} content={makeContent()} />);
 
@@ -491,15 +621,17 @@ describe('ContentRenderer cover-page table of contents', () => {
     expect(screen.queryByTestId(testIds.learningPaths.tableOfContents)).not.toBeInTheDocument();
   });
 
-  it('still shows the standalone title on non-cover content', () => {
+  it('uses a 12 px gap below the generated title on non-cover content', () => {
     render(
       <ContentRenderer
+        className={docsContentHtml(createTheme())}
         completion={UNTRACKED_COMPLETION}
         content={makeContent({ isNativeJson: true, type: 'single-doc' })}
       />
     );
 
-    expect(screen.getAllByRole('heading', { level: 1, name: 'Demo' })).toHaveLength(1);
+    const title = screen.getByRole('heading', { level: 1, name: 'Demo' });
+    expect(getComputedStyle(title).marginBottom).toBe('12px');
     expect(screen.queryByTestId(testIds.learningPaths.coverHero)).not.toBeInTheDocument();
   });
 });

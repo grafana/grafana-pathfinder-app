@@ -19,6 +19,7 @@ import {
   type LearningJourneyMilestoneToolbarProps,
 } from './LearningJourneyMilestoneToolbar';
 import { testIds } from '../../../constants/testIds';
+import type { Milestone } from '../../../types/content.types';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
 import type { DocsPanelModelOperations } from '../types';
 
@@ -90,29 +91,21 @@ jest.mock('@grafana/ui', () => {
       const ariaLabel = rest['aria-label'] || tooltip;
       return Real.createElement(
         'button',
-        { onClick, disabled, 'aria-label': ariaLabel, className: rest.className, name },
+        { onClick, disabled, 'aria-label': ariaLabel, 'data-testid': rest['data-testid'], name },
         name
       );
     },
-    Button: ({ children, icon, tooltip, onClick, disabled, ...rest }: any) => {
-      const ariaLabel = rest['aria-label'] || tooltip;
-      return Real.createElement(
-        'button',
-        { onClick, disabled, 'aria-label': ariaLabel, 'data-testid': rest['data-testid'] },
-        children ?? icon
-      );
-    },
+    Tooltip: ({ children }: React.PropsWithChildren) => children,
     // Renders the overlay inline alongside the trigger — these tests assert
     // menu contents/behavior directly, not open/close interaction mechanics.
     Dropdown: ({ children, overlay }: any) => Real.createElement(Real.Fragment, null, children, overlay),
     Menu,
+    Text: ({ children, element = 'span' }: any) => Real.createElement(element, null, children),
     useStyles2: () => ({
       milestoneProgress: 'milestoneProgress',
       progressInfo: 'progressInfo',
       progressHeader: 'progressHeader',
       titleBlock: 'titleBlock',
-      milestoneTitle: 'milestoneTitle',
-      milestoneSubtitle: 'milestoneSubtitle',
       progressSegments: 'progressSegments',
       progressSegment: 'progressSegment',
     }),
@@ -181,7 +174,9 @@ function renderToolbar(props: Partial<LearningJourneyMilestoneToolbarProps> = {}
 
 beforeEach(() => {
   jest.clearAllMocks();
-  journeyMilestonePercentagesMock.mockReturnValue([]);
+  journeyMilestonePercentagesMock.mockImplementation((_: string, milestones: Milestone[]) =>
+    milestones.filter(({ isLocked }) => !isLocked).map((milestone) => ({ milestone, percent: 0 }))
+  );
   usePanelModeControlsMock.mockReturnValue({
     panelMode: 'sidebar',
     handleTogglePanelMode: jest.fn(),
@@ -214,17 +209,31 @@ describe('LearningJourneyMilestoneToolbar', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders the title and the milestone label with current/total counts', () => {
+  it('renders the current lesson title and completed count', () => {
     renderToolbar();
-    expect(screen.getByTitle('My journey')).toBeInTheDocument();
-    expect(screen.getByText('Milestone 1 of 3')).toBeInTheDocument();
+    expect(screen.getByText('m1')).toBeInTheDocument();
+    expect(screen.getByText('0 of 3 completed')).toBeInTheDocument();
+    expect(screen.getByRole('progressbar', { name: 'Learning path' })).toHaveAttribute(
+      'aria-valuetext',
+      '0 of 3 completed'
+    );
   });
 
-  it('renders the introduction label when currentMilestone === 0', () => {
+  it.each(['fullscreen', 'sidebar', 'floating'] as const)(
+    'places the completion count after the bar in %s',
+    (surface) => {
+      renderToolbar({ surface });
+      const progressBar = screen.getByRole('progressbar', { name: 'Learning path' });
+      expect(progressBar.nextElementSibling).toHaveTextContent('0 of 3 completed');
+    }
+  );
+
+  it('shows the path completion count on the introduction and leaves the bar to the outline', () => {
     const tab = makeJourneyTab();
     (tab.content as any).metadata.learningJourney.currentMilestone = 0;
     renderToolbar({ activeTab: tab });
-    expect(screen.getByText('Introduction (3 milestones)')).toBeInTheDocument();
+    expect(screen.getByText('0 of 3 completed')).toBeInTheDocument();
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
   it('fires panel.navigateToPreviousMilestone on the back arrow', () => {
@@ -383,6 +392,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
 
       // Milestone 1 was paged past with nothing completed, so it stays unfilled.
       expect(segmentStates(container)).toEqual(['upcoming', 'current', 'upcoming']);
+      expect(screen.getByText('0 of 3 completed')).toBeInTheDocument();
     });
 
     it('fills every completed milestone, wherever the reader currently is', () => {
@@ -393,6 +403,18 @@ describe('LearningJourneyMilestoneToolbar', () => {
       const { container } = renderToolbar({ activeTab: tab });
 
       expect(segmentStates(container)).toEqual(['done', 'current', 'done']);
+      expect(screen.getByText('2 of 3 completed')).toBeInTheDocument();
+    });
+
+    it('counts only published lessons, even when their positions have gaps', () => {
+      const tab = makeJourneyTab();
+      (tab.content as any).metadata.learningJourney.milestones[1].isLocked = true;
+      (tab.content as any).metadata.learningJourney.currentMilestone = 3;
+
+      const { container } = renderToolbar({ activeTab: tab });
+
+      expect(segmentStates(container)).toEqual(['upcoming', 'current']);
+      expect(screen.getByText('0 of 2 completed')).toBeInTheDocument();
     });
 
     it('leaves a partially progressed milestone unfilled', () => {
@@ -451,7 +473,8 @@ describe('LearningJourneyMilestoneToolbar', () => {
 
     it('renders the toolbar for a track-only guide, scoped to the track sequence', () => {
       renderToolbar({ activeTab: makeTrackOnlyTab() });
-      expect(screen.getByText('Milestone 1 of 2')).toBeInTheDocument();
+      expect(screen.getByText('t1')).toBeInTheDocument();
+      expect(screen.getByText('0 of 2 completed')).toBeInTheDocument();
     });
 
     it('keys the progress calculation off trackMemberBaseUrl for a track-only guide', () => {
@@ -488,7 +511,8 @@ describe('LearningJourneyMilestoneToolbar', () => {
       // The base learningJourney fixture (makeJourneyTab) says this guide is
       // milestone 1 of 3 in Foundations — the track view must win instead.
       renderToolbar({ activeTab: tab });
-      expect(screen.getByText('Milestone 2 of 2')).toBeInTheDocument();
+      expect(screen.getByText('b2')).toBeInTheDocument();
+      expect(screen.getByText('0 of 2 completed')).toBeInTheDocument();
     });
 
     it('fires the real analytics payload (not just the label) when Next is clicked on a track-only guide', () => {
@@ -533,9 +557,7 @@ describe('LearningJourneyMilestoneToolbar', () => {
   //
   // The arrow-click events log the milestone the user is heading TO, not the
   // one they clicked from. For a 6-milestone journey, a forward click from M5
-  // logs `current_milestone: 6` — so the analytics agrees with the toolbar's
-  // "Milestone 6 of 6" on the end milestone (the previous origin semantic
-  // topped out at `N - 1` and never surfaced the end-milestone landing).
+  // logs `current_milestone: 6`, capturing arrivals at the end milestone.
   describe('milestone arrow click analytics', () => {
     it('forward click logs the destination milestone (current + 1), not the origin', () => {
       // currentMilestone = 1, totalMilestones = 3 → forward click should log 2.

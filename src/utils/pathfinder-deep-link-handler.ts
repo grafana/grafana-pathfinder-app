@@ -105,9 +105,18 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       if (typeParam) {
         fullScreenParams.set('type', typeParam);
       }
+      if (deepLink.readerLesson) {
+        fullScreenParams.set('readerLesson', deepLink.readerLesson);
+        if (deepLink.readerTrack) {
+          fullScreenParams.set('readerTrack', deepLink.readerTrack);
+        }
+      }
       target += `?${fullScreenParams.toString()}`;
     }
     locationService.replace(target);
+    if (docsParam && deepLink.readerLesson) {
+      return true;
+    }
   }
 
   const docOpenSource = kioskSessionParam ? 'kiosk_session' : sourceParam || 'url_param';

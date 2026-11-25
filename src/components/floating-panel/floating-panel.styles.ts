@@ -89,6 +89,7 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
     overflow: 'auto',
     minHeight: 0,
     padding: theme.spacing(1),
+    backgroundColor: theme.colors.background.page,
   }),
 
   /** Resize handle in bottom-right corner */

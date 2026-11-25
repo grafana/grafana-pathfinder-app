@@ -4,6 +4,7 @@ import { t } from '@grafana/i18n';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { copyTextToClipboard } from '../../lib/clipboard';
 import { testIds } from '../../constants/testIds';
+import type { ReaderPosition } from '../../types/cross-tab.types';
 import { buildPathfinderShareUrl } from '../../utils/pathfinder-search-params';
 import { getFullScreenStyles } from './full-screen.styles';
 
@@ -16,6 +17,7 @@ export interface FullScreenLayoutProps {
   stepProgress?: string;
   /** Active guide URL — used for the workshop "copy link" button */
   guideUrl?: string;
+  lessonPosition?: ReaderPosition;
   /**
    * Tab type for the active guide. When 'learning-journey', the copy-link
    * URL appends `&type=learning-journey` so a recipient hitting the link
@@ -45,6 +47,7 @@ export function FullScreenLayout({
   isCourseOverview = false,
   stepProgress,
   guideUrl,
+  lessonPosition,
   guideType,
   hasActiveGuide,
   onExit,
@@ -54,7 +57,7 @@ export function FullScreenLayout({
   assistant,
   children,
 }: FullScreenLayoutProps) {
-  const styles = useStyles2(getFullScreenStyles, isCourseOverview);
+  const styles = useStyles2(getFullScreenStyles, isCourseOverview, Boolean(subHeader));
   const containerRef = useRef<HTMLDivElement>(null);
   const [availableHeight, setAvailableHeight] = useState<number>();
 
@@ -97,7 +100,13 @@ export function FullScreenLayout({
     if (!guideUrl) {
       return;
     }
-    const shareUrl = buildPathfinderShareUrl({ doc: guideUrl, panelMode: 'fullscreen', guideType });
+    const shareUrl = buildPathfinderShareUrl({
+      doc: lessonPosition?.doc ?? guideUrl,
+      panelMode: 'fullscreen',
+      guideType: lessonPosition ? 'learning-journey' : guideType,
+      lessonUrl: lessonPosition?.milestoneUrl,
+      trackId: lessonPosition?.trackId,
+    });
     copyTextToClipboard(shareUrl).then((copied) => {
       setLinkCopy(copied ? 'copied' : 'failed');
       clearTimeout(copyTimerRef.current);
@@ -106,7 +115,7 @@ export function FullScreenLayout({
         reportAppInteraction(UserInteraction.FullScreenCopyLink, { guide_url: guideUrl });
       }
     });
-  }, [guideUrl, guideType]);
+  }, [guideUrl, guideType, lessonPosition]);
 
   useEffect(
     () => () => {
@@ -178,7 +187,11 @@ export function FullScreenLayout({
             {assistant}
           </div>
         </div>
-        {subHeader}
+        {subHeader && (
+          <div className={styles.subHeader}>
+            <div className={styles.subHeaderContent}>{subHeader}</div>
+          </div>
+        )}
       </div>
       <div className={styles.body}>
         <div className={styles.contentWrap}>{children}</div>

@@ -53,8 +53,8 @@ function publish(key: string) {
   publishGuideIndex({
     contentKey: key,
     index: computeGuideBlockIndex([
-      { type: 'markdown', id: 'first' },
-      { type: 'markdown', id: 'second' },
+      { type: 'quiz', id: 'first' },
+      { type: 'quiz', id: 'second' },
     ]),
     denominatorSource: 'live-pre-inlining',
   });
@@ -97,6 +97,53 @@ it.each(['floating', 'fullscreen'] as const)('preserves the embedded %s mileston
   render(React.cloneElement(surface(guideUrl, mode), { progressKey: guideUrl, onResetGuide: jest.fn() }));
   const progress = await screen.findByRole('progressbar');
   expect(progress.parentElement).toHaveStyle({ position: 'sticky', top: '-8px' });
+});
+
+it('hides guide progress when the full-screen header supplies path progress', async () => {
+  setActiveTabUrl(guideUrl);
+  publish(guideUrl);
+  const guide = surface(guideUrl, 'fullscreen');
+  const { rerender } = render(guide);
+  expect(await screen.findByRole('progressbar')).toBeInTheDocument();
+
+  rerender(React.cloneElement(guide, { showGuideProgress: false }));
+
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+});
+
+it('hides guide progress when the floating toolbar supplies path progress', async () => {
+  setActiveTabUrl(guideUrl);
+  publish(guideUrl);
+  const milestone = { number: 1, title: 'Lesson', url: guideUrl, isActive: true };
+  const content: RawContent = {
+    url: guideUrl,
+    type: 'learning-journey',
+    metadata: {
+      title: 'Lesson',
+      learningJourney: {
+        baseUrl: 'backend-guide:path',
+        currentMilestone: 1,
+        totalMilestones: 1,
+        milestones: [milestone],
+      },
+    },
+    content: '',
+    lastFetched: '',
+  };
+  const standalone = surface(guideUrl, 'floating');
+  const view = render(standalone);
+  expect(await screen.findByRole('progressbar')).toBeInTheDocument();
+
+  view.rerender(
+    React.cloneElement(standalone, {
+      content,
+      activeTab: { ...standalone.props.activeTab, type: 'learning-journey', content },
+      progressKey: guideUrl,
+      onResetGuide: jest.fn(),
+    })
+  );
+
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
 });
 
 it.each(['floating', 'fullscreen'] as const)(

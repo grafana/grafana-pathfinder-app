@@ -463,7 +463,11 @@ describe('FloatingPanelContent progress bar visibility (cold open)', () => {
     expect(screen.queryByTestId('guide-progress-bar')).not.toBeInTheDocument();
 
     // Simulate ContentRenderer publishing the index in its passive effect
-    mockGuideIndex = { contentKey: 'guide-key', index: {}, denominatorSource: 'live-pre-inlining' };
+    mockGuideIndex = {
+      contentKey: 'guide-key',
+      index: { completableBlockCount: 1 },
+      denominatorSource: 'live-pre-inlining',
+    };
 
     // Notify publication subscribers (triggers re-render)
     act(() => {

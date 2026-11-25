@@ -88,6 +88,19 @@ const mockFetchContent = fetchUnifiedContent as jest.MockedFunction<typeof fetch
 
 describe('GuideReaderOverlay', () => {
   let closeSpy: jest.SpyInstance;
+  const originalResizeObserver = globalThis.ResizeObserver;
+
+  beforeAll(() => {
+    globalThis.ResizeObserver = class implements ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+  });
+
+  afterAll(() => {
+    globalThis.ResizeObserver = originalResizeObserver;
+  });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -121,8 +134,8 @@ describe('GuideReaderOverlay', () => {
       publishGuideIndex({
         contentKey: url,
         index: computeGuideBlockIndex([
-          { type: 'markdown', id: 'first' },
-          { type: 'markdown', id: 'second' },
+          { type: 'quiz', id: 'first' },
+          { type: 'quiz', id: 'second' },
         ]),
         denominatorSource: 'live-pre-inlining',
       });
@@ -142,11 +155,11 @@ describe('GuideReaderOverlay', () => {
     }
   );
 
-  it.each([0, 1])('gates journey progress on the cover but not milestone %s', async (currentMilestone) => {
+  it.each([0, 1])('only renders segmented progress on path lesson %s', async (currentMilestone) => {
     const url = `backend-guide:reader-journey-${currentMilestone}`;
     publishGuideIndex({
       contentKey: url,
-      index: computeGuideBlockIndex([{ type: 'markdown', id: 'first' }]),
+      index: computeGuideBlockIndex([{ type: 'quiz', id: 'first' }]),
       denominatorSource: 'live-pre-inlining',
     });
     mockFetchContent.mockResolvedValue({
@@ -157,7 +170,15 @@ describe('GuideReaderOverlay', () => {
         lastFetched: '',
         metadata: {
           title: 'Journey',
-          learningJourney: { baseUrl: url, currentMilestone, totalMilestones: 1, milestones: [] },
+          learningJourney: {
+            baseUrl: 'backend-guide:reader-journey',
+            currentMilestone,
+            totalMilestones: 2,
+            milestones: [
+              { number: 1, url, title: 'First lesson', isActive: true },
+              { number: 2, url: 'backend-guide:reader-next', title: 'Next lesson', isActive: false },
+            ],
+          },
         },
       },
     });
@@ -168,7 +189,11 @@ describe('GuideReaderOverlay', () => {
     if (currentMilestone === 0) {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     } else {
-      expect(await screen.findByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+      const progress = screen.getByRole('progressbar', { name: 'Learning path' });
+      expect(progress).toHaveAttribute('aria-valuenow', '0');
+      expect(progress.nextElementSibling).toHaveTextContent('0 of 2 completed');
+      expect(progress.querySelector('[data-segment-state="current"]')).toBeInTheDocument();
+      expect(screen.getAllByRole('progressbar')).toHaveLength(1);
     }
   });
 

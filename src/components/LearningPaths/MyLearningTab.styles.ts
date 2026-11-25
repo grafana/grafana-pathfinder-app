@@ -6,6 +6,7 @@
 
 import { GrafanaTheme2 } from '@grafana/data';
 import { css, keyframes } from '@emotion/css';
+import { getLearningIconTileStyle } from '../../styles/learning-icon-tile.styles';
 import { getLearningCardInteractionStyles } from '../LearningContentCard/learning-card-interaction.styles';
 
 const SCROLL_FADE_HEIGHT = 40;
@@ -21,38 +22,6 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
 
   // Vibrant success green for earned badges
   const successGreen = '#22C55E';
-
-  const iconCallout = (size: number, tint?: string, bright = false) =>
-    css({
-      position: 'relative',
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: theme.spacing(size),
-      height: theme.spacing(size),
-      flexShrink: 0,
-      color: tint ?? theme.colors.text.primary,
-      border: tint
-        ? '1px solid transparent'
-        : `1px solid ${bright ? theme.colors.border.medium : theme.colors.border.weak}`,
-      borderRadius: theme.shape.radius.md,
-      boxSizing: 'border-box',
-      isolation: 'isolate',
-      '&::before': {
-        content: '""',
-        position: 'absolute',
-        inset: theme.spacing(0.25),
-        backgroundColor: bright ? theme.colors.background.elevated : theme.colors.background.secondary,
-        backgroundImage: bright
-          ? `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`
-          : tint
-            ? `linear-gradient(oklch(from ${tint} l c h / 12%), oklch(from ${tint} l c h / 12%))`
-            : undefined,
-        borderRadius: `calc(${theme.shape.radius.md} - 1px - ${theme.spacing(0.25)})`,
-        zIndex: -1,
-        pointerEvents: 'none',
-      },
-    });
 
   const badgeFadeIn = keyframes`
     from {
@@ -186,11 +155,11 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       border: `1px solid ${theme.colors.border.weak}`,
       borderRadius: theme.shape.radius.md,
     }),
-    statIcon: iconCallout(5),
-    statIconCompleted: iconCallout(5, theme.colors.success.text),
-    statIconBadges: iconCallout(5, theme.colors.info.text),
-    statIconStreak: iconCallout(5, theme.visualization.getColorByName('red')),
-    statIconAltitude: iconCallout(5, theme.visualization.getColorByName('purple')),
+    statIcon: getLearningIconTileStyle(theme, 5),
+    statIconCompleted: getLearningIconTileStyle(theme, 5, { tint: theme.colors.success.text }),
+    statIconBadges: getLearningIconTileStyle(theme, 5, { tint: theme.colors.info.text }),
+    statIconStreak: getLearningIconTileStyle(theme, 5, { tint: theme.visualization.getColorByName('red') }),
+    statIconAltitude: getLearningIconTileStyle(theme, 5, { tint: theme.visualization.getColorByName('purple') }),
     statContent: css({
       minWidth: 0,
     }),
@@ -371,7 +340,7 @@ export const getMyLearningStyles = (theme: GrafanaTheme2, hideSectionIcons = fal
       marginBottom: theme.spacing(2),
       minHeight: theme.spacing(4.5),
     }),
-    sectionIcon: iconCallout(5, undefined, hideSectionIcons),
+    sectionIcon: getLearningIconTileStyle(theme, 5, { bright: hideSectionIcons }),
     sectionHeadingText: css({ flex: 1, minWidth: 0 }),
     sectionTitle: css({
       margin: 0,

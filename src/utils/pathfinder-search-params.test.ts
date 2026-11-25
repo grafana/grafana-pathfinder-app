@@ -31,6 +31,8 @@ describe('PATHFINDER_PARAMS', () => {
         'kiosk_name',
         'page',
         'panelMode',
+        'readerLesson',
+        'readerTrack',
         'source',
         'type',
         'pathfinderKiosk',
@@ -45,6 +47,8 @@ describe('parsePathfinderDeepLink', () => {
     expect(parsePathfinderDeepLink('')).toEqual({
       doc: undefined,
       type: undefined,
+      readerLesson: undefined,
+      readerTrack: undefined,
       source: undefined,
       page: undefined,
       kioskSession: undefined,
@@ -64,6 +68,8 @@ describe('parsePathfinderDeepLink', () => {
     expect(parsePathfinderDeepLink(search)).toEqual({
       doc: 'https://grafana.com/docs/foo',
       type: 'learning-journey',
+      readerLesson: undefined,
+      readerTrack: undefined,
       source: 'learning-hub',
       page: '/explore',
       kioskSession: 'abc123',
@@ -75,6 +81,26 @@ describe('parsePathfinderDeepLink', () => {
       pathfinderKiosk: false,
       kioskRulesUrl: undefined,
     });
+  });
+
+  it('includes the course and its selected lesson and track in reader links', () => {
+    const base = new URL('https://example.com/a/grafana-pathfinder-app/fullscreen?orgId=2');
+    const doc = 'backend-guide:path';
+    const lessonUrl = 'backend-guide:step-3';
+    const lesson = new URL(
+      buildPathfinderShareUrl({ base, doc, guideType: 'learning-journey', lessonUrl, trackId: 'builder' })
+    );
+    expect(parsePathfinderDeepLink(lesson.search)).toMatchObject({
+      doc,
+      readerLesson: lessonUrl,
+      readerTrack: 'builder',
+    });
+
+    const outline = new URL(buildPathfinderShareUrl({ base: lesson, doc, guideType: 'learning-journey' }));
+    expect(outline.searchParams.get('doc')).toBe(doc);
+    expect(outline.searchParams.has('readerLesson')).toBe(false);
+    expect(outline.searchParams.has('readerTrack')).toBe(false);
+    expect(outline.searchParams.get('orgId')).toBe('2');
   });
 
   it('parses and strips the controller milestone and track handoff', () => {

@@ -3,14 +3,17 @@ import { createPortal } from 'react-dom';
 import { cx } from '@emotion/css';
 import { ThemeContext } from '@grafana/data';
 import { config } from '@grafana/runtime';
-import { Button, Icon, useStyles2 } from '@grafana/ui';
+import { Button, Icon, IconButton, useStyles2 } from '@grafana/ui';
 
 import { ContentRenderer } from '../content-renderer/content-renderer';
 import { GuideProgressBar } from '../guide-progress';
+import { PathLessonHeader } from '../LearningPaths/PathLessonHeader';
+import { usePathLessonProgress } from '../LearningPaths/PathLessonProgressBar';
 import {
   fetchUnifiedContent,
   isJourneyCoverPage,
   resolveActiveMilestoneSequence,
+  resolveActiveMilestoneToolbarContext,
   fetchPackageContent,
   getNextMilestoneUrlFromContent,
   getPreviousMilestoneUrlFromContent,
@@ -327,6 +330,10 @@ function GuideReaderInner({
   const contentClassName = content
     ? `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`
     : '';
+  const isCoverPage = content ? isJourneyCoverPage(content) : false;
+  const pathContext =
+    content && !isCoverPage ? resolveActiveMilestoneToolbarContext(content, track.id, track.milestones) : null;
+  const pathProgress = usePathLessonProgress(pathContext);
 
   const body =
     surfaceCompletionInput && content ? (
@@ -347,17 +354,38 @@ function GuideReaderInner({
           }
         }}
       >
-        {(nextUrl || previousUrl) && (
-          <nav className={styles.milestoneNavigation} aria-label="Learning path navigation">
-            <Button icon="arrow-left" variant="secondary" disabled={!previousUrl} onClick={navigatePrevious}>
-              Previous
-            </Button>
-            <Button icon="arrow-right" variant="secondary" disabled={!nextUrl} onClick={navigateNext}>
-              Next
-            </Button>
-          </nav>
+        {pathContext ? (
+          <PathLessonHeader
+            className={styles.lessonHeader}
+            title={
+              pathContext.milestones.find(({ number }) => number === pathContext.currentMilestone)?.title ||
+              content.metadata.title
+            }
+            progress={pathProgress}
+            actions={
+              (nextUrl || previousUrl) && (
+                <>
+                  <IconButton name="angle-left" tooltip="Previous" disabled={!previousUrl} onClick={navigatePrevious} />
+                  <IconButton name="angle-right" tooltip="Next" disabled={!nextUrl} onClick={navigateNext} />
+                </>
+              )
+            }
+          />
+        ) : (
+          <>
+            {(nextUrl || previousUrl) && (
+              <nav className={styles.milestoneNavigation} aria-label="Learning path navigation">
+                <Button icon="arrow-left" variant="secondary" disabled={!previousUrl} onClick={navigatePrevious}>
+                  Previous
+                </Button>
+                <Button icon="arrow-right" variant="secondary" disabled={!nextUrl} onClick={navigateNext}>
+                  Next
+                </Button>
+              </nav>
+            )}
+            <GuideProgressBar contentUrl={content.url} isCoverPage={isCoverPage} />
+          </>
         )}
-        <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
         <ContentRenderer
           content={content}
           containerRef={contentRef}

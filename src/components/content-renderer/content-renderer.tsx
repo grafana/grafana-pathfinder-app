@@ -10,7 +10,7 @@ import { useIsAlignmentPaused } from '../../global-state/alignment-pending-conte
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder, Button, useStyles2 } from '@grafana/ui';
+import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder, Button, Icon, useStyles2 } from '@grafana/ui';
 import { getSelectionStyles } from './content-renderer.styles';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 
@@ -768,6 +768,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
                 selectionState={selectionState}
                 documentContext={documentContext}
                 beforeContent={beforeContent}
+                isCoverPage={isCoverPage}
                 coverTocSuppliesTitle={Boolean(pathContents)}
                 overview={overview}
                 afterContent={afterContent}
@@ -801,6 +802,7 @@ interface ContentWithVariablesProps {
   selectionState: TextSelectionState;
   documentContext: ReturnType<typeof buildDocumentContext>;
   beforeContent?: React.ReactNode;
+  isCoverPage: boolean;
   coverTocSuppliesTitle: boolean;
   overview?: LearningPathOverview;
   afterContent?: React.ReactNode;
@@ -821,6 +823,7 @@ function ContentWithVariables({
   selectionState,
   documentContext,
   beforeContent,
+  isCoverPage,
   coverTocSuppliesTitle,
   overview,
   afterContent,
@@ -885,9 +888,12 @@ function ContentWithVariables({
     font-size: 28px;
     font-weight: 500;
     line-height: 1.3;
-    margin: 0 0 24px 0;
     padding: 0;
     color: inherit;
+
+    && {
+      margin: 0 0 ${isCoverPage ? 24 : 12}px;
+    }
   `;
 
   const overviewArticleClassName = overview
@@ -900,6 +906,8 @@ function ContentWithVariables({
     <div
       ref={activeRef}
       data-guide-content-root="true"
+      data-guide-admonitions={contentType !== 'single-doc' || undefined}
+      data-journey-cover-page={isCoverPage || undefined}
       className={`${className} ${selectionStyle}`}
       data-pathfinder-content="true"
       onClick={handleContentClick}
@@ -1293,7 +1301,7 @@ function ContentProcessor({
   const hasBadges = overview && getCourseCompletionBadges(overview.path).length > 0;
   const renderContent = (children: React.ReactNode) => {
     const article = (
-      <div ref={ref} className={overviewArticleClassName}>
+      <div ref={ref} className={overviewArticleClassName} data-guide-article="true">
         {hasOverviewContent && (
           <h2 className="course-about-heading">{t('coverPage.aboutThisPath', 'About this path')}</h2>
         )}
@@ -1633,6 +1641,25 @@ interface StandaloneGroupInfo {
 interface DocumentLayoutInfo {
   standaloneGroupMap: Map<number, StandaloneGroupInfo>;
   totalStandaloneSteps: number;
+}
+
+const guideAdmonitions = [
+  { className: 'admonition-tip', tone: 'success', icon: 'lightbulb-alt' },
+  { className: 'admonition-note', tone: 'info', icon: 'info-circle' },
+  { className: 'admonition-warning', tone: 'warning', icon: 'exclamation-triangle' },
+  { className: 'admonition-caution', tone: 'warning', icon: 'exclamation-triangle' },
+] as const;
+
+function getGuideAdmonition(element: ParsedElement) {
+  if (
+    element.type !== 'div' ||
+    typeof element.props.className !== 'string' ||
+    !element.children.some((child) => typeof child !== 'string' && child.type === 'blockquote')
+  ) {
+    return undefined;
+  }
+  const classes = element.props.className.split(/\s+/);
+  return guideAdmonitions.find(({ className }) => classes.includes(className));
 }
 
 function renderParsedElement(
@@ -2193,10 +2220,17 @@ function renderParsedElement(
           })
           .filter((child: React.ReactNode) => child !== null);
 
+        const admonition = getGuideAdmonition(element);
+        const icon = admonition && (
+          <span key="admonition-icon" className="guide-admonition-icon" aria-hidden="true">
+            <Icon name={admonition.icon} size="lg" />
+          </span>
+        );
         return React.createElement(
           element.type,
-          { key, ...element.props },
-          ...(children && children.length > 0 ? children : [])
+          { key, ...element.props, 'data-guide-admonition': admonition?.tone },
+          ...(icon ? [icon] : []),
+          ...(children ?? [])
         );
       }
   }

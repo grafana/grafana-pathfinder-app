@@ -24,12 +24,13 @@ jest.mock('@grafana/i18n', () => ({
 }));
 
 let mockAmbientKey: string | undefined;
+let mockCompletableBlockCount = 1;
 jest.mock('../../global-state/guide-content-key', () => ({
   resolveGuideContentKey: (url: string | undefined) => mockAmbientKey ?? url ?? 'default',
 }));
 
 jest.mock('../../global-state/active-guide-index', () => ({
-  getGuideIndex: () => ({}),
+  getGuideIndex: () => ({ index: { completableBlockCount: mockCompletableBlockCount } }),
   subscribeGuideIndexPublications: () => () => undefined,
   getGuideIndexPublicationRevision: () => 0,
   subscribeGuideIndexEvictions: () => () => undefined,
@@ -66,6 +67,7 @@ describe('GuideProgressBar', () => {
     mockPercentage = 0;
     progressListener = undefined;
     mockAmbientKey = undefined;
+    mockCompletableBlockCount = 1;
     mockPercentages.clear();
     mockReadKeys.length = 0;
   });
@@ -92,6 +94,14 @@ describe('GuideProgressBar', () => {
   it('renders nothing when no contentUrl is provided', () => {
     const { container } = render(<GuideProgressBar contentUrl={undefined} />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it('renders nothing for a guide without tracked exercises', () => {
+    mockCompletableBlockCount = 0;
+
+    render(<GuideProgressBar contentUrl="reading-only" />);
+
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
   /**

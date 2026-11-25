@@ -152,7 +152,7 @@ const BLOCKS: Record<CompletableBlockType, BlockCase> = {
     indexBlock: { type: 'quiz' },
     mount: () => <InteractiveQuiz stepId={STEP_ID} question="Pick one" choices={QUIZ_CHOICES} shuffle={false} />,
     complete: async () => {
-      fireEvent.click(await screen.findByRole('button', { name: 'Right answer' }));
+      fireEvent.click(await screen.findByRole('radio', { name: 'Right answer' }));
       fireEvent.click(screen.getByRole('button', { name: /check answer/i }));
     },
   },

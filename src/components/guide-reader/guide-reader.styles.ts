@@ -1,5 +1,6 @@
 import { css, keyframes } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
+import { getGuideContentPadding } from '../../styles/content-html.styles';
 
 const fadeIn = keyframes`
   from { opacity: 0; }
@@ -14,7 +15,7 @@ export const getGuideReaderStyles = (theme: GrafanaTheme2) => ({
     position: 'fixed',
     inset: 0,
     zIndex: 100000,
-    background: theme.colors.background.canvas,
+    background: theme.colors.background.page,
     overflow: 'auto',
     animation: `${fadeIn} 0.2s ease`,
   }),
@@ -58,6 +59,11 @@ export const getGuideReaderStyles = (theme: GrafanaTheme2) => ({
     justifyContent: 'space-between',
     gap: theme.spacing(2),
     marginBottom: theme.spacing(3),
+  }),
+  lessonHeader: css({
+    paddingBlock: theme.spacing(2),
+    paddingInline: getGuideContentPadding(theme),
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
   }),
   message: css({
     padding: theme.spacing(4),

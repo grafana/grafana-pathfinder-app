@@ -840,13 +840,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  public async restoreReaderPosition(position: ReaderPosition): Promise<void> {
+  public async restoreReaderPosition(
+    position: ReaderPosition,
+    { title, isCurrent = () => true }: { title?: string; isCurrent?: () => boolean } = {}
+  ): Promise<void> {
     await this.restoreTabsAsync();
+    if (!isCurrent()) {
+      return;
+    }
     let tab = this.state.tabs.find((candidate) => candidate.baseUrl === position.doc);
     if (!tab) {
       tab = {
         id: this.generateTabId(),
-        title: 'Learning path',
+        title: title || 'Learning path',
         baseUrl: position.doc,
         currentUrl: position.doc,
         content: null,
@@ -860,7 +866,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     this.setState({ activeTabId: tabId });
     await this.loadTab(tabId, position.doc);
     const cover = this.state.tabs.find((candidate) => candidate.id === tabId)?.content;
-    if (!cover) {
+    if (!cover || !isCurrent() || this.state.activeTabId !== tabId) {
       return;
     }
     const selectedTrack = cover.metadata?.learningJourney?.tracks?.find((track) => track.trackId === position.trackId);
@@ -871,8 +877,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       typeof cover.metadata?.packageManifest?.id === 'string' ? cover.metadata.packageManifest.id : undefined
     );
     const sequence = resolveActiveMilestoneSequence(cover, selectedTrack?.trackId, selectedTrack?.milestones);
-    const milestone = sequence?.milestones.find((item) => item.url === position.milestoneUrl && !item.isLocked);
-    if (milestone) {
+    const milestone =
+      sequence?.milestones.find((item) => item.url === position.milestoneUrl) ??
+      cover.metadata.learningJourney?.milestones.find((item) => item.url === position.milestoneUrl);
+    if (milestone && !milestone.isLocked) {
       await this.loadTab(tabId, milestone.url, { explicitGuideId: milestone.id });
     }
     await this.saveTabsToStorage();

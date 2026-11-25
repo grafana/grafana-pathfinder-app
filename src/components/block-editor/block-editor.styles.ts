@@ -14,7 +14,11 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
   container: css({
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: theme.colors.background.primary,
+    boxSizing: 'border-box',
+    backgroundColor: theme.colors.background.page,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.lg,
+    overflow: 'clip',
     // Fill the scrolling parent so the status bar (at the column's
     // bottom) sits at the visible bottom of the editor; longer guides
     // grow the column and trigger the parent's scroll.
@@ -66,6 +70,10 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
   // the HealthStatusBar's `marginTop: auto`.
   content: css({
     padding: theme.spacing(1),
+    '&[data-view-mode="preview"]': {
+      paddingInline: 0,
+      paddingTop: 0,
+    },
   }),
 
   // Empty state
@@ -709,19 +717,31 @@ export const getBlockFormStyles = (theme: GrafanaTheme2) => ({
 /**
  * Preview panel styles
  */
-export const getBlockPreviewStyles = (theme: GrafanaTheme2) => ({
+export const getBlockPreviewStyles = (theme: GrafanaTheme2, fullGuide: boolean) => ({
   container: css({
     height: '100%',
     overflow: 'auto',
-    padding: theme.spacing(1),
-    backgroundColor: theme.colors.background.primary,
+    padding: fullGuide ? theme.spacing(3, 0, 1) : theme.spacing(1),
+    backgroundColor: fullGuide ? 'transparent' : theme.colors.background.primary,
+    ...(fullGuide && {
+      '&:has(> [role="progressbar"])': {
+        paddingTop: 0,
+      },
+      '& > [role="progressbar"]': {
+        backgroundColor: theme.colors.background.page,
+        padding: theme.spacing(1, 2),
+        marginBottom: theme.spacing(2),
+      },
+      '& > :not([role="progressbar"])': {
+        marginInline: theme.spacing(2),
+      },
+    }),
   }),
 
   // Override journey content styles for preview context - remove extra padding
   // and let content use full width of the preview container
   previewContent: css({
-    // Remove the default journey content padding since we're already in a padded container
-    padding: `0 !important`,
+    padding: `${fullGuide ? theme.spacing(1, 0, 0) : 0} !important`,
 
     // Make interactive sections and steps take full width
     '& .interactive-section': {
