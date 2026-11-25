@@ -5,7 +5,9 @@ import {
   recordContentFetch,
   recordKioskCatalogLoaded,
   recordContentFetchFallback,
+  recordCustomGuideCatalogueRequest,
   recordCustomGuideCatalogueUnavailable,
+  recordPackageMilestonesLocked,
   recordSettingsStoreResolved,
   recordStartupSettings,
   recordPanelReady,
@@ -144,6 +146,23 @@ describe('measurement and event domain operations', () => {
     recordCustomGuideCatalogueUnavailable('obo-unavailable');
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_custom_guide_catalogue_unavailable', {
       reason: 'obo_unavailable',
+    });
+  });
+
+  it('recordCustomGuideCatalogueRequest rounds the catalogue round trip and closes the outcome', () => {
+    recordCustomGuideCatalogueRequest(1250.6, 'request-failed');
+    expect(mockPushFaroMeasurement).toHaveBeenCalledWith(
+      'pathfinder_custom_guide_catalogue',
+      { custom_guide_catalogue_ms: 1251 },
+      { outcome: 'request_failed' }
+    );
+  });
+
+  it('recordPackageMilestonesLocked emits counts only', () => {
+    recordPackageMilestonesLocked(2, 5);
+    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_package_milestones_locked', {
+      locked_count: 2,
+      total_count: 5,
     });
   });
 

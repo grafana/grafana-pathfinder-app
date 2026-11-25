@@ -187,7 +187,7 @@ A truncated v2 marker contains empty finding, deferred, and cleared lists and fo
 Load only the applicable sections from `docs/design/PR_REVIEW.md`:
 
 - `React reliability, security, and quality checks` for frontend changes, with `node .cursor/review-shared/concern-context.mjs --section "React reliability, security, and quality checks"`. Follow `.cursor/rules/react-antipatterns.mdc` and `.cursor/rules/frontend-security.mdc` only for detected rules.
-- `Go backend checks` for `pkg/**/*.go`, with `node .cursor/review-shared/concern-context.mjs --section "Go backend checks"`; verify `npm run lint:go`, `npm run test:go`, and `go build ./...`.
+- `Go backend checks` for `pkg/**/*.go`, `kinds/manifest.cue`, or `src/lib/backend-routes.ts`, with `node .cursor/review-shared/concern-context.mjs --section "Go backend checks"`; verify `npm run lint:go`, `npm run test:go`, and `go build ./...`.
 - The comment-hygiene skill only for a borderline QC8 call or a needed shape citation.
 
 Pattern severity feeds the canonical observation. It never decides disposition.

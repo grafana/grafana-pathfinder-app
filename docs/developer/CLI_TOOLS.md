@@ -7,11 +7,12 @@ The `pathfinder-cli` is a command-line interface for working with interactive JS
 - **build-stats** — Writes the computed completion block stats into every package's `manifest.json`
 - **build-graph** — Generates a D3-compatible dependency graph from repository indexes
 - **build-snippets** — Generates a snippet catalog (`index.json`) from a directory of snippet bodies
+- **stamp-ids** — Gives every translatable block and step without an `id` a stable, deterministic one
 - **sync-translations** — Stamps a package's translation sidecars with the tooling-owned fields (`_sourceHash`, `_reviewHash`, `_available`, `baseRef`)
 - **schema** — Exports Zod validation schemas as JSON Schema for cross-language consumers
 - **e2e** — Runs end-to-end tests on guides in a live Grafana instance (see [E2E testing](./E2E_TESTING.md))
 
-This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, `sync-translations`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
+This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, `stamp-ids`, `sync-translations`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
 
 ---
 
@@ -214,7 +215,7 @@ Findings are routed by severity:
 | `language-tag`            | `sidecar_filename_invalid`, `sidecar_language_invalid`, `sidecar_language_filename_mismatch`, `sidecar_language_is_canonical`, `sidecar_unicode_format_character` | error and warning | pending, [#2392](https://github.com/grafana/grafana-pathfinder-app/issues/2392) |
 | `manifest-block-fields`   | `sidecar_manifest_block_field`                                                                                                                                    | error             | shipped                                                                         |
 | `projection-conformance`  | `sidecar_structural_field`, `sidecar_field_not_translatable`, `sidecar_block_type_not_translatable`, `sidecar_steps_not_allowed`, `sidecar_reserved_field`        | error             | pending, [#2389](https://github.com/grafana/grafana-pathfinder-app/issues/2389) |
-| `orphan-key`              | `sidecar_orphan_key`, `sidecar_orphan_step`                                                                                                                       | warning           | pending, [#2387](https://github.com/grafana/grafana-pathfinder-app/issues/2387) |
+| `orphan-key`              | `sidecar_orphan_key`, `sidecar_orphan_step`                                                                                                                       | warning           | shipped                                                                         |
 | `source-hash`             | `sidecar_missing_source_hash`, `sidecar_stale_translation`                                                                                                        | error and warning | pending, [#2388](https://github.com/grafana/grafana-pathfinder-app/issues/2388) |
 | `translatable-ids`        | `translatable_block_missing_id`, `translatable_step_missing_id`, `duplicate_block_id`, `duplicate_step_id`                                                        | error             | shipped                                                                         |
 | `text-dependent-selector` | `text_dependent_selector`                                                                                                                                         | error             | pending, [#2390](https://github.com/grafana/grafana-pathfinder-app/issues/2390) |
@@ -490,6 +491,46 @@ Snippet bodies live in the content repository alongside package content, not in 
 
 ```bash
 npm run snippets:build -- <dir>
+```
+
+---
+
+## Stamp-ids command
+
+Gives an `id` to every translatable block, and to every step of a `multistep` or `guided` block, that has none ([`docs/design/I18N.md`](../design/I18N.md) §6.5, §12.2). A translation sidecar addresses a block or step by `id`, so this is how an English-only guide becomes translatable. It never changes an existing `id`. The rule is the pure function `stampIds` in `src/cli/utils/package-io/stamp-ids.ts`; the command reads the package, applies it, checks the result with the same validation as the authoring commands, and writes `content.json` only.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js stamp-ids <dir> [options]
+```
+
+### Arguments
+
+- `<dir>` (required): The package directory, holding `content.json` and an optional `manifest.json`.
+
+### Options
+
+- `--check`: Print the ids that would be stamped and exit non-zero if there are any. Writes nothing.
+
+### The rule
+
+Blocks are visited depth-first in document order, including the children of `section`, `collapsible` and `assistant` blocks and both branches of a `conditional`.
+
+- A block whose type is in the projection table (`src/lib/guide-translation/projection-table.ts`) and has no `id` gets `<type>-<n>`, where `n` is the smallest positive integer that makes the id unused in the guide.
+- A step of a `multistep` or `guided` block without an `id` gets `<block-id>-step-<k>`, where `k` is the smallest positive integer that makes the id unused.
+- Block types outside the table (`quiz`, `callout`, and the rest) are not touched.
+
+Ids are not random and not time-based, so the same input always gives the same output, and a second run on the output stamps nothing and does not write. Unlike the ids `readPackage` mints for the other commands (highest number plus one, blocks of every type), these fill the smallest free number. Stamped ids replace the step keys the runtime derives today, so stamping a guide that readers already started resets their saved step progress once.
+
+### Examples
+
+```bash
+# Stamp the ids a translation needs
+node dist/cli/cli/index.js stamp-ids guides/first-dashboard
+
+# See what would be stamped, without writing (exit 1 if anything would be)
+node dist/cli/cli/index.js stamp-ids guides/first-dashboard --check
 ```
 
 ---

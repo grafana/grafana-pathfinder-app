@@ -24,6 +24,7 @@ import { resolveOfflinePathContext } from './package-fallback-context';
 import { buildBackendGuideContent, type BackendGuideResource } from './backend-guide';
 import { injectJourneyExtrasIntoJsonGuide } from './cover-page';
 import { logger } from '../../lib/logging';
+import { recordPackageMilestonesLocked } from '../../lib/telemetry/facade';
 import { getMilestoneSlug } from '../../lib/learning-journey-url';
 import { getPrTestFetchId, withPrTestMarker } from '../../lib/pr-test-marker';
 import { canonicalContentFileUrl } from '../../lib/guide-content-file';
@@ -126,6 +127,10 @@ async function resolveGuideIdsToMilestones(guideIds: string[], pathSlug?: string
     });
   }
 
+  const lockedCount = milestones.filter((milestone) => milestone.isLocked).length;
+  if (lockedCount > 0) {
+    recordPackageMilestonesLocked(lockedCount, milestones.length);
+  }
   return milestones;
 }
 

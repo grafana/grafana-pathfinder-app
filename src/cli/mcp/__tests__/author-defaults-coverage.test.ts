@@ -36,6 +36,7 @@ const NOT_PRODUCERS: Record<string, string> = {
   'remove-block': 'edits content.json only',
   'move-block': 'edits content.json only',
   'rename-id': 'renames ids; leaves the author untouched',
+  'rename-block': 'edits content.json only',
   'set-manifest': 'patches named fields only; auto-defaulting is out of scope (an explicit patch is the author)',
   inspect: 'read-only',
   validate: 'read-only',
@@ -47,6 +48,7 @@ const NOT_PRODUCERS: Record<string, string> = {
   'build-stats': 'reports on existing packages; out of scope',
   'build-snippets': 'builds snippets from existing packages',
   'build-graph': 'builds a graph from existing packages; out of scope',
+  'stamp-ids': 'edits content.json only',
   'sync-translations': 'stamps tooling fields on existing translation sidecars; leaves the author untouched',
   // tools
   pathfinder_authoring_start: 'static guidance',

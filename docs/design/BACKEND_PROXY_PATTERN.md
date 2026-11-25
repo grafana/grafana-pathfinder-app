@@ -3,7 +3,7 @@
 Pathfinder uses the Grafana App SDK provider in `pkg/provider`. The Go executable
 starts `sdkplugin.Run(provider, ...)`, following the
 [SDK test app](https://github.com/grafana/app-examples/tree/main/example-appsdktest-app).
-It has no `WithAppFunc`, legacy `CallResource` adapter, or `pkg/plugin` implementation.
+Tenant routes use the SDK provider. The public recommendations compatibility feed uses a separate plugin instance registered with `WithAppFunc`.
 Grafana launches this executable to run the SDK application. Removing the executable
 would require a separately hosted application server.
 
@@ -39,24 +39,67 @@ It is a local runtime prerequisite, not an observable frontend capability flag.
 The public-feed plugin instance answers the standard Grafana plugin health check. SDK `backend/health`
 also returns the application health response.
 
+## How to add or change a route
+
+Follow `POST backend/completion-records` from a reader's click to the durable record. The SDK steps register and dispatch the request. The identity, storage, caching, and retry policies below are Pathfinder's contract for tenant features.
+
+1. **Register the method and path.** In `kinds/manifest.cue`, find `createBackendCompletion`. Declare the new route alongside it under the namespaced API version and run `npm run generate:kinds`. In `pkg/provider/provider.go`, register the same method and path in `VersionedCustomRoutes` and supply its handler. Decide how an unprovisioned client answers the route. When the SDK supplies no caller-exchange transport (an empty host, a deprecated shared bearer credential, or no `WrapTransport`), `appConfig` in `pkg/provider/provider.go` replaces every route in `VersionedCustomRoutes` with `unavailableTenantRoute`, so a new route is unavailable by default. Only the public routes in the `switch route.Path` there (`/backend/package-recommendations` and `/backend/api/v1/achievements/definitions`) are exempt. Never add a personal or tenant route to that exemption list. `TestPublicRouteAllowlistsMatchTheUnprovisionedExemption` fails when the switch and its reviewed mirror, `unprovisionedClientExemptions` in `pkg/provider/route_identity_ratchet_test.go`, disagree. If the unavailable answer must be more specific than the default 503 `obo-unavailable`, add a case to `unavailableTenantRoute`, as the completion routes do. Add a dispatch case for the new endpoint (see `TestProviderDispatchesSettingsRoute` and `TestUnprovisionedAndSharedCredentialsCannotAccessTenantStores`). A manifest entry alone cannot exercise the handler. `TestProviderRegistersExactlyTheManifestRoutes` fails when `VersionedCustomRoutes` and the generated manifest disagree, and `src/validation/backend-route-registration.test.ts` fails when the browser allowlist in step 2 and `src/app-sdk-manifest.json` disagree. Both messages point back here.
+2. **Call it from the browser.** Add the relative path to the allowlist in `src/lib/backend-routes.ts`. Follow `src/completion-records/completion-write-client.ts`, which sends its POST to `backendRoute('completion-records')`. The helper supplies the host namespace. When the backend is unavailable, report the route's failure or capability response and stop: add no fallback transport, such as a plugin resource, plugin `jsonData`, or a direct `/apis/` resource call, and do not retry through a second route. The one sanctioned exception is plugin `jsonData` settings on a host without SDK registration (see [Runtime and registration](#runtime-and-registration)). The browser transport guard lives in `src/validation/app-platform-transport.test.ts`.
+3. **Establish who can act before touching storage.** In `completionWriteHandler`, `completionCaller(ctx, req.ResourceIdentifier.Namespace)` derives the subject from verified ingress identity and checks the namespace for exact equality. Apply the route's authorization using that caller. Use the caller's context and namespace with the generated resource client. Every tenant handler must derive its caller with `callerNamespace` or `completionCaller` before touching storage. `TestEveryTenantRouteRefusesAnUnverifiedCaller` calls every manifest route with no identity and with an identity bound to another namespace, and fails if either call reaches upstream storage or is answered as accepted. Each route gets a request that passes input validation, listed in `routeRequests`, and the same request from a verified caller must reach upstream, so a refusal comes from the identity check. Add a request there for a new route that validates its input. Its reviewed allowlist, `publicRoutesWithoutCallerIdentity` in `pkg/provider/route_identity_ratchet_test.go`, holds only the genuinely public `GET /backend/package-recommendations` and `GET /backend/health`, keyed by method and path so a second method on a public path is not exempted. Adding a route to it is a visible change that needs the same review as the unprovisioned-client exemption switch, and a personal or tenant route never belongs there. Reject missing delegation, including a shared bearer credential. Exercise a wrong namespace, a forged body identity, and an unauthorized caller with zero upstream writes. See `TestCompletionCallerUsesAuthenticatedNamespace`, `TestSDKCompletionWritesPreserveIdentityProgressAndRepair`, and `TestUnprovisionedAndSharedCredentialsCannotAccessTenantStores`.
+   For a Cloud route, check the upstream operations against the [deployment_tools permission rules](#when-a-cloud-route-needs-a-deployment_tools-permissions-pr).
+4. **Bound requests and expose failures.** The completion handler limits the incoming body before decoding. Reuse the bounded client in `pkg/resourceaccess` for upstream calls and propagate the route's error or capability response. A denied or failed read must never authorize a write, imply an empty store, or trigger another credential or transport. Use `TestSettingsStoreDelegatesCallerThroughBoundedTransport`, `TestSettingsTransportRefusesRedirect`, and `TestSettingsRouteDoesNotMistakeUpstreamFailureForAbsence` as examples.
+   Rate-limit each route per caller. `completionWriteHandler` creates one `services.NewUserRateLimiter(burst, refillPerSec, time.Now)` per route and, right after the caller check and before reading the body or calling upstream, calls `limiter.Allow(caller.Namespace + "\x00" + caller.Subject)`. Key by namespace and subject together. A denial is a 429 `{"error":"rate-limited"}` with `Retry-After` in whole seconds, at least 1. See `TestSDKCompletionRateLimitAndInputBounds` and `TestInsightsRateLimitPrecedesResourceReads`. Set `Cache-Control: no-store` before the first response write in every handler that returns personal or tenant data. `TestPersonalReadHandlersForbidHTTPCaching` covers the completion and catalogue readers, and the guide, settings, assignments, insights, achievements, and write handlers set it too. Only a genuinely public response (`package-recommendations`, `health`) leaves it unset, because it carries no per-caller data.
+5. **Define retry behavior for writes.** Follow the attempt-ID branch: `CompletionAttemptRecordName` derives a stable name from the subject and attempt ID, and `UpsertCompletionAttempt` handles concurrent updates. Replaying a completed attempt must repair side effects without duplicating the record or advancing completion again. For updates to an existing resource, preserve its identity and use its resource version. Exercise a duplicate and a lost acknowledgement as in `TestCompletionRetryAfterConnectionLossRepairsAssignmentAndCache`.
+6. **Scope any cache to the data it contains.** Start an uncached read with the caller-delegated client. If you add a personal cache, follow the sibling `GET backend/completion-records/my` handler: partition by verified namespace and subject, including failure cooldowns, and invalidate the same caller's entry after a write with `services.InvalidateCallerCompletionIndex(namespace, subject)`. Never invalidate every entry in the namespace on a write. Reserve process-wide caches for anonymous public content. See `TestCompletionSDKCacheFiltersUsersAndInvalidates` and `TestRecommendationsSDKFetchAndSharedCache`.
+
+For review, trace the browser call through both registrations to the upstream client. Run the affected route tests and exercise the route over HTTP on a registered SDK host using the [local acceptance procedure](#local-acceptance).
+
+### Route invariants
+
+A route that changes or adds any row below must keep it. The SDK requires the registration and the delegated transport; the rest are Pathfinder's choices.
+
+<!-- prettier-ignore -->
+| Invariant | Origin | Guarded by |
+| --- | --- | --- |
+| Verified caller identity and exact namespace binding (recipe step 3) | The SDK supplies the authlib context. Exact namespace equality and subject-only identity are Pathfinder's. | `TestCompletionCallerUsesAuthenticatedNamespace`, `TestSDKCompletionWritesPreserveIdentityProgressAndRepair`, `TestEveryTenantRouteRefusesAnUnverifiedCaller` (every route outside the reviewed public allowlist refuses a missing or cross-namespace caller with zero upstream requests), `TestPublicRouteAllowlistsMatchTheUnprovisionedExemption` |
+| Caller-delegated reads; a shared or absent credential fails closed (steps 1 and 3) | The SDK supplies the delegated transport. Failing closed is Pathfinder's. | `TestUnprovisionedAndSharedCredentialsCannotAccessTenantStores`, `TestSettingsStoreDelegatesCallerThroughBoundedTransport` |
+| Bounded clients, bounded bodies, per-caller rate limit, `no-store` on personal responses, fail-closed failures (step 4) | Pathfinder | `TestSettingsTransportRefusesRedirect`, `TestSettingsRouteDoesNotMistakeUpstreamFailureForAbsence`, `TestSDKCompletionRateLimitAndInputBounds`, `TestInsightsRateLimitPrecedesResourceReads`, `TestPersonalReadHandlersForbidHTTPCaching` |
+| Deterministic names and retry dedup for writes (step 5) | Pathfinder | `TestCompletionRetryAfterConnectionLossRepairsAssignmentAndCache` |
+| Caller-partitioned cache keys; nothing personal in a public cache (step 6) | Pathfinder | `TestCompletionSDKCacheFiltersUsersAndInvalidates`, `TestRecommendationsSDKFetchAndSharedCache` |
+| Registered in the manifest and the provider, allowed in the browser (steps 1 and 2) | The SDK requires manifest and provider registration. The browser allowlist and the unprovisioned answer are Pathfinder's. | `TestProviderDispatchesSettingsRoute`, `TestProviderRegistersExactlyTheManifestRoutes` (`VersionedCustomRoutes` matches the generated manifest), `src/validation/backend-route-registration.test.ts` (`backendPaths` matches `src/app-sdk-manifest.json`), `src/validation/app-platform-transport.test.ts` (no direct resource reads) |
+
+### When a Cloud route needs a deployment_tools permissions PR
+
+Trace each upstream call the handler makes, including reads before a write. The grant is keyed by API group, resource, and action. A single browser POST can require several grants.
+
+- **Acting as the signed-in caller:** Check each operation in Pathfinder's `api_access_cap.delegatedPermissions`. If all are already listed, the route can reuse them. If any are missing, add the exact entries in a deployment_tools PR, or include them in the rollout PR for that release. For example, the list covers `pathfinderbackend.ext.grafana.app/assignments:get` and `assignments:list`; creating an assignment on behalf of a user would also need `assignments:create`, which is not listed. The user still needs the corresponding permission. Adding a plugin role or registering an SDK route does not populate this list. [Pathfinder delegation configuration](https://github.com/grafana/deployment_tools/blob/4bc035f015b8cfac93c73f1474059060aef8d35b/ksonnet/environments/appplugins/grafana-pathfinder-app/main.jsonnet)
+- **Acting as the operator itself:** For an operation designed to use the app identity, declare any additional access in `extraPermissions.accessKinds` in `kinds/manifest.cue`. It is empty today. Once `make appplugins-sync` records the release manifest for a wave that pins a plugin version, deployment_tools adds the `permissions` and `allowedAudiences` that `manifestAccess` derives from those entries to that wave's `api_access_cap`, merged with the entries in `config`. A recorded manifest of a different version than the pinned one is used as it is, with a warning. Caller delegation remains separately configured. [Manifest-to-permission mapping](https://github.com/grafana/deployment_tools/blob/4bc035f015b8cfac93c73f1474059060aef8d35b/ksonnet/lib/grafana-router-plugins/plugins.libsonnet)
+
+- **Before promotion:** Render the target wave against the intended release and check the resulting grants. Once reconciled, exercise the changed operation as an authorized caller and check that a caller without permission is denied. For a write, reload and verify the stored result.
+
+The delegation and mapping claims above were checked against that deployment_tools commit on 2026-11-24. Re-check them against current `master` when a route needs a new grant.
+
 ## Route inventory
 
 Tenant requests and the preferred public-feed request use:
 
 `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/backend/{route}`
 
-| Route                           | Methods                | Responsibility                                         |
-| ------------------------------- | ---------------------- | ------------------------------------------------------ |
-| `pathfinder-settings`           | GET, POST, PUT         | Read, create, and update the default settings resource |
-| `custom-guide`                  | GET, POST, PUT, DELETE | Guide item access and authoring                        |
-| `custom-guide-repository`       | GET                    | Catalogue metadata                                     |
-| `completion-records`            | POST                   | Completion creation and attempt progress               |
-| `completion-records/my`         | GET                    | Current caller's collated progress                     |
-| `completion-records/capability` | GET                    | Completion availability and progress support           |
-| `assignments/my`                | GET                    | Current caller's assignments and satisfaction          |
-| `learning-insights`             | GET                    | Admin-only learning aggregation                        |
-| `package-recommendations`       | GET                    | Anonymous public recommendation catalogue              |
-| `health`                        | GET                    | SDK application health                                 |
+| Route                             | Methods                | Responsibility                                         |
+| --------------------------------- | ---------------------- | ------------------------------------------------------ |
+| `pathfinder-settings`             | GET, POST, PUT         | Read, create, and update the default settings resource |
+| `custom-guide`                    | GET, POST, PUT, DELETE | Guide item access and authoring                        |
+| `custom-guide-repository`         | GET                    | Catalogue metadata                                     |
+| `completion-records`              | POST                   | Completion creation and attempt progress               |
+| `completion-records/my`           | GET                    | Current caller's collated progress                     |
+| `completion-records/capability`   | GET                    | Completion availability and progress support           |
+| `assignments/my`                  | GET                    | Current caller's assignments and satisfaction          |
+| `learning-insights`               | GET                    | Admin-only learning aggregation                        |
+| `package-recommendations`         | GET                    | Anonymous public recommendation catalogue              |
+| `api/v1/achievements/events`      | POST                   | Record an achievement event                            |
+| `api/v1/achievements/my`          | GET                    | Read personal achievements                             |
+| `api/v1/achievements/definitions` | GET                    | Read the public definitions catalogue                  |
+| `health`                          | GET                    | SDK application health                                 |
 
 The frontend `backendRoute()` helper allows only this bounded route inventory,
 derives namespace from Grafana runtime configuration, and rejects missing or
@@ -125,9 +168,14 @@ diff. Identity denial for insights is an HTTP 403, covered by authorization test
 
 SDK providers can serve more than one caller. Completion cache keys include both
 namespace and authenticated subject. Availability and error entries must not leak
-across either boundary. Writes invalidate every completion-cache entry in the
-affected namespace, including in-flight generations. Detached refreshes and
-assignment repairs retain identity context and have bounded resource operations.
+across either boundary. A write calls `InvalidateCallerCompletionIndex(namespace, subject)`:
+it marks the writing caller's entry stale, clears that caller's failure cooldown, and
+bumps its generation so an in-flight load cannot repopulate it. It also stales the
+legacy namespace-level key, which SDK reads do not use. Other callers' entries are
+untouched and refresh by TTL or forced read. The namespace-wide
+`InvalidateCompletionIndex` has no production caller, so do not use it for writes.
+Detached refreshes and assignment repairs retain identity context and have bounded
+resource operations.
 
 Recommendations are deliberately different: they fetch public CDN content
 anonymously and retain a shared process-wide cache. Per-user or tenant-private

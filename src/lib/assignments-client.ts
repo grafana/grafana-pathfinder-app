@@ -1,5 +1,5 @@
 /**
- * Client for the /assignments/my backend proxy (pkg/provider/assignments.go).
+ * Client for the SDK assignments/my route (pkg/provider/assignments.go).
  * Satisfaction is evaluated live server-side, so only in-flight requests are shared, never a result.
  *
  * @coupling API: GET /assignments/my served by pkg/provider/assignments.go
