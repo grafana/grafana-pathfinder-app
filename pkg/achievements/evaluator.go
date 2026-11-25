@@ -77,12 +77,19 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 
 	var written []string
 	for attempt := 1; ; attempt++ {
-		out := d.keepWritten(current, evaluate(d, current, ev), written)
+		stranded, ok := e.stranded(ctx, person, d, current)
+		if !ok {
+			return d.unavailable(current)
+		}
+		out := d.apply(current, stranded, ev, written)
 		if !out.changed {
 			return out.decision
 		}
 		for _, tierID := range out.decision.Awarded {
-			award := Award{AchievementID: d.ID, TierID: tierID, Entity: ev.Entity, EarnedAt: e.now().UTC()}
+			if slices.ContainsFunc(stranded, func(a Award) bool { return a.TierID == tierID }) {
+				continue
+			}
+			award := Award{AchievementID: d.ID, TierID: tierID, Entity: ev.Entity, Unit: out.unit, EarnedAt: e.now().UTC()}
 			// A 409 is not a failure: the held set, not the create result, decides what is reported (RFC §6.3).
 			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
 				return d.unavailable(current)
@@ -106,6 +113,31 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		}
 		current = reloaded
 	}
+}
+
+// stranded reads the award rows of the lowest tiers row does not hold, stopping
+// at the first tier without one. A row that does not record its unit also stops
+// the read: holding its tier could count that unit a second time.
+func (e *Evaluator) stranded(ctx context.Context, person Person, d *Definition, row Progress) ([]Award, bool) {
+	if row.SchemaVersion > ProgressSchemaVersion {
+		return nil, true
+	}
+	held := heldSet(row.TierIDs)
+	var found []Award
+	for _, t := range d.Tiers {
+		if held[t.ID] {
+			continue
+		}
+		a, ok, err := e.store.LoadAward(ctx, person, d.ID, t.ID)
+		if err != nil {
+			return nil, false
+		}
+		if !ok || a.Unit == "" {
+			break
+		}
+		found = append(found, a)
+	}
+	return found, true
 }
 
 // repair saves Normalize(row) when the row is repairable, adding no unit,

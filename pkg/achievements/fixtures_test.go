@@ -152,7 +152,7 @@ type fakeStore struct {
 	// beforeSave runs at the start of each SaveProgress, to model another replica writing first.
 	beforeSave func(s *fakeStore, attempt int)
 
-	loads, creates, saves, awardCalls int
+	loads, creates, saves, awardCalls, awardLoads int
 }
 
 func newFakeStore() *fakeStore {
@@ -165,7 +165,7 @@ func (s *fakeStore) seed(p Progress) {
 	s.progress[p.AchievementID] = p
 }
 
-func (s *fakeStore) calls() int { return s.loads + s.creates + s.saves + s.awardCalls }
+func (s *fakeStore) calls() int { return s.loads + s.creates + s.saves + s.awardCalls + s.awardLoads }
 
 func (s *fakeStore) LoadProgress(_ context.Context, _ Person, ids []string) (map[string]Progress, error) {
 	s.loads++
@@ -222,6 +222,15 @@ func (s *fakeStore) CreateAward(_ context.Context, _ Person, a Award) error {
 	}
 	s.awards[key] = a
 	return nil
+}
+
+func (s *fakeStore) LoadAward(_ context.Context, _ Person, achievementID, tierID string) (Award, bool, error) {
+	s.awardLoads++
+	if s.loadErr != nil {
+		return Award{}, false, s.loadErr
+	}
+	a, ok := s.awards[achievementID+"/"+tierID]
+	return a, ok, nil
 }
 
 type fakePolicy struct {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -266,6 +267,13 @@ func (a *fakeAchievementAPI) spec(resource, name string) map[string]any {
 	return obj["spec"].(map[string]any)
 }
 
+func (a *fakeAchievementAPI) annotations(resource, name string) map[string]any {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	annotations, _ := a.objects[resource+"/"+name]["metadata"].(map[string]any)["annotations"].(map[string]any)
+	return annotations
+}
+
 // validateAgainstSchema covers the OpenAPI subset the two CRDs use.
 func validateAgainstSchema(path string, value any, schema map[string]any) []string {
 	bad := func(format string, args ...any) []string {
@@ -443,12 +451,13 @@ func TestAchievementStore_ProgressWriteIsStampedAndSchemaValid(t *testing.T) {
 func TestAchievementStore_AwardWriteIsStamped(t *testing.T) {
 	store, api := newAchievementTestStore(t)
 	err := store.CreateAward(context.Background(), achievementTestPerson, achievements.Award{
-		AchievementID: "guides-finished", TierID: "silver", Entity: "guides", EarnedAt: achievementTestNow,
+		AchievementID: "guides-finished", TierID: "silver", Entity: "guides", Unit: "guide:7:bundled5:intro", EarnedAt: achievementTestNow,
 	})
 	if err != nil {
 		t.Fatalf("CreateAward: %v", err)
 	}
-	spec := api.spec(achievementAwardResource, achievementAwardName(achievementTestPerson.ID, "guides-finished", "silver"))
+	name := achievementAwardName(achievementTestPerson.ID, "guides-finished", "silver")
+	spec := api.spec(achievementAwardResource, name)
 	if spec == nil {
 		t.Fatal("award not stored under its tier name")
 	}
@@ -464,6 +473,9 @@ func TestAchievementStore_AwardWriteIsStamped(t *testing.T) {
 	}
 	if len(spec) != len(want) {
 		t.Errorf("spec = %v, want exactly %v", spec, want)
+	}
+	if got := api.annotations(achievementAwardResource, name); !maps.Equal(got, map[string]any{"pathfinderbackend.ext.grafana.app/unit": "guide:7:bundled5:intro"}) {
+		t.Errorf("annotations = %v, want the earning unit outside the spec the kind fixes", got)
 	}
 }
 

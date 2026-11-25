@@ -20,6 +20,8 @@ type outcome struct {
 	// next is the progress to persist; meaningful only when changed.
 	next    Progress
 	changed bool
+	// unit is the ledger key the event counted, recorded on the award it earns.
+	unit string
 }
 
 // evaluate is the pure step 4 of RFC §6.3: one event against one achievement's
@@ -71,32 +73,71 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 		decision: d.decision(d.kind(awarded, held, after), "", awarded, after, next.Points),
 		next:     next,
 		changed:  true,
+		unit:     unit,
 	}
 }
 
-// keepWritten holds every tier in written, whose award rows this event already
-// created. A re-run after a conflict can find the event's unit counted by
-// another writer at a lower worth, and must not leave those awards unheld. An
-// award row from an earlier call whose save failed carries no unit to match, so
-// it stays unheld until the tier's goal is next reached.
-func (d *Definition) keepWritten(stored Progress, out outcome, written []string) outcome {
-	base := stored
+// apply settles ev against stored after holding each stranded tier, one whose
+// award row exists because the call that created it failed to save the row.
+func (d *Definition) apply(stored Progress, stranded []Award, ev Event, written []string) outcome {
+	if Classify(stored) == ShapeRepairable {
+		stored = Normalize(stored)
+	}
+	healed, retried := d.heal(stored, stranded, ev)
+	var out outcome
+	if !retried {
+		out = evaluate(d, healed, ev)
+	}
+	return d.keepHeld(stored, healed, out, written, len(stranded) > 0)
+}
+
+// heal completes each stranded tier's failed save. retried reports that ev
+// brings the unit the award row records, so it is that call again and must
+// count nothing more, though a later tier may count it by another unit.
+func (d *Definition) heal(stored Progress, stranded []Award, ev Event) (Progress, bool) {
+	if len(stranded) == 0 {
+		return stored, false
+	}
+	held := heldSet(stored.TierIDs)
+	units := slices.Clone(stored.Units)
+	retried := false
+	for _, a := range stranded {
+		held[a.TierID] = true
+		if i, found := slices.BinarySearch(units, a.Unit); !found && len(units) < maxUnits {
+			units = slices.Insert(units, i, a.Unit)
+		}
+		if i := slices.IndexFunc(d.Tiers, func(t Tier) bool { return t.ID == a.TierID }); i >= 0 {
+			unit, _, reason := d.Tiers[i].score(ev)
+			retried = retried || (reason == "" && unit == a.Unit)
+		}
+	}
+	healed := stored
+	healed.SchemaVersion = ProgressSchemaVersion
+	healed.TierIDs = d.mergeHeld(stored.TierIDs, held)
+	healed.Units = units
+	healed.Points = 0
+	return healed, retried
+}
+
+// keepHeld finishes out, ev scored against healed, so the save also holds every
+// tier in written. A re-run after a conflict can find the event's unit counted
+// by another writer at a lower worth, and must not leave those awards unheld.
+// The decision reports each tier the save adds to stored's held set.
+func (d *Definition) keepHeld(stored, healed Progress, out outcome, written []string, wasHealed bool) outcome {
+	if out.decision.Reason == ReasonRecordNewer {
+		return out
+	}
+	base := healed
 	if out.changed {
 		base = out.next
 	}
 	held := heldSet(base.TierIDs)
-	var missing []string
-	for _, id := range written {
-		if !held[id] {
-			missing = append(missing, id)
-		}
-	}
-	if len(missing) == 0 || out.decision.Reason == ReasonRecordNewer {
-		return out
-	}
 	after := maps.Clone(held)
-	for _, id := range missing {
+	for _, id := range written {
 		after[id] = true
+	}
+	if len(after) == len(held) && !wasHealed {
+		return out
 	}
 	next := base
 	next.SchemaVersion = ProgressSchemaVersion
@@ -104,22 +145,19 @@ func (d *Definition) keepWritten(stored Progress, out outcome, written []string)
 	if d.lowestUnheld(after) != d.lowestUnheld(held) {
 		next.Points = 0
 	}
-	awarded := d.inTierOrder(heldSet(append(slices.Clone(out.decision.Awarded), missing...)))
-	return outcome{
-		decision: d.decision(d.kind(awarded, heldSet(stored.TierIDs), after), "", awarded, after, next.Points),
-		next:     next,
-		changed:  true,
-	}
-}
-
-func (d *Definition) inTierOrder(ids map[string]bool) []string {
-	var ordered []string
+	before := heldSet(stored.TierIDs)
+	var awarded []string
 	for _, t := range d.Tiers {
-		if ids[t.ID] {
-			ordered = append(ordered, t.ID)
+		if after[t.ID] && !before[t.ID] {
+			awarded = append(awarded, t.ID)
 		}
 	}
-	return ordered
+	return outcome{
+		decision: d.decision(d.kind(awarded, before, after), "", awarded, after, next.Points),
+		next:     next,
+		changed:  true,
+		unit:     out.unit,
+	}
 }
 
 // score is the unit ev counts toward t and the highest worth among the rules

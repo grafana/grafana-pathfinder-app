@@ -104,6 +104,16 @@ func (m *memAchievements) CreateAward(_ context.Context, p achievements.Person, 
 	return nil
 }
 
+func (m *memAchievements) LoadAward(_ context.Context, p achievements.Person, achievementID, tierID string) (achievements.Award, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.loadErr != nil {
+		return achievements.Award{}, false, m.loadErr
+	}
+	a, ok := m.awards[p.ID+"/"+achievementID+"/"+tierID]
+	return a, ok, nil
+}
+
 func (m *memAchievements) ListMine(_ context.Context, p achievements.Person) (achievements.Rows, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

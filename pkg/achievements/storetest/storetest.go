@@ -7,6 +7,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func seedProgress(id string) achievements.Progress {
 }
 
 func award(id, tierID string) achievements.Award {
-	return achievements.Award{AchievementID: id, TierID: tierID, Entity: "guides", EarnedAt: time.Date(2026, 11, 2, 9, 30, 0, 0, time.UTC)}
+	return achievements.Award{AchievementID: id, TierID: tierID, Entity: "guides", Unit: "guide:7:bundled5:intro", EarnedAt: time.Date(2026, 11, 2, 9, 30, 0, 0, time.UTC)}
 }
 
 func mustCreate(t *testing.T, s achievements.Store, p achievements.Person, id string) achievements.Progress {
@@ -75,6 +76,8 @@ func Run(t *testing.T, newStore Factory) {
 		{"award create twice is ErrExists", awardTwice},
 		{"awards are independent per tier id, achievement and person", awardIndependent},
 		{"racing award creates have exactly one winner", awardRace},
+		{"an award loads as created, unit included", awardLoads},
+		{"a missing award loads as absent", awardMissing},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { c.run(t, newStore(t)) })
@@ -363,6 +366,36 @@ func awardRace(t *testing.T, s achievements.Store) {
 	}
 }
 
+func awardLoads(t *testing.T, s achievements.Store) {
+	want := award("a", "bronze")
+	want.Unit = "guide:7:bundled" + strings.Repeat("x", 505)
+	if err := s.CreateAward(context.Background(), alice, want); err != nil {
+		t.Fatalf("CreateAward: %v", err)
+	}
+	got, ok, err := s.LoadAward(context.Background(), alice, "a", "bronze")
+	if err != nil || !ok {
+		t.Fatalf("LoadAward = %v, %v", ok, err)
+	}
+	if got.AchievementID != want.AchievementID || got.TierID != want.TierID || got.Entity != want.Entity || got.Unit != want.Unit || !got.EarnedAt.Equal(want.EarnedAt) {
+		t.Fatalf("loaded %+v, want %+v", got, want)
+	}
+}
+
+func awardMissing(t *testing.T, s achievements.Store) {
+	if err := s.CreateAward(context.Background(), alice, award("a", "bronze")); err != nil {
+		t.Fatalf("CreateAward: %v", err)
+	}
+	for _, c := range []struct {
+		person achievements.Person
+		id     string
+		tierID string
+	}{{alice, "a", "silver"}, {alice, "b", "bronze"}, {bob, "a", "bronze"}} {
+		if _, ok, err := s.LoadAward(context.Background(), c.person, c.id, c.tierID); err != nil || ok {
+			t.Errorf("LoadAward(%+v) = %v, %v, want absent", c, ok, err)
+		}
+	}
+}
+
 // Memory is an in-memory Store with the semantics the contract requires.
 type Memory struct {
 	mu       sync.Mutex
@@ -433,4 +466,11 @@ func (m *Memory) CreateAward(_ context.Context, person achievements.Person, a ac
 	}
 	m.awards[k] = a
 	return nil
+}
+
+func (m *Memory) LoadAward(_ context.Context, person achievements.Person, achievementID, tierID string) (achievements.Award, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	a, ok := m.awards[key(person, achievementID, tierID)]
+	return a, ok, nil
 }

@@ -62,7 +62,10 @@ type Award struct {
 	AchievementID string
 	TierID        string
 	Entity        string
-	EarnedAt      time.Time
+	// Unit is the ledger key the earning event counted, so a progress save that
+	// failed after the award can be completed. Empty on rows that predate it.
+	Unit     string
+	EarnedAt time.Time
 }
 
 // Store is the persistence port. Implementations write as the caller.
@@ -76,6 +79,8 @@ type Store interface {
 	SaveProgress(ctx context.Context, person Person, p Progress) (Progress, error)
 	// CreateAward returns ErrExists when the tier was already awarded.
 	CreateAward(ctx context.Context, person Person, a Award) error
+	// LoadAward reports false when the tier's award row does not exist.
+	LoadAward(ctx context.Context, person Person, achievementID, tierID string) (Award, bool, error)
 }
 
 // Policy is the admission port: people only, with a per-user rate limit. A

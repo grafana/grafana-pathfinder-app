@@ -197,7 +197,10 @@ The SDK also serves `backend/api/v1/achievements/events` (POST),
 
 Only authenticated user principals can submit or read achievements. SDK writes
 stamp the caller and namespace from verified authentication and use delegated
-clients. Award names remain deterministic and awards are create-only. Progress
+clients. Award names remain deterministic and awards are create-only. An award
+records the unit that earned it in the `pathfinderbackend.ext.grafana.app/unit`
+annotation, outside the spec the backend fixes, so a progress save that fails
+after the award is completed by the next event instead of stranding the tier. Progress
 uses resource-version concurrency; a successful save with an unreadable response
 remains durable and forces the next update to reload. The events limit is 30
 requests with a refill of 0.5 per second, isolated by namespace and user.

@@ -333,24 +333,26 @@ func TestEvaluateRetryAfterAFailedAwardCreateReportsTheTier(t *testing.T) {
 	}
 }
 
-func TestEvaluateADuplicateDuringAnotherEventsSaveHoldsNoTier(t *testing.T) {
+// The duplicate arrives between the earning event's award create and its save,
+// so it finds bronze stranded and completes that save first.
+func TestEvaluateADuplicateDuringAnotherEventsSaveCountsTheEarningUnitOnce(t *testing.T) {
 	store := newFakeStore()
 	store.seed(Progress{AchievementID: "well-rounded", Units: []string{unitKey("guide-category", "interactive")}, Points: 1, SchemaVersion: ProgressSchemaVersion})
 	replica := newTestEvaluator(t, store, &fakePolicy{})
+	var duplicate Decision
 	store.beforeSave = func(s *fakeStore, attempt int) {
 		if attempt == 1 {
 			s.beforeSave = nil
-			if d := decisionFor(t, mustEvaluate(t, replica, guideCompleted("again", "interactive")), "well-rounded"); d.Reason != ReasonDuplicate || len(d.Awarded) != 0 {
-				t.Errorf("the duplicate = %+v, want it to earn nothing", d)
-			}
+			duplicate = decisionFor(t, mustEvaluate(t, replica, guideCompleted("again", "interactive")), "well-rounded")
 		}
 	}
-	decisions := mustEvaluate(t, newTestEvaluator(t, store, &fakePolicy{}), guideCompleted("docs", "documentation"))
-	if d := decisionFor(t, decisions, "well-rounded"); d.Decision != KindAward || !equalStrings(d.Awarded, []string{"bronze"}) {
-		t.Errorf("the new category = %+v, want bronze", d)
+	earning := decisionFor(t, mustEvaluate(t, newTestEvaluator(t, store, &fakePolicy{}), guideCompleted("docs", "documentation")), "well-rounded")
+	if !equalStrings(duplicate.Awarded, []string{"bronze"}) || len(earning.Awarded) != 0 || earning.Reason != ReasonDuplicate {
+		t.Errorf("duplicate = %+v earning = %+v, want bronze reported once, by the save that held it", duplicate, earning)
 	}
-	if row := store.progress["well-rounded"]; !equalStrings(row.TierIDs, []string{"bronze"}) || len(row.Units) != 2 || len(store.awards) != 1 {
-		t.Errorf("row = %+v awards = %d, want bronze from two categories and one award", row, len(store.awards))
+	row := store.progress["well-rounded"]
+	if !equalStrings(row.TierIDs, []string{"bronze"}) || len(row.Units) != 2 || row.Points != 0 || len(store.awards) != 1 {
+		t.Errorf("row = %+v awards = %d, want bronze from two categories, nothing toward silver and one award", row, len(store.awards))
 	}
 }
 
@@ -409,9 +411,10 @@ func TestEvaluateConflict(t *testing.T) {
 			t.Errorf("row = %+v, want both units and one point toward silver", got)
 		}
 	})
-	t.Run("a replica counted the same unit at a lower worth: the award this event wrote stays held", func(t *testing.T) {
+	t.Run("a replica counted the same unit at a lower worth: an award row without its unit that this event found stays held", func(t *testing.T) {
 		store := newFakeStore()
 		store.seed(Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze", "silver"}, Points: 8, SchemaVersion: ProgressSchemaVersion})
+		store.awards["dash-builder/gold"] = Award{AchievementID: "dash-builder", TierID: "gold"}
 		replica := newTestEvaluator(t, store, &fakePolicy{})
 		store.beforeSave = func(s *fakeStore, attempt int) {
 			if attempt == 1 {
@@ -488,8 +491,8 @@ func TestEvaluateRecordNewerIsTransientAndUntouched(t *testing.T) {
 	if d.Reason != ReasonRecordNewer || !Retry(decisions) {
 		t.Errorf("decision = %+v retry=%v", d, Retry(decisions))
 	}
-	if store.saves != 0 || store.awardCalls != 0 || store.progress["dash-builder"].Version != before.Version {
-		t.Error("a newer-schema record was modified")
+	if store.saves != 0 || store.awardCalls != 0 || store.awardLoads != 0 || store.progress["dash-builder"].Version != before.Version {
+		t.Error("a newer-schema record was modified or its awards read")
 	}
 }
 

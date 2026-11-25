@@ -25,6 +25,9 @@ const (
 	achievementKindAward    = "AchievementAward"
 
 	AchievementStoreMaxBytes = 256 * 1024
+
+	// The award kind's schema is fixed on the backend, so the earning unit rides as an annotation.
+	achievementAwardUnitAnnotation = "pathfinderbackend.ext.grafana.app/unit"
 )
 
 // Field names track kinds/achievementprogress.cue and kinds/achievementaward.cue
@@ -56,9 +59,10 @@ type achievementAwardSpec struct {
 }
 
 type achievementObjectMeta struct {
-	Name            string `json:"name"`
-	Namespace       string `json:"namespace"`
-	ResourceVersion string `json:"resourceVersion,omitempty"`
+	Name            string            `json:"name"`
+	Namespace       string            `json:"namespace"`
+	ResourceVersion string            `json:"resourceVersion,omitempty"`
+	Annotations     map[string]string `json:"annotations,omitempty"`
 }
 
 type achievementObject[S any] struct {
@@ -193,6 +197,9 @@ func (s *AchievementStore) CreateAward(ctx context.Context, person achievements.
 			StackNamespace:  s.writer.Namespace,
 			SchemaVersion:   achievements.SchemaVersion,
 		},
+	}
+	if a.Unit != "" {
+		obj.Metadata.Annotations = map[string]string{achievementAwardUnitAnnotation: a.Unit}
 	}
 	payload, err := json.Marshal(obj)
 	if err != nil {
@@ -337,6 +344,7 @@ func (s *AchievementStore) LoadAward(ctx context.Context, person achievements.Pe
 		AchievementID: obj.Spec.AchievementID,
 		TierID:        obj.Spec.TierID,
 		Entity:        obj.Spec.Entity,
+		Unit:          obj.Metadata.Annotations[achievementAwardUnitAnnotation],
 		EarnedAt:      earnedAt,
 	}, true, nil
 }

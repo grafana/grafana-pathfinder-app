@@ -235,3 +235,8 @@ and save acknowledgement of a row it wrote in full: one that comes back without 
 kind does not serve it, so the store logs a Warn naming the field and returns `ErrFieldUnserved`, the event is
 `store_unavailable`, and nothing is spent. A stranded row heals on the first event after the kind serves the
 field. `/my` is read-only: it shows `Normalize(row)` for a repairable row and never writes a repair.
+A tier is stranded when its award row exists but the progress row does not hold it, because the save after
+the award create failed. Before scoring, the evaluator holds each stranded tier in the same save that scores
+the event: the unit the award row records joins the ledger and the points reset, so later-tier evidence is
+never discarded and the retry counts nothing more. An award row that records no unit is not held early,
+because its unit could then count twice.
