@@ -11,6 +11,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { JsonGuide } from '../types';
 import { BACKEND_TRACKING_STORAGE_KEY } from '../constants';
+import { extractFetchErrorStatus } from '../../../lib/fetch-error';
 import { logger } from '../../../lib/logging';
 import { notify } from '../notify';
 import { detailsDifferFromAuthor, type DefaultedAuthor, type GuideDetails } from '../utils/derive-manifest';
@@ -106,6 +107,8 @@ const CLOSED_CONFIRM_MODAL: BackendSaveFlowConfirmModal = {
 export interface UseBackendSaveFlowReturn {
   /** Resource name of the guide currently tracked against the backend (null if never saved) */
   currentGuideResourceName: string | null;
+  canSaveAsNew: boolean;
+  forgetDeletedGuide: (resourceName: string) => void;
   /** Backend metadata for the currently tracked guide, if known */
   currentGuideMetadata: BackendSaveFlowGuideEntry['metadata'] | null;
   /** Derived save/publish status for the current guide */
@@ -156,27 +159,68 @@ export function useBackendSaveFlow({
   const [storedGuide, setStoredGuide] = useState<BackendSaveFlowGuideEntry | undefined>();
   const { readGuide } = backendGuides;
   const readSeq = useRef(0);
+  const restoreRead = useRef<ReturnType<typeof readGuide> | null>(null);
   const syncedName = useRef<string | null>(null);
+  const [deletedGuideName, setDeletedGuideName] = useState<string | null>(null);
+  const handleClearBackendTracking = useCallback(() => {
+    readSeq.current++;
+    syncedName.current = null;
+    restoreRead.current = null;
+    setStoredGuide(undefined);
+    setCurrentGuideResourceName(null);
+    setLastPublishedJson(null);
+    setDeletedGuideName(null);
+  }, []);
+  const forgetDeletedGuide = useCallback(
+    (resourceName: string) => {
+      if (syncedName.current === resourceName) {
+        handleClearBackendTracking();
+        setDeletedGuideName(resourceName);
+        notify(
+          'info',
+          'Guide deleted from the library',
+          'Your local draft is still here. Choose Save as new to keep it in the library.'
+        );
+      }
+    },
+    [handleClearBackendTracking]
+  );
   // Takes a stored entry already in hand, superseding any read still in flight.
   const adoptStored = useCallback((resourceName: string, entry: BackendSaveFlowGuideEntry) => {
     readSeq.current++;
     syncedName.current = resourceName;
+    restoreRead.current = null;
+    setDeletedGuideName(null);
     setStoredGuide(entry);
   }, []);
   const syncStoredGuide = useCallback(
-    (resourceName: string): Promise<void> => {
+    (resourceName: string, restoring = false): Promise<void> => {
       const seq = ++readSeq.current;
       syncedName.current = resourceName;
-      return readGuide(resourceName).then(
-        (stored) => {
-          if (seq === readSeq.current) {
-            setStoredGuide(stored);
+      const read = readGuide(resourceName);
+      if (restoring) {
+        restoreRead.current = read;
+      }
+      return read
+        .then(
+          (stored) => {
+            if (seq === readSeq.current) {
+              if (restoring && !stored) {
+                forgetDeletedGuide(resourceName);
+              } else {
+                setStoredGuide(stored);
+              }
+            }
+          },
+          (error: unknown) => logger.warn('[BlockEditor] Failed to read the tracked guide', { error })
+        )
+        .finally(() => {
+          if (restoreRead.current === read) {
+            restoreRead.current = null;
           }
-        },
-        (error: unknown) => logger.warn('[BlockEditor] Failed to read the tracked guide', { error })
-      );
+        });
     },
-    [readGuide]
+    [readGuide, forgetDeletedGuide]
   );
   // A write's own response carries the version the editor's content is now based on, so it seeds the entry;
   // re-reading is only the fallback for a response that holds no resource.
@@ -202,7 +246,7 @@ export function useBackendSaveFlow({
   // Only a restored name needs this read: loads seed the entry and writes track their own.
   useEffect(() => {
     if (currentGuideResourceName && syncedName.current !== currentGuideResourceName) {
-      void syncStoredGuide(currentGuideResourceName);
+      void syncStoredGuide(currentGuideResourceName, true);
     }
   }, [currentGuideResourceName, syncStoredGuide]);
 
@@ -287,6 +331,7 @@ export function useBackendSaveFlow({
       // Track the content that was last synced to the backend
       setLastPublishedJson(JSON.stringify(guide));
 
+      setDeletedGuideName(null);
       setCurrentGuideResourceName(generatedResourceName);
       await trackWrite(generatedResourceName, status, saved?.written);
 
@@ -324,21 +369,24 @@ export function useBackendSaveFlow({
 
         let tracked = currentGuideEntry;
         if (isUpdate && !tracked?.metadata.resourceVersion) {
-          // The version is unknown: the read that restored tracking failed or has not landed, or a first
-          // save's response held no resource and its re-read failed. Read now rather than write blind: a
-          // failed read fails the save, and a draft save must not unpublish a guide the editor did not
-          // know was published.
-          tracked = await backendGuides.readGuide(resourceName);
-          if (tracked) {
-            adoptStored(resourceName, tracked);
-            if (status === 'draft' && tracked.spec.status === 'published') {
-              notify('error', 'Save failed', 'This guide is published. Use Update to save your changes.');
-              return;
-            }
+          // A draft save must not unpublish a guide whose version the editor never loaded.
+          tracked = await (restoreRead.current ?? backendGuides.readGuide(resourceName));
+          if (syncedName.current !== resourceName) {
+            return;
+          }
+          if (!tracked) {
+            forgetDeletedGuide(resourceName);
+            return;
+          }
+          adoptStored(resourceName, tracked);
+          if (status === 'draft' && tracked.spec.status === 'published') {
+            notify('error', 'Save failed', 'This guide is published. Use Update to save your changes.');
+            return;
           }
         }
 
-        if (!isUpdate) {
+        // A create-only POST still detects a name reclaimed since deletion.
+        if (!isUpdate && resourceName !== deletedGuideName) {
           const existingGuide = await backendGuides.readGuide(resourceName);
           if (existingGuide) {
             return new Promise<void>((resolve) => {
@@ -385,11 +433,29 @@ export function useBackendSaveFlow({
           tracked?.spec.status ?? null
         );
       } catch (error) {
+        if (currentGuideResourceName && extractFetchErrorStatus(error) === 404) {
+          forgetDeletedGuide(currentGuideResourceName);
+          return;
+        }
+        if (deletedGuideName && extractFetchErrorStatus(error) === 409) {
+          setDeletedGuideName(null);
+          notify('error', 'Guide name already in use', 'Choose Save to review the existing guide before replacing it.');
+          return;
+        }
         logger.error('[BlockEditor] Failed to save guide', { error });
         notify('error', 'Save failed', error instanceof Error ? error.message : 'Unknown error');
       }
     },
-    [editor, backendGuides, currentGuideResourceName, currentGuideEntry, adoptStored, performBackendSave]
+    [
+      editor,
+      backendGuides,
+      currentGuideResourceName,
+      currentGuideEntry,
+      adoptStored,
+      performBackendSave,
+      deletedGuideName,
+      forgetDeletedGuide,
+    ]
   );
 
   // Busy until tracking settles, not just until the write returns: a second save or unpublish in that
@@ -426,10 +492,14 @@ export function useBackendSaveFlow({
       setLastPublishedJson(JSON.stringify(editor.getGuide()));
       notify('success', 'Guide unpublished.');
     } catch (error) {
+      if (extractFetchErrorStatus(error) === 404) {
+        forgetDeletedGuide(currentGuideResourceName);
+        return;
+      }
       logger.error('[BlockEditor] Failed to unpublish guide', { error });
       notify('error', 'Unpublish failed', error instanceof Error ? error.message : 'Unknown error');
     }
-  }, [backendGuides, currentGuideResourceName, editor, trackWrite]);
+  }, [backendGuides, currentGuideResourceName, editor, forgetDeletedGuide, trackWrite]);
 
   /** Unpublish a published guide — sets it back to draft, removing it from the docs panel */
   const performUnpublish = useCallback(() => exclusive(unpublishTracked), [exclusive, unpublishTracked]);
@@ -439,12 +509,6 @@ export function useBackendSaveFlow({
     () => exclusive(() => orchestrateSave('published')),
     [exclusive, orchestrateSave]
   );
-
-  // Clear backend tracking when starting a new guide
-  const handleClearBackendTracking = useCallback(() => {
-    setCurrentGuideResourceName(null);
-    setLastPublishedJson(null);
-  }, []);
 
   // Track a guide freshly loaded from the backend library. Its stored resource is what the content came
   // from, so it seeds the status and the resourceVersion the next save carries, with no second read.
@@ -459,6 +523,8 @@ export function useBackendSaveFlow({
   );
 
   return {
+    canSaveAsNew: deletedGuideName !== null,
+    forgetDeletedGuide,
     currentGuideResourceName,
     currentGuideMetadata,
     publishedStatus,

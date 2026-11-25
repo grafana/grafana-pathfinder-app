@@ -8,9 +8,7 @@
  * field. This command closes that hole.
  *
  * Block-level id renames (renaming an interactive block from `tour-home` to
- * `tour-start`) remain out of scope; doing those safely requires walking the
- * tree to update every reference. See the TODO at the edit-block forbid-list
- * site.
+ * `tour-start`) live in `rename-block`, which also rewrites in-package references.
  */
 
 import { z } from 'zod';

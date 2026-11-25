@@ -418,8 +418,8 @@ The two path rows differ, and only the cover page is a transport problem.
 
 **Path cover page — the value never arrives.** `packageInfoForPath`
 (`src/utils/custom-guide-launch.ts`) builds the cover's
-`packageManifest` from the catalogue-proxy entry, and that proxy's
-`customGuideManifest` (`pkg/plugin/custom_guide_repository_client.go`) declares
+`packageManifest` from the SDK catalogue entry. The provider’s
+`CatalogueManifest` (`pkg/services/catalogue_types.go`) declares
 no `additionalFields`, so `encoding/json` drops the key at the wire boundary
 before the reader ever sees it. Promoting `startingLocation` to a typed CUE field
 is the fix for this one.

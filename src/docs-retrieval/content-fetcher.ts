@@ -4,7 +4,7 @@ import { diagnoseGuideError, guideSource } from '../lib/guide-diagnostics';
 // This version ONLY fetches content and extracts basic metadata
 // All DOM processing is moved to React components
 import { RawContent, ContentFetchResult, ContentFetchOptions, ContentType } from '../types/content.types';
-import { parseUrlSafely, isTrustedFinalUrl, isInteractiveLearningUrl } from '../security';
+import { isTrustedFinalUrl, isInteractiveLearningUrl } from '../security';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
 import { generateJourneyContentWithExtras } from './learning-journey-helpers';
 import { resolveRelativeUrls } from './resolve-relative-urls';
@@ -17,6 +17,7 @@ import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
 import { logger } from '../lib/logging';
 import { contentFileSiblingUrl } from '../lib/guide-content-file';
+import { classifyDocsUrl, isJourneyContent } from '../lib/docs-url-family';
 import { getPrTestFetchId, stripPrTestMarker, withPrTestMarker } from '../lib/pr-test-marker';
 import { recordContentFetch, recordContentFetchFallback, type ContentFetchTier } from '../lib/telemetry';
 
@@ -129,11 +130,9 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       }
 
       const contentType = determineContentType(url);
-      // Whether fetchRawHtml actually attempted the content.json ↔ unstyled.html
-      // ladder for this URL. `contentType === 'learning-journey'` only matches
-      // grafana.com path patterns (/tutorials/, /milestone-N/, ...) — generic
-      // guides on the interactive-learning hostnames get the same ladder via a
-      // separate branch in fetchRawHtml, so they must be included here too.
+      // Whether fetchRawHtml attempted the content.json ↔ unstyled.html ladder.
+      // `learning-journey` is `isJourneyContent` (a path rule); interactive-learning
+      // hosts reach the ladder through a separate branch, so they count too.
       const triedContentJsonLadder = contentType === 'learning-journey' || isInteractiveLearningUrl(url);
 
       // fetchRawHtml resolves the content.json ↔ unstyled.html ladder
@@ -352,26 +351,8 @@ function determineContentType(url: string): ContentType {
     return 'single-doc';
   }
 
-  // Parse URL safely
-  const parsedUrl = parseUrlSafely(url);
-  if (!parsedUrl) {
-    // Invalid URL, treat as single-doc
-    return 'single-doc';
-  }
-
-  // Check pathname for learning journey indicators
-  const pathname = parsedUrl.pathname;
-
-  if (
-    pathname.includes('/docs/learning-journeys/') ||
-    pathname.includes('/docs/learning-paths/') ||
-    pathname.includes('/tutorials/') || // Can be /docs/tutorials/ or /tutorials/
-    pathname.match(/\/milestone-\d+/)
-  ) {
-    return 'learning-journey';
-  }
-
-  return 'single-doc';
+  // An unparseable URL classifies as `other`, which is a single doc
+  return isJourneyContent(classifyDocsUrl(url)) ? 'learning-journey' : 'single-doc';
 }
 
 /**

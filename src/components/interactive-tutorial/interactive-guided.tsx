@@ -831,7 +831,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
       setWasCancelled,
     ]);
 
-    useReportExecuting(isExecuting, onExecutingChange);
+    useReportExecuting(isExecuting || isCurrentlyExecuting, onExecutingChange);
 
     const isAnyActionRunning = isExecuting || isCurrentlyExecuting;
 

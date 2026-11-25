@@ -1,3 +1,4 @@
+import type { CheckVerdict } from '../types/requirements.types';
 import { useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { useTheme2 } from '@grafana/ui';
 import { addGlobalInteractiveStyles, updateInteractiveThemeColors } from '../styles/interactive.styles';
@@ -33,6 +34,7 @@ import { toAnalyticsValue } from '../lib/analytics-values';
 
 // Re-export CheckResult and InteractiveRequirementsCheck for backward compatibility
 export interface InteractiveRequirementsCheck {
+  verdict?: CheckVerdict;
   requirements: string;
   pass: boolean;
   error: CheckResult[];
@@ -194,6 +196,7 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
       // Convert to the expected format for backward compatibility
       return {
         requirements: result.requirements,
+        verdict: result.verdict,
         pass: result.pass,
         error: result.error.map((e) => ({
           requirement: e.requirement,
@@ -232,6 +235,7 @@ export function useInteractiveElements(_options: UseInteractiveElementsOptions =
       const result = await checkPostconditions(options);
       return {
         requirements: result.requirements,
+        verdict: result.verdict,
         pass: result.pass,
         error: result.error.map((e) => ({
           requirement: e.requirement,

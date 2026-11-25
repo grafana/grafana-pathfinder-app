@@ -180,11 +180,16 @@ The load-bearing wiring. If you change a producer here, audit consumers carefull
 
 ## Backend architecture (`pkg/`)
 
-The Go executable runs the App SDK provider with `sdkplugin.Run`, without
-`WithAppFunc` or a legacy `CallResource` adapter. SDK custom routes live under
+The Go executable runs the App SDK provider with `sdkplugin.Run` and one
+`sdkplugin.WithAppFunc` instance (`publiccontent.NewPublicFeedInstance`), which
+serves only the anonymous public `package-recommendations` feed as a plugin
+resource. Every tenant route is an SDK custom route under
 `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/{namespace}/backend/`.
 The canonical identity, cache, resource, and write contracts are in
-`docs/design/BACKEND_PROXY_PATTERN.md`.
+`docs/design/BACKEND_PROXY_PATTERN.md`. Load its route recipe
+(`#how-to-add-or-change-a-route`) before adding or changing a route in `pkg/`,
+in `kinds/manifest.cue`, or in the `src/lib/backend-routes.ts` allowlist and its
+`backendRoute(` call sites.
 
 | Package | Responsibility |
 | --- | --- |

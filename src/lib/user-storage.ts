@@ -169,6 +169,20 @@ export function unwrapEnvelope(raw: string | null | undefined): StorageEnvelope 
   return null;
 }
 
+async function syncEnvelope(storage: GrafanaUserStorage, key: string, value: string): Promise<void> {
+  if (!storage.updateItem) {
+    return storage.setItem(key, value);
+  }
+  const incoming = unwrapEnvelope(value)!;
+  await storage.updateItem(key, (current) => {
+    const stored = unwrapEnvelope(current);
+    if (current === value || (stored && stored.t > incoming.t)) {
+      return undefined;
+    }
+    return value;
+  });
+}
+
 // ============================================================================
 // SECURITY LIMITS
 // ============================================================================
@@ -384,10 +398,9 @@ export function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserSto
 
     for (const [key, value] of deduped) {
       try {
-        await grafanaStorage.setItem(key, value);
+        await syncEnvelope(grafanaStorage, key, value);
       } catch (error) {
         logger.warn(`Failed to sync to Grafana storage: ${key}`, { error });
-        // Don't retry - localStorage is the immediate source of truth
       }
     }
 
@@ -445,7 +458,7 @@ export function createHybridStorage(grafanaStorage: GrafanaUserStorage): UserSto
         try {
           const serialized = JSON.stringify(value);
           const timestamp = Date.now();
-          await grafanaStorage.setItem(key, wrapEnvelope(serialized, timestamp));
+          await syncEnvelope(grafanaStorage, key, wrapEnvelope(serialized, timestamp));
         } catch (grafanaError) {
           logger.error(`Failed to write to both storages: ${key}`, { grafanaError });
           throw grafanaError;
@@ -567,7 +580,7 @@ async function readGrafanaKeyWithMigration(
 
     try {
       // Re-write in envelope format (single key)
-      await grafanaStorage.setItem(key, wrapEnvelope(migratedValue, migratedTimestamp));
+      await syncEnvelope(grafanaStorage, key, wrapEnvelope(migratedValue, migratedTimestamp));
       // Clear orphaned __timestamp key from Grafana storage (API has no removeItem, so set to empty)
       await grafanaStorage.setItem(getTimestampKey(key), '');
     } catch (error) {
@@ -641,7 +654,7 @@ export async function syncFromGrafanaStorage(grafanaStorage: GrafanaUserStorage)
           } else if (localTimestamp > grafana.timestamp) {
             // localStorage is newer — sync back to Grafana in envelope format
             const serialized = hasLocalData ? localValue! : '';
-            await grafanaStorage.setItem(key, wrapEnvelope(serialized, localTimestamp));
+            await syncEnvelope(grafanaStorage, key, wrapEnvelope(serialized, localTimestamp));
           }
           // If timestamps are equal, they're in sync
         } else if (hasGrafanaTimestamp && !hasLocalData) {
@@ -654,16 +667,16 @@ export async function syncFromGrafanaStorage(grafanaStorage: GrafanaUserStorage)
           // PRESERVE localStorage data — assign timestamp and sync to Grafana
           const nowTimestamp = Date.now();
           window.localStorage.setItem(getTimestampKey(key), nowTimestamp.toString());
-          await grafanaStorage.setItem(key, wrapEnvelope(localValue!, nowTimestamp));
+          await syncEnvelope(grafanaStorage, key, wrapEnvelope(localValue!, nowTimestamp));
         } else if (hasLocalTimestamp) {
           // Only localStorage has timestamp — sync to Grafana in envelope format
           const serialized = hasLocalData ? localValue! : '';
-          await grafanaStorage.setItem(key, wrapEnvelope(serialized, localTimestamp));
+          await syncEnvelope(grafanaStorage, key, wrapEnvelope(serialized, localTimestamp));
         } else if (hasLocalData) {
           // localStorage has data but no timestamp — assign one and sync
           const nowTimestamp = Date.now();
           window.localStorage.setItem(getTimestampKey(key), nowTimestamp.toString());
-          await grafanaStorage.setItem(key, wrapEnvelope(localValue!, nowTimestamp));
+          await syncEnvelope(grafanaStorage, key, wrapEnvelope(localValue!, nowTimestamp));
         }
         // If neither has data, nothing to sync
       } catch (error) {

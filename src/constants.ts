@@ -3,9 +3,6 @@ import { config } from '@grafana/runtime';
 
 export const PLUGIN_BASE_URL = `/a/${pluginJson.id}`;
 
-// Backend API URL for plugin resource endpoints
-// Grafana routes backend resource calls through /api/plugins/{pluginId}/resources/
-
 // Default configuration values
 export const DEFAULT_DOCS_BASE_URL = 'https://grafana.com';
 

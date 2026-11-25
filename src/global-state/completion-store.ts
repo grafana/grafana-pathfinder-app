@@ -1,3 +1,8 @@
+import {
+  conditionalBranchesReady,
+  conditionalWorkComplete,
+  withConditionalCompletionTargets,
+} from '../lib/guide-stats/conditional-progress';
 import { bundledTutorialContentKey, isBundledTutorial } from '../lib/bundled-tutorial-identity';
 /**
  * Step completion store.
@@ -42,12 +47,14 @@ import { logger } from '../lib/logging';
 import { furthestEvidencedPosition, guideProgress, type CompletionEvidence } from '../lib/guide-stats';
 
 import {
+  activeUnmarkedChoicePositions,
   choiceGuideProgress,
   choicePathCompletionKeys,
   choicePathHasUnansweredRequiredInput,
   CHOICE_COMPLETION_VARIABLE,
 } from '../lib/guide-stats/choice-progress';
 import {
+  getGuideConditionalBranches,
   evictAllGuideIndexes,
   evictGuideIndex,
   getGuideIndex,
@@ -314,7 +321,7 @@ export function notePreviewSectionAcknowledged(contentKey: string, sectionId: st
  * `useSectionPersistence` both skip the storage write for a preview key —
  * there is nothing there to read.
  */
-function collectEvidence(contentKey: string): CompletionEvidence[] {
+export function collectGuideCompletionEvidence(contentKey: string): CompletionEvidence[] {
   const evidence: CompletionEvidence[] = [];
 
   if (isPreviewContentKey(contentKey)) {
@@ -368,8 +375,8 @@ function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
     }
     const progress = choiceGuideProgress(
       active.choiceModel,
-      active.index,
-      collectEvidence(contentKey),
+      withConditionalCompletionTargets(active.index),
+      collectGuideCompletionEvidence(contentKey),
       {
         ...active.responses,
         [CHOICE_COMPLETION_VARIABLE]: JSON.stringify(
@@ -380,7 +387,38 @@ function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
       },
       getHiddenGuideSections(contentKey)
     );
-    return { percent: progress.percent, complete: progress.complete, evidenced: progress.position > 0 };
+    const activePositions = activeUnmarkedChoicePositions(
+      active.choiceModel,
+      active.responses ?? {},
+      getHiddenGuideSections(contentKey),
+      isPreviewContentKey(contentKey)
+        ? (active.previewChoiceCompletionKeys ?? [])
+        : guideCompletionMarkStorage.getChoiceCompletionKeys(contentKey)
+    );
+    const activeConditionals = Array.from(active.index.conditionalPositions ?? []).filter(([, position]) =>
+      activePositions.has(position)
+    );
+    if (
+      !conditionalBranchesReady(
+        activeConditionals.map(([id]) => id),
+        getGuideConditionalBranches(contentKey)
+      )
+    ) {
+      return undefined;
+    }
+    const unfinished = activeConditionals.some(
+      ([id]) =>
+        !conditionalWorkComplete(
+          [id],
+          getGuideConditionalBranches(contentKey),
+          collectGuideCompletionEvidence(contentKey)
+        )
+    );
+    return {
+      percent: unfinished ? Math.min(99, progress.percent) : progress.percent,
+      complete: progress.complete && !unfinished,
+      evidenced: progress.position > 0,
+    };
   }
   if (guideCompletionMarkStorage.isMarked(contentKey)) {
     return { percent: 100, complete: true, evidenced: true };
@@ -388,7 +426,24 @@ function computeGuideProgress(contentKey: string): GuidePercentage | undefined {
   if (!active) {
     return undefined;
   }
-  const progress = guideProgress(active.index, collectEvidence(contentKey));
+  if (
+    !conditionalBranchesReady(active.index.conditionalPositions?.keys() ?? [], getGuideConditionalBranches(contentKey))
+  ) {
+    return undefined;
+  }
+  const evidence = collectGuideCompletionEvidence(contentKey);
+  const progress = guideProgress(withConditionalCompletionTargets(active.index), evidence);
+  const unfinished = Array.from(active.index.conditionalPositions ?? []).filter(
+    ([id]) => !conditionalWorkComplete([id], getGuideConditionalBranches(contentKey), evidence)
+  );
+  if (unfinished.length) {
+    const boundary = Math.min(...unfinished.map(([, position]) => position - 1));
+    return {
+      percent: Math.min(progress.percent, Math.floor((boundary / active.index.totalBlockCount) * 100), 99),
+      complete: false,
+      evidenced: progress.position > 0,
+    };
+  }
   // `position`, not `percent`: the first step of a 250-block guide rounds to
   // 0%, and a reader who has done something has progress either way.
   return { percent: progress.percent, complete: progress.complete, evidenced: progress.position > 0 };
@@ -553,7 +608,7 @@ export function refreshAndNotifyGuideProgress(contentKey: string, origin?: Progr
  */
 export function refreshGuidePercentageOnLoad(contentKey: string): void {
   contentKey = bundledTutorialContentKey(contentKey);
-  if (collectEvidence(contentKey).length === 0) {
+  if (collectGuideCompletionEvidence(contentKey).length === 0) {
     return;
   }
   if (!pendingLoadBaselines.has(contentKey)) {
@@ -680,11 +735,19 @@ export function resetStep(stepId: string, sectionId: string | undefined = STANDA
  * `refreshGuidePercentage` writes from, so every reader of the percentage
  * agrees: the completion store is the sole producer. 0 before the guide's
  * frozen index has published for this content key, or for content with no
- * countable blocks at all.
+ * countable blocks at all. Ordinary conditional guides retain their stored
+ * percentage until the active branches register.
  */
 export function peekGuidePercentage(contentKey: string): number {
   contentKey = bundledTutorialContentKey(contentKey);
-  return computeGuideProgress(contentKey)?.percent ?? 0;
+  const progress = computeGuideProgress(contentKey);
+  if (progress) {
+    return progress.percent;
+  }
+  const active = getGuideIndex(contentKey);
+  return active?.index.conditionalPositions?.size && !active.choiceModel
+    ? (interactiveCompletionStorage.peekAll()[contentKey] ?? 0)
+    : 0;
 }
 
 /**
@@ -699,7 +762,9 @@ export function markGuideEndViewed(contentKey: string, expectsBlockIndex: boolea
     return false;
   }
   const active = getGuideIndex(contentKey);
-  if (active ? active.index.completableBlockCount > 0 : expectsBlockIndex) {
+  if (
+    active ? active.index.completableBlockCount > 0 || !!active.index.conditionalPositions?.size : expectsBlockIndex
+  ) {
     return false;
   }
   let choiceCompletionKeys: string[] | undefined;
