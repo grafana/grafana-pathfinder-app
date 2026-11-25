@@ -187,6 +187,8 @@ For `pkg/**/*.go` changes, also check:
 | Missing context propagation    | G6  | Medium   |
 | Hardcoded secret or credential | G7  | Critical |
 
+A change that adds or alters a route (`pkg/provider`, `kinds/manifest.cue`, or `src/lib/backend-routes.ts`) must also keep every invariant in `docs/design/BACKEND_PROXY_PATTERN.md#route-invariants`.
+
 Verify `npm run lint:go`, `npm run test:go`, and `go build ./...`.
 
 ## Final review report
