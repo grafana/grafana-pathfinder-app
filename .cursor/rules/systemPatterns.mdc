@@ -235,10 +235,11 @@ and save acknowledgement of a row it wrote in full: one that comes back without 
 kind does not serve it, so the store logs a Warn naming the field and returns `ErrFieldUnserved`, the event is
 `store_unavailable`, and nothing is spent. A stranded row heals on the first event after the kind serves the
 field. `/my` is read-only: it shows `Normalize(row)` for a repairable row and never writes a repair.
-A tier is stranded when its award row exists but the progress row does not hold it, because the save after
-the award create failed. Before scoring, the evaluator holds each stranded tier in the same save that scores
-the event: the unit and the event id the award row records are spent and the points reset, so later-tier
-evidence is never discarded. An award row that records no unit or no event id is not held early, because
-either could then count twice. The row records the id of each event counted (`eventIds`), and an event whose
-id is listed counts nothing more, whatever tier or unit it would count toward: tiers may count one pair by
-different units, so the unit alone cannot tell a re-sent event.
+A tier is stranded when its award row exists but the progress row does not hold it, because the save after the
+award create failed. Before scoring, the evaluator holds each stranded tier in the same save that scores the
+event: the unit and the event id the award row records are spent and the points reset, so later-tier evidence
+is never discarded. An award row that records no unit or no event id is not held early, because either could
+then count twice, and neither is one whose event the row already lists: another request for that event was
+saved first, so the award is not that event's to hold. The row records the id of each event counted
+(`eventIds`), and an event whose id is listed counts nothing more, whatever tier or unit it would count
+toward: tiers may count one pair by different units, so the unit alone cannot tell a re-sent event.

@@ -1033,6 +1033,7 @@ func (r *racingStore) SaveProgress(ctx context.Context, person achievements.Pers
 		r.raced = true
 		rival := p
 		rival.Units = []string{unitKeyForTest("bundled", "rival")}
+		rival.EventIDs = []string{"evt-rival"}
 		rival.TierIDs = nil
 		if _, err := r.Store.SaveProgress(ctx, person, rival); err != nil {
 			return achievements.Progress{}, err

@@ -297,3 +297,97 @@ func (s *awardReads) LoadAward(ctx context.Context, p Person, achievementID, tie
 	s.achievements = append(s.achievements, achievementID)
 	return s.fakeStore.LoadAward(ctx, p, achievementID, tierID)
 }
+
+// overlapStore runs a hook the first time the named request reaches a store
+// call, so a test can interleave requests the way concurrent replicas do.
+type overlapStore struct {
+	*fakeStore
+	running     []string
+	beforeAward map[string]func()
+	beforeSave  map[string]func(row Progress) (Progress, error, bool)
+}
+
+func (s *overlapStore) top() string { return s.running[len(s.running)-1] }
+
+func (s *overlapStore) CreateAward(ctx context.Context, p Person, a Award) error {
+	if hook := s.beforeAward[s.top()]; hook != nil {
+		delete(s.beforeAward, s.top())
+		hook()
+	}
+	return s.fakeStore.CreateAward(ctx, p, a)
+}
+
+func (s *overlapStore) SaveProgress(ctx context.Context, p Person, row Progress) (Progress, error) {
+	if hook := s.beforeSave[s.top()]; hook != nil {
+		delete(s.beforeSave, s.top())
+		if saved, err, handled := hook(row); handled {
+			return saved, err
+		}
+	}
+	return s.fakeStore.SaveProgress(ctx, p, row)
+}
+
+func (s *overlapStore) post(t *testing.T, ev *Evaluator, request string, event Event) Decision {
+	s.running = append(s.running, request)
+	defer func() { s.running = s.running[:len(s.running)-1] }()
+	return decisionFor(t, mustEvaluate(t, ev, event), "ladder")
+}
+
+// A posts y and B re-sends it while A is in flight. C posts z, creates bronze's
+// award and fails to save. B heals that bronze, earns silver for y and loses the
+// compare-and-swap to A, which counted y toward bronze: y has counted, so B's
+// silver award is not held, and z's retry earns silver as the serial order y, z does.
+func TestEvaluateOverlappingPostsOfOneEventEndWhereASerialRunDoes(t *testing.T) {
+	ladder := func(silverCountBy string) string {
+		return `{"achievements":[{"id":"ladder","title":"Ladder","description":"Guides.","tiers":[
+		  {"id":"bronze","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]},
+		  {"id":"silver","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":` + silverCountBy + `}]},
+		  {"id":"gold","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]}]}]}`
+	}
+	y, z := guideCompleted("y", "documentation"), guideCompleted("z", "learning-journey")
+	for name, c := range map[string]struct {
+		catalog string
+		silver  string
+	}{
+		"silver counts kinds of guide": {ladder(`{"resource":"guide-category"}`), unitKey("guide-category", "learning-journey")},
+		"every tier counts guides":     {ladder(`"resource"`), unitKey("guide", "bundled", "z")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := &overlapStore{fakeStore: newFakeStore(), beforeAward: map[string]func(){}, beforeSave: map[string]func(Progress) (Progress, error, bool){}}
+			ev := evaluatorFor(t, c.catalog, s)
+			var reported []string
+			s.beforeAward["A"] = func() {
+				s.beforeSave["C"] = func(Progress) (Progress, error, bool) { return Progress{}, errors.New("down"), true }
+				reported = append(reported, s.post(t, ev, "C", z).Awarded...)
+			}
+			s.beforeSave["A"] = func(rowA Progress) (Progress, error, bool) {
+				var saved Progress
+				var err error
+				s.beforeSave["B"] = func(Progress) (Progress, error, bool) {
+					saved, err = s.fakeStore.SaveProgress(context.Background(), testPerson, rowA)
+					return Progress{}, nil, false
+				}
+				if d := s.post(t, ev, "B", y); d.Reason != ReasonDuplicate {
+					t.Errorf("B, y re-sent = %+v, want a duplicate once A's count of y is saved", d)
+				}
+				return saved, err, true
+			}
+			reported = append(reported, s.post(t, ev, "A", y).Awarded...)
+			reported = append(reported, s.post(t, ev, "C retried", z).Awarded...)
+
+			row := s.progress["ladder"]
+			wantUnits := []string{c.silver, unitKey("guide", "bundled", "y")}
+			slices.Sort(wantUnits)
+			if !equalStrings(row.TierIDs, []string{"bronze", "silver"}) || !equalStrings(row.Units, wantUnits) || !equalStrings(row.EventIDs, []string{"evt-y", "evt-z"}) {
+				t.Errorf("row = %+v, want bronze for y and silver for z, each counted once", row)
+			}
+			if _, gold := s.awards["ladder/gold"]; gold || len(s.awards) != 2 {
+				t.Errorf("award rows = %v, want bronze and silver only", s.awards)
+			}
+			slices.Sort(reported)
+			if !equalStrings(reported, []string{"bronze", "silver"}) {
+				t.Errorf("tiers reported = %v, want each held tier once", reported)
+			}
+		})
+	}
+}

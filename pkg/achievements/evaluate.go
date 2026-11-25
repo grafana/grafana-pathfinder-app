@@ -91,6 +91,10 @@ func (d *Definition) apply(stored Progress, stranded []Award, ev Event, written 
 	if Classify(stored) == ShapeRepairable {
 		stored = Normalize(stored)
 	}
+	// Another request for ev was saved first, so this call's awards are not ev's to hold.
+	if hasEventID(stored.EventIDs, ev.ID) {
+		written = nil
+	}
 	healed := d.heal(stored, stranded)
 	return d.keepHeld(stored, healed, evaluate(d, healed, ev), ev, written, len(stranded) > 0)
 }

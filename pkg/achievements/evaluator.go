@@ -117,8 +117,9 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 }
 
 // stranded reads the award rows of the lowest tiers row does not hold, stopping
-// at the first tier without one. A row that does not record its unit and event
-// id also stops the read: holding its tier could count either a second time.
+// at the first tier without one. An award that does not record its unit and
+// event id, or whose event row already lists, also stops the read: holding its
+// tier would count that event a second time.
 func (e *Evaluator) stranded(ctx context.Context, person Person, d *Definition, row Progress) ([]Award, bool) {
 	if row.SchemaVersion > ProgressSchemaVersion {
 		return nil, true
@@ -133,7 +134,7 @@ func (e *Evaluator) stranded(ctx context.Context, person Person, d *Definition, 
 		if err != nil {
 			return nil, false
 		}
-		if !ok || a.Unit == "" || a.EventID == "" {
+		if !ok || a.Unit == "" || a.EventID == "" || hasEventID(row.EventIDs, a.EventID) {
 			break
 		}
 		found = append(found, a)
