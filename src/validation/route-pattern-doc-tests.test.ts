@@ -1,6 +1,7 @@
 /**
  * The route recipe and its invariants table name the Go tests that guard each rule. A renamed or deleted test
  * would leave agents trusting a guard that no longer exists, so every named test must still be defined.
+ * This checks name integrity only: each cited Go test name still exists in source, not that the test runs.
  */
 
 import fs from 'fs';
