@@ -471,3 +471,29 @@ func TestEvaluateNoAwardIsCreatedAgainstAnUnsavedHeal(t *testing.T) {
 		}
 	})
 }
+
+// A heal saved on the last attempt adds one attempt, to score the event against
+// it, and the retries still end in a transient conflict.
+func TestEvaluateAHealSavedOnTheLastAttemptStillEndsTheRetries(t *testing.T) {
+	const catalog = `{"achievements":[{"id":"reader","title":"Reader","description":"A guide, then a kind of guide.","tiers":[
+	  {"id":"bronze","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]},
+	  {"id":"silver","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":{"resource":"guide-category"}}]}]}]}`
+	store := newFakeStore()
+	store.seed(Progress{AchievementID: "reader", SchemaVersion: ProgressSchemaVersion})
+	store.awards["reader/bronze"] = Award{AchievementID: "reader", TierID: "bronze", Entity: "guides", Unit: unitKey("guide", "bundled", "w"), EventID: "evt-w"}
+	store.beforeSave = func(s *fakeStore, n int) {
+		switch {
+		case n > 20:
+			s.saveErr = errors.New("the retries never ended")
+		case n != maxAttempts:
+			s.seed(s.progress["reader"])
+		}
+	}
+	decisions := mustEvaluate(t, evaluatorFor(t, catalog, store), guideCompleted("x", "interactive"))
+	if d := decisionFor(t, decisions, "reader"); d.Reason != ReasonConflict || !Retry(decisions) || store.saves != maxAttempts+1 {
+		t.Errorf("decision = %+v after %d saves, want a transient conflict after %d", d, store.saves, maxAttempts+1)
+	}
+	if row := store.progress["reader"]; !equalStrings(row.TierIDs, []string{"bronze"}) {
+		t.Errorf("row = %+v, want the saved heal kept", row)
+	}
+}
