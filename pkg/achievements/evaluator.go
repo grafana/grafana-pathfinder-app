@@ -9,8 +9,9 @@ import (
 
 const maxAttempts = 5
 
-// Evaluator runs RFC §6.3 against a catalog and two ports. It does no I/O of
-// its own.
+// Evaluator runs RFC §6.3, with the departures in
+// docs/design/ACHIEVEMENTS_RFC_DEPARTURES.md, against a catalog and two
+// ports. It does no I/O of its own.
 type Evaluator struct {
 	catalog *Catalog
 	store   Store

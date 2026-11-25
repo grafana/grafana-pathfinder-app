@@ -24,9 +24,10 @@ type outcome struct {
 	unit string
 }
 
-// evaluate is the pure step 4 of RFC §6.3: one event against one achievement's
-// stored progress. Only the lowest tier not held accrues, and an event earns at
-// most that tier; points past its goal do not carry over.
+// evaluate is the pure step 4 of RFC §6.3, changed as
+// docs/design/ACHIEVEMENTS_RFC_DEPARTURES.md records: one event against one
+// achievement's stored progress. Only the lowest tier not held accrues, and an
+// event earns at most that tier; points past its goal do not carry over.
 func evaluate(d *Definition, stored Progress, ev Event) outcome {
 	if Classify(stored) == ShapeRepairable {
 		stored = Normalize(stored)

@@ -39,7 +39,8 @@ type Pair struct {
 	Action string
 }
 
-// Catalog is the closed-grammar list of achievement definitions (RFC §6.2).
+// Catalog is the closed-grammar list of achievement definitions (RFC §6.2, with
+// the departures in docs/design/ACHIEVEMENTS_RFC_DEPARTURES.md).
 type Catalog struct {
 	Achievements []Definition `json:"achievements"`
 }

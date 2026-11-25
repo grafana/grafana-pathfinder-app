@@ -121,7 +121,8 @@ func (r Reason) Transient() bool {
 	}
 }
 
-// Decision is the advisory outcome for one achievement (RFC §6.3, §6.5).
+// Decision is the advisory outcome for one achievement (RFC §6.3 and §6.5, with
+// the departures in docs/design/ACHIEVEMENTS_RFC_DEPARTURES.md).
 type Decision struct {
 	AchievementID string `json:"achievementId"`
 	Decision      Kind   `json:"decision"`
