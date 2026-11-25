@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -303,11 +304,26 @@ func (s *awardReads) LoadAward(ctx context.Context, p Person, achievementID, tie
 type overlapStore struct {
 	*fakeStore
 	running     []string
+	afterLoad   map[string]func()
 	beforeAward map[string]func()
 	beforeSave  map[string]func(row Progress) (Progress, error, bool)
 }
 
+func newOverlapStore() *overlapStore {
+	return &overlapStore{fakeStore: newFakeStore(), afterLoad: map[string]func(){}, beforeAward: map[string]func(){},
+		beforeSave: map[string]func(Progress) (Progress, error, bool){}}
+}
+
 func (s *overlapStore) top() string { return s.running[len(s.running)-1] }
+
+func (s *overlapStore) LoadProgress(ctx context.Context, p Person, ids []string) (map[string]Progress, error) {
+	rows, err := s.fakeStore.LoadProgress(ctx, p, ids)
+	if hook := s.afterLoad[s.top()]; hook != nil {
+		delete(s.afterLoad, s.top())
+		hook()
+	}
+	return rows, err
+}
 
 func (s *overlapStore) CreateAward(ctx context.Context, p Person, a Award) error {
 	if hook := s.beforeAward[s.top()]; hook != nil {
@@ -353,7 +369,7 @@ func TestEvaluateOverlappingPostsOfOneEventEndWhereASerialRunDoes(t *testing.T) 
 		"every tier counts guides":     {ladder(`"resource"`), unitKey("guide", "bundled", "z")},
 	} {
 		t.Run(name, func(t *testing.T) {
-			s := &overlapStore{fakeStore: newFakeStore(), beforeAward: map[string]func(){}, beforeSave: map[string]func(Progress) (Progress, error, bool){}}
+			s := newOverlapStore()
 			ev := evaluatorFor(t, c.catalog, s)
 			var reported []string
 			s.beforeAward["A"] = func() {
@@ -390,4 +406,68 @@ func TestEvaluateOverlappingPostsOfOneEventEndWhereASerialRunDoes(t *testing.T) 
 			}
 		})
 	}
+}
+
+// A request whose row read predates other saves can find a stranded award whose
+// event those saves counted. Holding it and earning the next tier on that view
+// would leave an award row no serial order writes, so the heal is saved first
+// and its lost compare-and-swap sends the request back to the saved row.
+func TestEvaluateNoAwardIsCreatedAgainstAnUnsavedHeal(t *testing.T) {
+	ladder := func(goals ...int) string {
+		var tiers []string
+		for i, goal := range goals {
+			tiers = append(tiers, fmt.Sprintf(`{"id":"%s","goal":%d,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]}`,
+				[]string{"bronze", "silver", "gold", "platinum"}[i], goal))
+		}
+		return `{"achievements":[{"id":"ladder","title":"Ladder","description":"Guides.","tiers":[` + strings.Join(tiers, ",") + `]}]}`
+	}
+	q, w := guideCompleted("q", "interactive"), guideCompleted("w", "interactive")
+	x, z := guideCompleted("x", "interactive"), guideCompleted("z", "learning-journey")
+	held := func(s *overlapStore) ([]string, []string) {
+		var awards []string
+		for key := range s.awards {
+			awards = append(awards, strings.TrimPrefix(key, "ladder/"))
+		}
+		slices.Sort(awards)
+		return s.progress["ladder"].TierIDs, awards
+	}
+
+	t.Run("its own re-send and another event save while it runs", func(t *testing.T) {
+		s := newOverlapStore()
+		ev := evaluatorFor(t, ladder(2, 1), s)
+		s.seed(Progress{AchievementID: "ladder", SchemaVersion: ProgressSchemaVersion})
+		s.afterLoad["Z1"] = func() {
+			s.post(t, ev, "Z2", z)
+			s.post(t, ev, "X", x)
+		}
+		if d := s.post(t, ev, "Z1", z); d.Reason != ReasonDuplicate {
+			t.Errorf("Z1 = %+v, want a duplicate once its re-send is saved", d)
+		}
+		for _, e := range []Event{x, z} {
+			s.post(t, ev, "retry", e)
+		}
+		if tiers, awards := held(s); !equalStrings(tiers, []string{"bronze"}) || !equalStrings(awards, []string{"bronze"}) {
+			t.Errorf("held %v with award rows %v, want bronze only, as every serial order of x and z", tiers, awards)
+		}
+	})
+	t.Run("a third event's re-run keeps no tier its stale view earned", func(t *testing.T) {
+		s := newOverlapStore()
+		ev := evaluatorFor(t, ladder(2, 1, 1, 1), s)
+		s.seed(Progress{AchievementID: "ladder", SchemaVersion: ProgressSchemaVersion})
+		s.afterLoad["Q"] = func() {
+			s.afterLoad["Z1"] = func() {
+				s.post(t, ev, "Z2", z)
+				s.post(t, ev, "X", x)
+			}
+			s.post(t, ev, "Z1", z)
+		}
+		s.post(t, ev, "Q", q)
+		s.post(t, ev, "W", w)
+		for _, e := range []Event{x, z, q, w} {
+			s.post(t, ev, "retry", e)
+		}
+		if tiers, awards := held(s); !equalStrings(tiers, []string{"bronze", "silver", "gold"}) || len(awards) != 3 {
+			t.Errorf("held %v with award rows %v, want three tiers and three award rows, as every serial order of four events", tiers, awards)
+		}
+	})
 }

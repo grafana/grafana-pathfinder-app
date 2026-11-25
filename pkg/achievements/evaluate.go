@@ -85,26 +85,41 @@ func evaluate(d *Definition, stored Progress, ev Event) outcome {
 	}
 }
 
-// apply settles ev against stored after holding each stranded tier, one whose
-// award row exists because the call that created it failed to save the row.
-func (d *Definition) apply(stored Progress, stranded []Award, ev Event, written []string) outcome {
+// apply settles ev against stored, a saved row with no stranded tier.
+func (d *Definition) apply(stored Progress, ev Event, written []string) outcome {
 	if Classify(stored) == ShapeRepairable {
 		stored = Normalize(stored)
 	}
-	// Another request for ev was saved first, so this call's awards are not ev's to hold.
-	if hasEventID(stored.EventIDs, ev.ID) {
-		written = nil
-	}
+	return d.keepHeld(stored, evaluate(d, stored, ev), ev, written)
+}
+
+// healThenApply scores ev against stored with each stranded tier held. When ev
+// would earn a tier on top of the heal, it returns the heal alone, to be saved
+// first: an award created against an unsaved heal, which a lost
+// compare-and-swap could prove wrong, would outlive it.
+func (d *Definition) healThenApply(stored Progress, stranded []Award, ev Event, written []string) (out outcome, healOnly bool) {
 	healed := d.heal(stored, stranded)
-	return d.keepHeld(stored, healed, evaluate(d, healed, ev), ev, written, len(stranded) > 0)
+	out = d.apply(healed, ev, written)
+	switch {
+	case len(out.decision.Awarded) > 0:
+		return outcome{next: healed, changed: true}, true
+	case !out.changed:
+		out.next, out.changed = healed, true
+	}
+	return out, false
+}
+
+func tierIDs(awards []Award) []string {
+	ids := make([]string, len(awards))
+	for i, a := range awards {
+		ids[i] = a.TierID
+	}
+	return ids
 }
 
 // heal completes each stranded tier's failed save, spending the unit and the
 // event id its award row records, so the earning event's retry is a duplicate.
 func (d *Definition) heal(stored Progress, stranded []Award) Progress {
-	if len(stranded) == 0 {
-		return stored
-	}
 	held := heldSet(stored.TierIDs)
 	units := slices.Clone(stored.Units)
 	ids := stored.EventIDs
@@ -124,15 +139,15 @@ func (d *Definition) heal(stored Progress, stranded []Award) Progress {
 	return healed
 }
 
-// keepHeld finishes out, ev scored against healed, so the save also holds every
+// keepHeld finishes out, ev scored against stored, so the save also holds every
 // tier in written. A re-run after a conflict can find the event's unit counted
 // by another writer at a lower worth, and must not leave those awards unheld.
 // The decision reports each tier the save adds to stored's held set.
-func (d *Definition) keepHeld(stored, healed Progress, out outcome, ev Event, written []string, wasHealed bool) outcome {
+func (d *Definition) keepHeld(stored Progress, out outcome, ev Event, written []string) outcome {
 	if out.decision.Reason == ReasonRecordNewer {
 		return out
 	}
-	base := healed
+	base := stored
 	if out.changed {
 		base = out.next
 	}
@@ -141,16 +156,13 @@ func (d *Definition) keepHeld(stored, healed Progress, out outcome, ev Event, wr
 	for _, id := range written {
 		after[id] = true
 	}
-	grew := len(after) > len(held)
-	if !grew && !wasHealed {
+	if len(after) == len(held) {
 		return out
 	}
 	next := base
 	next.SchemaVersion = ProgressSchemaVersion
 	next.TierIDs = d.mergeHeld(base.TierIDs, after)
-	if grew {
-		next.EventIDs = withEventID(base.EventIDs, ev.ID)
-	}
+	next.EventIDs = withEventID(base.EventIDs, ev.ID)
 	if d.lowestUnheld(after) != d.lowestUnheld(held) {
 		next.Points = 0
 	}
@@ -193,6 +205,24 @@ func (t *Tier) score(ev Event) (unit string, worth int, reason Reason) {
 	default:
 		return "", 0, ReasonConditionNotMet
 	}
+}
+
+// withHealed reports the tiers this call's heal saves held beside those dec
+// reports, against row, the last row this call saved or loaded.
+func (d *Definition) withHealed(dec Decision, healed []string, row Progress) Decision {
+	if len(healed) == 0 || dec.Reason.Transient() {
+		return dec
+	}
+	after := heldSet(row.TierIDs)
+	before := maps.Clone(after)
+	var awarded []string
+	for _, t := range d.Tiers {
+		if slices.Contains(healed, t.ID) || slices.Contains(dec.Awarded, t.ID) {
+			awarded = append(awarded, t.ID)
+			delete(before, t.ID)
+		}
+	}
+	return d.decision(d.kind(awarded, before, after), "", awarded, after, row.Points)
 }
 
 func (d *Definition) kind(awarded []string, before, after map[string]bool) Kind {

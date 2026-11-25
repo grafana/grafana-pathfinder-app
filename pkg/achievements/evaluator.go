@@ -76,20 +76,23 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 		return d.unavailable(current)
 	}
 
-	var written []string
+	var written, healed []string
 	for attempt := 1; ; attempt++ {
 		stranded, ok := e.stranded(ctx, person, d, current)
 		if !ok {
 			return d.unavailable(current)
 		}
-		out := d.apply(current, stranded, ev, written)
+		var out outcome
+		healOnly := false
+		if len(stranded) > 0 {
+			out, healOnly = d.healThenApply(current, stranded, ev, written)
+		} else {
+			out = d.apply(current, ev, written)
+		}
 		if !out.changed {
-			return out.decision
+			return d.withHealed(out.decision, healed, current)
 		}
 		for _, tierID := range out.decision.Awarded {
-			if slices.ContainsFunc(stranded, func(a Award) bool { return a.TierID == tierID }) {
-				continue
-			}
 			award := Award{AchievementID: d.ID, TierID: tierID, Entity: ev.Entity, Unit: out.unit, EventID: ev.ID, EarnedAt: e.now().UTC()}
 			// A 409 is not a failure: the held set, not the create result, decides what is reported (RFC §6.3).
 			if err := e.store.CreateAward(ctx, person, award); err != nil && !errors.Is(err, ErrExists) {
@@ -99,10 +102,16 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 				written = append(written, tierID)
 			}
 		}
-		_, err := e.store.SaveProgress(ctx, person, out.next)
+		saved, err := e.store.SaveProgress(ctx, person, out.next)
 		switch {
+		case err == nil && !healOnly:
+			return d.withHealed(out.decision, append(healed, tierIDs(stranded)...), out.next)
 		case err == nil:
-			return out.decision
+			healed = append(healed, tierIDs(stranded)...)
+			if saved.Version != "" {
+				current = saved
+				continue
+			}
 		case !errors.Is(err, ErrConflict):
 			return d.unavailable(current)
 		case attempt == maxAttempts:
@@ -117,9 +126,8 @@ func (e *Evaluator) settle(ctx context.Context, person Person, d *Definition, ev
 }
 
 // stranded reads the award rows of the lowest tiers row does not hold, stopping
-// at the first tier without one. An award that does not record its unit and
-// event id, or whose event row already lists, also stops the read: holding its
-// tier would count that event a second time.
+// at the first tier without one. A row that does not record its unit and event
+// id also stops the read: holding its tier could count either a second time.
 func (e *Evaluator) stranded(ctx context.Context, person Person, d *Definition, row Progress) ([]Award, bool) {
 	if row.SchemaVersion > ProgressSchemaVersion {
 		return nil, true
@@ -134,7 +142,7 @@ func (e *Evaluator) stranded(ctx context.Context, person Person, d *Definition, 
 		if err != nil {
 			return nil, false
 		}
-		if !ok || a.Unit == "" || a.EventID == "" || hasEventID(row.EventIDs, a.EventID) {
+		if !ok || a.Unit == "" || a.EventID == "" {
 			break
 		}
 		found = append(found, a)
