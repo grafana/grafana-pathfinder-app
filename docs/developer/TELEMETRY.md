@@ -297,7 +297,7 @@ Inspect CDN index degradation independently of guide-not-found outcomes:
 {app_id="77"} | logfmt | event_name="pathfinder_package_index" | event_data_outcome=~"error|degraded|suppressed"
 ```
 
-Private guide content and settings reads use the plugin backend OBO proxy. The plugin backend also owns the private catalogue, completion and public CDN index proxies. Adding instrumentation to the local Go handlers in `grafana-pathfinder-backend` does not add production reporting: that repository currently deploys the CRD manifest only.
+Private guide content, settings, catalogue, and completion requests go through the SDK backend routes (`backendRoute()`), which delegate the signed-in caller. The public routes do not: the anonymous CDN recommendations feed and health read no tenant data, and achievement definitions come from a process-wide snapshot. Adding instrumentation to the local Go handlers in `grafana-pathfinder-backend` does not add production reporting: that repository currently deploys the CRD manifest only.
 
 ### App Platform proxy failures
 

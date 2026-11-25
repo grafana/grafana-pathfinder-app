@@ -3,6 +3,7 @@ import { isGrafanaDocsUrl, cleanDocsUrl, isLearningJourneyUrl } from './url-vali
 // Mock the constants
 jest.mock('../../../constants', () => ({
   ALLOWED_GRAFANA_DOCS_HOSTNAMES: ['grafana.com', 'docs.grafana.com'],
+  ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES: ['interactive-learning.grafana.net'],
 }));
 
 describe('url-validation', () => {

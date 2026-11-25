@@ -29,10 +29,12 @@ import { findStepsSpec } from './find-steps';
 import { inspectSpec } from './inspect';
 import { moveBlockSpec } from './move-block';
 import { removeBlockSpec } from './remove-block';
+import { renameBlockSpec } from './rename-block';
 import { renameIdSpec } from './rename-id';
 import { requirementsGroup } from './requirements';
 import { schemaSpec } from './schema';
 import { setManifestSpec } from './set-manifest';
+import { stampIdsSpec } from './stamp-ids';
 import { syncTranslationsSpec } from './sync-translations';
 import { validateCliSpec } from './validate';
 
@@ -57,6 +59,7 @@ export const COMMAND_MANIFEST: readonly CommandEntry[] = Object.freeze([
   // Structural edits (P2).
   entry(moveBlockSpec),
   entry(renameIdSpec),
+  entry(renameBlockSpec),
   // Validation, build, schema export, e2e.
   entry(validateCliSpec),
   entry(e2eSpec),
@@ -65,6 +68,7 @@ export const COMMAND_MANIFEST: readonly CommandEntry[] = Object.freeze([
   entry(buildSnippetsSpec),
   entry(buildGraphSpec),
   entry(syncTranslationsSpec),
+  entry(stampIdsSpec),
   entry(schemaSpec),
   // Catalog search.
   entry(findGuidesSpec),

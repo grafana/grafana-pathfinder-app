@@ -31,12 +31,8 @@ achievementAwardKind: {
 // is a 409 meaning "already earned". Rows are never updated; the kind carries no
 // status.
 //
-// Enforcement note (manifest-only deploy posture, see PR #64): in production
-// this kind is served by a shared generic apiserver directly from the generated
-// CRD schema. The CUE schema below is therefore the ONLY enforcement surface
-// that ships, so every invariant we can express is pushed into it: field
-// presence, value domains, and bounds. It checks presence and domains, not
-// truth: the stamped identity fields are not verified here.
+// The schema constrains award fields. The SDK achievement handler establishes
+// caller identity before recording an award.
 achievementawardv1alpha1: achievementAwardKind & {
 	schema: {
 		spec: {

@@ -221,7 +221,7 @@ export const InteractiveMultiStep = forwardRef<
     const mode = useInteractiveMode();
     const controllerChannel = useControllerChannel();
     const [isExecuting, setIsExecuting] = useState(false);
-    useReportExecuting(isExecuting, onExecutingChange);
+    useReportExecuting(isExecuting || isCurrentlyExecuting, onExecutingChange);
 
     // Completion lives in the store.
     const { completed: storedCompleted, reason: storedReason } = useStepCompletion(renderedStepId, sectionId);

@@ -86,7 +86,7 @@ Load these files **only when working in the relevant domain**.
 - `magefile.go` — Go build tasks (mage targets)
 - `coda.mdc` — Coda terminal integration — the client side of the `grafana-coda-app` v1 API
 - `CODA.md` — Coda terminal integration (comprehensive). Backend contract lives in the `grafana-coda-app` repo's `docs/API.md`
-- `docs/design/BACKEND_PROXY_PATTERN.md` — Canonical pattern for plugin-backend proxies to the App Platform aggregator: inbound ID-token verification and namespace binding, outbound OBO access-token minting, caching, pagination, failure semantics, capability envelopes, the Go ⇄ TypeScript contract goldens (§10), the POST-create write variant (§11), and the frontend read/write transport split that `src/validation/app-platform-transport.test.ts` enforces
+- [SDK backend route pattern](../design/BACKEND_PROXY_PATTERN.md#how-to-add-or-change-a-route) — Load before adding or changing a route in `pkg/`, `kinds/manifest.cue`, `src/lib/backend-routes.ts`, or a frontend `backendRoute(` call site. Follow the worked completion route. Its [route invariants](../design/BACKEND_PROXY_PATTERN.md#route-invariants) table names the test that guards each rule.
 
 ## History and onboarding
 
@@ -104,6 +104,7 @@ Load these files **only when working in the relevant domain**.
 - `docs/design/VIEWER-DEEP-LINK-CONTRACT.md` — Viewer deep link format (`doc=api:<id>`), panel-mode contract, resource name stability. Design intent.
 - `docs/design/PANEL-MODE-PERSISTENCE.md` — Panel-mode persistence contract: current surface vs persisted preference, the three mutators, decisions 2 & 3, and why `setMode` stays conditional. Load before touching surface/persistence logic.
 - `docs/design/COMPLETION-MODEL.md` — Completion model design rationale: guide/path/journey percentage formulas, the path-member content-key join and its exclusion rule (decision 9 — the join ships, its rollup consumer does not yet), the unconditional mark-complete button, the rejected alternative, and the falsifiable bets each decision rests on. Load before changing completion arithmetic or path aggregation.
+- `docs/design/GRAFANA_LEARN.md` — Grafana Learn journeys in Pathfinder: the docs URL-family classifier (`src/lib/docs-url-family.ts`) and its literal ratchet, the consumed website contract, ordering and flattening, cache and partial failure, completion identity, security boundaries, rendering adaptations, rollout. Load before touching docs URL routing or Learn. Design intent beyond the classifier.
 - `docs/design/CLIENT-ORCHESTRATION-GUIDE.md` — How AI clients use the MCP service — workflow, confirmation, publish-path selection. Design intent.
 - `docs/design/PATHFINDER-PACKAGE-DESIGN.md` — Package model: two-file structure, manifest metadata, dependencies, repository structure. Canonical spec for `package-engine` and CLI tooling.
 - `docs/design/phases/*.md` — Phase-specific implementation plans for AI authoring (P0–P6)

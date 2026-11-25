@@ -117,3 +117,21 @@ it('clears marked-path evidence on reset and ignores obsolete snapshots in input
   setGuideChoiceResponses(key, responses);
   expect(peekGuidePercentage(key)).toBe(33);
 });
+
+it('only gates conditional work on the selected choice path and respects explicit marks', async () => {
+  const conditional: JsonBlock = {
+    type: 'conditional',
+    id: 'save-logs',
+    conditions: ['exists-reftarget'],
+    whenTrue: [{ type: 'interactive', id: 'save', action: 'button', reftarget: '#save', content: 'Save' }],
+    whenFalse: [],
+  };
+  publish(blocks.map((block) => (block.type === 'section' ? { ...block, blocks: [conditional] } : block)));
+  await guideCompletionMarkStorage.set(key, true, ['common']);
+  setGuideChoiceResponses(key, { signals: '' });
+  expect(peekGuidePercentage(key)).toBe(100);
+  setGuideChoiceResponses(key, { signals: 'logs' });
+  expect(peekGuidePercentage(key)).toBeLessThan(100);
+  await guideCompletionMarkStorage.set(key, true, ['common', 'save-logs']);
+  expect(peekGuidePercentage(key)).toBe(100);
+});

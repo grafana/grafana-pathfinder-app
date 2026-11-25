@@ -1,6 +1,6 @@
 import { readProxyDiagnostics, reportProxyFailure, reportProxyResponse } from './proxy-diagnostics';
 /**
- * Client for the /custom-guide-repository backend proxy — a slim,
+ * Client for the SDK custom-guide-repository route — a slim,
  * denormalized catalogue of the caller's private InteractiveGuide packages
  * (the App Platform analogue of the CDN's repository.json), computed live by
  * pkg/provider/catalogue.go rather than pre-built.
