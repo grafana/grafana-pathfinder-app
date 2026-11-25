@@ -2,7 +2,7 @@
  * @jest-environment node
  */
 
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -597,5 +597,50 @@ describe('multi-part fetch', () => {
     expect(FindStepsCommand.safeParse({ procedureId: ['a#0', 'b#0'] }).success).toBe(true);
     const flags = COMMANDER_COMMANDS.get('find-steps')!.options.find((o) => o.long === '--procedure-id')!;
     expect(flags.parseArg!('b', ['a'] as any)).toEqual(['a', 'b']);
+  });
+});
+
+describe('adjacent parts across long paths', () => {
+  it('names the next part of every outlined path even when the first path has more than the cap left', async () => {
+    const slo = JSON.parse(
+      readFileSync(
+        join(__dirname, '../utils/step-index/__tests__/fixtures/create-availability-slo-create-availability-slo.json'),
+        'utf8'
+      )
+    );
+    global.fetch = mockStepIndexFetch({
+      extraCatalog: {
+        'long-path': {
+          path: 'long-path/',
+          title: 'Long path',
+          type: 'path',
+          milestones: ['grafana-quickpizza-working-filters', 'create-availability-slo-create-availability-slo'],
+        },
+        'second-path': {
+          path: 'second-path/',
+          title: 'Second path',
+          type: 'path',
+          milestones: ['adaptive-metrics-value'],
+        },
+      },
+      content: (id) => (id === 'adaptive-metrics-value' ? { ...slo, id } : undefined),
+    }) as unknown as typeof fetch;
+    const both = (await run({
+      procedureId: ['grafana-quickpizza-working-filters#0', 'adaptive-metrics-value#0'],
+    })) as any;
+    const ids = JSON.parse(/"procedureId": (\[.*?\])/.exec(both.data.hint)![1]!) as string[];
+    expect(ids).toContain('adaptive-metrics-value#1');
+    expect(ids).toContain('grafana-quickpizza-working-filters#1');
+    expect(ids).toHaveLength(8);
+  });
+});
+
+describe('text match markers', () => {
+  it('marks the shown steps of a fully matched result while the JSON omits matchedSteps', async () => {
+    const outcome = (await run({ queries: ['target'], limit: 5 })) as any;
+    const full = outcome.data.groups[0].results[0];
+    expect('matchedSteps' in full).toBe(false);
+    const marked = outcome.text.split('\n').filter((line: string) => /^ {3}\*\d+\. /.test(line));
+    expect(marked).toHaveLength(full.steps.length);
   });
 });

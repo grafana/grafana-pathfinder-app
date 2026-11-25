@@ -99,18 +99,19 @@ export async function runFindSteps(input: FindStepsInput): Promise<CommandOutcom
       return result;
     });
     const fetched = new Set(procedures.map((procedure) => procedure.id));
+    const following = results.map((result) => {
+      const parts = result.outline?.parts ?? [];
+      const last = parts.reduce(
+        (at, part, index) => ('procedureId' in part && fetched.has(part.procedureId) ? index : at),
+        -1
+      );
+      return last < 0 ? [] : parts.slice(last + 1).flatMap((part) => ('procedureId' in part ? part.procedureId : []));
+    });
     const upcoming = [
       ...new Set(
-        results.flatMap((result) => {
-          const parts = result.outline?.parts ?? [];
-          const last = parts.reduce(
-            (at, part, index) => ('procedureId' in part && fetched.has(part.procedureId) ? index : at),
-            -1
-          );
-          return last < 0
-            ? []
-            : parts.slice(last + 1).flatMap((part) => ('procedureId' in part ? part.procedureId : []));
-        })
+        Array.from({ length: Math.max(0, ...following.map((ids) => ids.length)) }, (_, i) =>
+          following.flatMap((ids) => ids[i] ?? [])
+        ).flat()
       ),
     ];
     const hint =
@@ -121,7 +122,7 @@ export async function runFindSteps(input: FindStepsInput): Promise<CommandOutcom
       status: 'ok',
       summary: `Found ${procedures.length} ${procedures.length === 1 ? 'procedure' : 'procedures'}`,
       text: [
-        ...results.map(formatResult),
+        ...results.map((result, i) => formatResult(result, i)),
         ...(notFound.length > 0 ? [`Not in the index: ${notFound.join(', ')}`] : []),
         ...(hint ? [hint] : []),
       ].join('\n\n'),
@@ -136,12 +137,14 @@ export async function runFindSteps(input: FindStepsInput): Promise<CommandOutcom
   }
 
   const renderedFull = new Map<string, number>();
-  const groups = searchSteps(snapshot, {
+  const searched = searchSteps(snapshot, {
     queries: input.queries ?? [],
     pageUrl: input.pageUrl,
     excludeIds: input.excludeIds,
     limit: input.limit,
-  }).map(({ query, noStrongMatch, absentWords, commonOnly, hits }, groupIndex) => {
+  });
+  const hitMatches = searched.map(({ hits }) => hits.map((hit) => hit.matchedSteps));
+  const groups = searched.map(({ query, noStrongMatch, absentWords, commonOnly, hits }, groupIndex) => {
     const results = hits.map(({ procedure, matchedSteps }, i) => {
       const earlier = renderedFull.get(procedure.id);
       if (i === 0 && earlier === undefined) {
@@ -173,8 +176,8 @@ export async function runFindSteps(input: FindStepsInput): Promise<CommandOutcom
       ? {
           text: groups
             .map(
-              (g) =>
-                `"${g.query}"${g.noStrongMatch ? ' (no strong match)' : ''}\n${g.hint ? `   ${g.hint}\n` : ''}${g.results.length > 0 ? g.results.map(formatResult).join('\n\n') : '   no procedures'}`
+              (g, groupIndex) =>
+                `"${g.query}"${g.noStrongMatch ? ' (no strong match)' : ''}\n${g.hint ? `   ${g.hint}\n` : ''}${g.results.length > 0 ? g.results.map((result, i) => formatResult(result, i, hitMatches[groupIndex]![i])).join('\n\n') : '   no procedures'}`
             )
             .join('\n\n'),
         }
@@ -355,9 +358,9 @@ function stepLine(step: Pick<Step, 'n' | 'action' | 'selector' | 'value' | 'text
   return `${step.n}. ${step.action} ${target} - ${step.text}${step.page ? ` [${step.page}]` : ''}`;
 }
 
-function formatResult(result: Record<string, unknown>, position: number): string {
+function formatResult(result: Record<string, unknown>, position: number, matchedSteps: number[] = []): string {
   const steps = (result.steps ?? []) as ReturnType<typeof renderSteps>;
-  const matched = new Set((result.matchedSteps ?? []) as number[]);
+  const matched = new Set(matchedSteps);
   const lines = [`${position + 1}. ${(result.crumbs as string[]).join(' > ')}`, `   id: ${String(result.procedureId)}`];
   if (result.startsOn || result.endsOn) {
     lines.push(
