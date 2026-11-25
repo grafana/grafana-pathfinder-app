@@ -105,6 +105,7 @@ export function createCohortMembershipReader(onChange: () => void) {
 
   return {
     isCurrent,
+    hasResult: () => isCurrent() && memberships !== undefined,
     has: (cohort: string) => isCurrent() && memberships?.has(cohort) === true,
     refresh,
     dispose: () => {
