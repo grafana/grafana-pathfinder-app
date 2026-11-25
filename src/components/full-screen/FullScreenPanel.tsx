@@ -151,7 +151,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   const restoringLessonRef = useRef<ReaderPosition | undefined>(undefined);
 
   const restoreLesson = useCallback(
-    (position: ReaderPosition) => {
+    (position: ReaderPosition, title?: string) => {
       const startingLocation = locationService.getLocation();
       const startingLink = parsePathfinderDeepLink(startingLocation.search);
       const isCurrent = () => {
@@ -166,7 +166,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       };
       restoringLessonRef.current = position;
       void panel
-        .restoreReaderPosition(position, isCurrent)
+        .restoreReaderPosition(position, { title, isCurrent })
         .catch((error) => logger.error('Failed to restore the course lesson', { error }))
         .finally(() => {
           if (restoringLessonRef.current === position) {
@@ -218,7 +218,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     const isJourney = shouldOpenAsLearningJourney(typeParam, undefined) || docsPage.type === 'learning-journey';
     guideOpenInFlightRef.current = true;
     if (isJourney && readerLesson) {
-      restoreLesson({ doc: docsPage.url, milestoneUrl: readerLesson, trackId: readerTrack });
+      restoreLesson({ doc: docsPage.url, milestoneUrl: readerLesson, trackId: readerTrack }, docsPage.title);
     } else if (isJourney) {
       panel.openLearningJourney(docsPage.url, docsPage.title, { source: 'url_param' });
     } else {

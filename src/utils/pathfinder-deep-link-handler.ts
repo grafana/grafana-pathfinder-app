@@ -114,6 +114,9 @@ export function handlePathfinderDeepLink(deps: DeepLinkHandlerDeps): boolean {
       target += `?${fullScreenParams.toString()}`;
     }
     locationService.replace(target);
+    if (docsParam && deepLink.readerLesson) {
+      return true;
+    }
   }
 
   const docOpenSource = kioskSessionParam ? 'kiosk_session' : sourceParam || 'url_param';

@@ -19,6 +19,8 @@ describe('domain vocabulary stays kebab-case where it is a URL or storage contra
     expect([...PATHFINDER_PARAMS]).toEqual([
       'doc',
       'type',
+      'readerLesson',
+      'readerTrack',
       'source',
       'page',
       'kiosk_session',

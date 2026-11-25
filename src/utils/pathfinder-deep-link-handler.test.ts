@@ -198,18 +198,26 @@ describe('handlePathfinderDeepLink', () => {
     expect(params.get('type')).toBe('learning-journey');
   });
 
-  it('forwards the reader position in a fullscreen share link', () => {
+  it('leaves the reader position for the fullscreen route after redirecting', async () => {
+    setPathname('/dashboards');
     setSearch(
       '?panelMode=fullscreen&type=learning-journey&doc=backend-guide%3Acourse&readerLesson=backend-guide%3Alesson&readerTrack=builder'
     );
+    mockLocationServiceReplace.mockImplementationOnce((target: string) => {
+      const url = new URL(target, window.location.origin);
+      setPathname(url.pathname);
+      setSearch(url.search);
+    });
 
     expect(handlePathfinderDeepLink(mkDeps())).toBe(true);
+    await flushPromises();
 
-    const [target] = mockLocationServiceReplace.mock.calls[0];
-    const url = new URL(target, window.location.origin);
+    const url = new URL(window.location.href);
+    expect(url.pathname).toBe('/a/grafana-pathfinder-app/fullscreen');
     expect(url.searchParams.get('doc')).toBe('backend-guide:course');
     expect(url.searchParams.get('readerLesson')).toBe('backend-guide:lesson');
     expect(url.searchParams.get('readerTrack')).toBe('builder');
+    expect(mockFindDocPage).not.toHaveBeenCalled();
   });
 
   it('bails out on the full-screen route so it does not hijack the sidebar→full-screen handoff', async () => {

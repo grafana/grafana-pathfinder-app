@@ -655,7 +655,11 @@ describe('DocsPanelContentArea', () => {
 
       render(<DocsPanelContentArea {...props} />);
 
-      expect(screen.getByText('Milestone 1 of 2')).toBeInTheDocument();
+      expect(screen.getByText('0 of 2 completed')).toBeInTheDocument();
+      expect(screen.getByRole('progressbar', { name: 'Learning path' })).toHaveAttribute(
+        'aria-valuetext',
+        '0 of 2 completed'
+      );
       expect(journeyMilestonePercentages).toHaveBeenCalledWith(
         'https://example.com/path',
         expect.arrayContaining([expect.objectContaining({ number: 1 })])
@@ -708,9 +712,8 @@ describe('DocsPanelContentArea', () => {
 
       render(<DocsPanelContentArea {...props} />);
 
-      // The base learningJourney says 1 of 5 — the active track (2 of 2) must win.
-      expect(screen.getByText('Milestone 2 of 2')).toBeInTheDocument();
-      expect(screen.queryByText('Milestone 1 of 5')).not.toBeInTheDocument();
+      expect(screen.getByText('0 of 2 completed')).toBeInTheDocument();
+      expect(screen.getByRole('progressbar', { name: 'Learning path' })).toHaveAttribute('aria-valuemax', '2');
     });
   });
 

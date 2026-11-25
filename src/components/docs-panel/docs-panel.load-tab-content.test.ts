@@ -976,6 +976,43 @@ describe('reader return loader routing', () => {
     }
   );
 
+  it('uses the fetched course title when opening a shared lesson in a new tab', async () => {
+    const doc = 'backend-guide:path';
+    const milestone = { id: 'one', url: 'backend-guide:one', number: 1, title: 'First', isActive: false };
+    const retrieval = jest.requireMock('../../docs-retrieval');
+    retrieval.isPackageContentUrl.mockReturnValue(true);
+    const manifest = { id: 'path', type: 'path' };
+    retrieval.fetchPackageInfoFromUrl.mockResolvedValue({ packageManifest: manifest, repository: 'app-platform' });
+    const cover = {
+      ...preparedContent,
+      url: doc,
+      type: 'learning-journey',
+      metadata: {
+        title: 'Grafana foundations',
+        packageManifest: manifest,
+        learningJourney: { baseUrl: doc, currentMilestone: 0, milestones: [milestone], totalMilestones: 1 },
+      },
+    };
+    (loadDocsTabContentResult as jest.Mock).mockResolvedValueOnce({ content: cover }).mockResolvedValueOnce({
+      content: {
+        ...cover,
+        url: milestone.url,
+        metadata: {
+          ...cover.metadata,
+          title: milestone.title,
+          learningJourney: { ...cover.metadata.learningJourney, currentMilestone: 1 },
+        },
+      },
+    });
+    const panel = new CombinedLearningJourneyPanel();
+    jest.spyOn(panel, 'restoreTabsAsync').mockResolvedValue();
+    panel.setState({ tabs: [] });
+
+    await panel.restoreReaderPosition({ doc, milestoneUrl: milestone.url }, { title: 'path' });
+
+    expect(panel.getActiveTab()).toMatchObject({ title: 'Grafana foundations', currentUrl: milestone.url });
+  });
+
   it('creates missing docs journey tabs with journey chrome and restores their milestone', async () => {
     const doc = 'https://grafana.com/docs/learning-paths/example/';
     jest.requireMock('../../docs-retrieval').isPackageContentUrl.mockReturnValue(false);

@@ -840,7 +840,10 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     }
   }
 
-  public async restoreReaderPosition(position: ReaderPosition, isCurrent = () => true): Promise<void> {
+  public async restoreReaderPosition(
+    position: ReaderPosition,
+    { title, isCurrent = () => true }: { title?: string; isCurrent?: () => boolean } = {}
+  ): Promise<void> {
     await this.restoreTabsAsync();
     if (!isCurrent()) {
       return;
@@ -849,7 +852,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (!tab) {
       tab = {
         id: this.generateTabId(),
-        title: 'Learning path',
+        title: title || 'Learning path',
         baseUrl: position.doc,
         currentUrl: position.doc,
         content: null,

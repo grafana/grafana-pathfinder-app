@@ -112,12 +112,13 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     },
     [`& :is(h2, h3):not(:first-child),
       & .orange-outline-list:not(:first-child) .icon-heading h2,
-      & > .markdown-block:not(:first-child) > h2:first-child,
-      & > :is(.markdown-block, .html-block):not(:first-child) > h3:first-child`]: {
+      & > :is(.markdown-block, .html-block):not(:first-child) > :is(h2, h3):first-child`]: {
       marginTop: theme.spacing(5.5),
     },
-    '& :is(h2, .orange-outline-list:has(h2)) + h3': {
-      marginTop: theme.spacing(3),
+    '& :is(h2, .orange-outline-list:has(h2), .markdown-block:has(> h2:last-child), .html-block:has(> h2:last-child))': {
+      '& + h3, & + :is(.markdown-block, .html-block) > h3:first-child': {
+        marginTop: theme.spacing(3),
+      },
     },
     '& ol > li:not(:last-child)': {
       marginBottom: theme.spacing(0.5),

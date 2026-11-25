@@ -252,16 +252,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         disabled={true}
                         className={styles.navButton}
                       />
-                      <span className={styles.milestoneText}>
-                        {loadingPathContext.currentMilestone === 0
-                          ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
-                              total: loadingPathContext.totalMilestones,
-                            })
-                          : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                              current: loadingPathContext.currentMilestone,
-                              total: loadingPathContext.totalMilestones,
-                            })}
-                      </span>
+                      <span className={styles.milestoneText}>{loadingPathProgress.label}</span>
                       <IconButton
                         name="arrow-right"
                         size="sm"

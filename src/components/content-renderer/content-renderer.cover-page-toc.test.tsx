@@ -71,6 +71,11 @@ describe('ContentRenderer cover-page table of contents', () => {
         <h3>Second example</h3>
         <p>Second subsection body</p>
         <div class="markdown-block"><h3>Wrapped example</h3><p>Wrapped subsection body</p></div>
+        <div class="html-block"><h2>HTML section</h2><p>HTML section body</p></div>
+        <h2>Markdown group</h2>
+        <div class="markdown-block"><h3>First in Markdown group</h3><p>Subsection body</p></div>
+        <div class="markdown-block"><p>Previous section body</p><h2>HTML group</h2></div>
+        <div class="html-block"><h3>First in HTML group</h3><p>Subsection body</p></div>
         <h1>Summary</h1>
       `,
       metadata: {
@@ -97,6 +102,13 @@ describe('ContentRenderer cover-page table of contents', () => {
     expect(getComputedStyle(secondExample).marginTop).toBe(theme.spacing(5.5));
     expect(getComputedStyle(secondExample).marginBottom).toBe(theme.spacing(1.5));
     expect(getComputedStyle(wrappedExample).marginTop).toBe(theme.spacing(5.5));
+    expect(getComputedStyle(screen.getByRole('heading', { name: 'HTML section' })).marginTop).toBe(theme.spacing(5.5));
+    expect(getComputedStyle(screen.getByRole('heading', { name: 'First in Markdown group' })).marginTop).toBe(
+      theme.spacing(3)
+    );
+    expect(getComputedStyle(screen.getByRole('heading', { name: 'First in HTML group' })).marginTop).toBe(
+      theme.spacing(3)
+    );
     expect(getComputedStyle(objective).marginBottom).toBe(theme.spacing(1.5));
     expect(getComputedStyle(screen.getByText('First paragraph')).marginBottom).toBe(theme.spacing(2));
     expect(getComputedStyle(screen.getByText('Second paragraph')).marginBottom).toBe(theme.spacing(2));
