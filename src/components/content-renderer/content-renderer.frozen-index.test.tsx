@@ -202,12 +202,14 @@ describe('conditional completion on mount', () => {
       expect(events).toEqual([]);
       expect(peekGuidePercentage(url)).toBe(baseline);
       await waitFor(() => expect(writes).toHaveBeenCalledWith(url, 100));
+      // Read before the component's settle timer can take the flag on a slow runner.
+      const crossed = takeLoadCompletionCrossing(url);
       await waitFor(() => expect(events.length).toBeGreaterThan(0));
       expect(writes.mock.calls.every(([key, percent]) => key === url && percent === 100)).toBe(true);
       expect(
         events.every((event) => event.kind === 'guide' && event.percentage === 100 && event.origin === 'load')
       ).toBe(true);
-      expect(takeLoadCompletionCrossing(url)).toBe(baseline < 100);
+      expect(crossed).toBe(baseline < 100);
     } finally {
       unsubscribe();
       writes.mockRestore();
