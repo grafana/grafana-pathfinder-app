@@ -28,25 +28,25 @@ import (
 
 const routeRecipe = "docs/design/BACKEND_PROXY_PATTERN.md#how-to-add-or-change-a-route"
 
+type manifestRoute struct{ method, path string }
+
+func (r manifestRoute) String() string { return r.method + " " + r.path }
+
 // publicRoutesWithoutCallerIdentity is the reviewed list of routes whose handler serves a caller it never verified.
 // Adding a route here means serving it with no verified identity, so a change to this map needs the same
 // review as a change to the unprovisioned-client exemption switch in appConfig. Anything personal or tenant-scoped
 // belongs in neither. See "How to add or change a route" in docs/design/BACKEND_PROXY_PATTERN.md.
-var publicRoutesWithoutCallerIdentity = map[string]string{
-	"/backend/package-recommendations": "anonymous public CDN recommendations feed; exempt in the unprovisioned-client switch",
-	"/backend/health":                  "fixed status document that reads no data; deliberately not exempt, so an unprovisioned backend fails the browser's health probe and tenant calls never route to it",
+var publicRoutesWithoutCallerIdentity = map[manifestRoute]string{
+	{http.MethodGet, "/backend/package-recommendations"}: "anonymous public CDN recommendations feed; exempt in the unprovisioned-client switch",
+	{http.MethodGet, "/backend/health"}:                  "fixed status document that reads no data; deliberately not exempt, so an unprovisioned backend fails the browser's health probe and tenant calls never route to it",
 }
 
 // unprovisionedClientExemptions mirrors the switch in appConfig that keeps a route live without a caller-exchange
 // transport. Every entry must read no tenant storage; a change here needs the same review as that switch.
-var unprovisionedClientExemptions = map[string]string{
-	"/backend/package-recommendations":         "anonymous public CDN recommendations feed",
-	"/backend/api/v1/achievements/definitions": "process-wide definitions snapshot; still verifies the caller",
+var unprovisionedClientExemptions = map[manifestRoute]string{
+	{http.MethodGet, "/backend/package-recommendations"}:         "anonymous public CDN recommendations feed",
+	{http.MethodGet, "/backend/api/v1/achievements/definitions"}: "process-wide definitions snapshot; still verifies the caller",
 }
-
-type manifestRoute struct{ method, path string }
-
-func (r manifestRoute) String() string { return r.method + " " + r.path }
 
 func manifestRoutes(t *testing.T) []manifestRoute {
 	t.Helper()
@@ -197,9 +197,11 @@ func ratchetApp(t *testing.T) (app.App, *atomic.Int32) {
 }
 
 func TestEveryTenantRouteRefusesAnUnverifiedCaller(t *testing.T) {
+	services.ResetCompletionCache()
+	t.Cleanup(services.ResetCompletionCache)
 	var tenantRoutes []manifestRoute
 	for _, route := range manifestRoutes(t) {
-		if _, public := publicRoutesWithoutCallerIdentity[route.path]; !public {
+		if _, public := publicRoutesWithoutCallerIdentity[route]; !public {
 			tenantRoutes = append(tenantRoutes, route)
 		}
 	}
@@ -212,7 +214,7 @@ func TestEveryTenantRouteRefusesAnUnverifiedCaller(t *testing.T) {
 		application, upstreamRequests := ratchetApp(t)
 		namespace := fmt.Sprintf("stacks-%d", 1000+index)
 		recorder, err := callRoute(application, callerIn(namespace), namespace, route)
-		_, readsNoStorage := unprovisionedClientExemptions[route.path]
+		_, readsNoStorage := unprovisionedClientExemptions[route]
 		switch {
 		case err != nil:
 			t.Errorf("%s from a verified caller failed: %v", route, err)
@@ -226,14 +228,14 @@ func TestEveryTenantRouteRefusesAnUnverifiedCaller(t *testing.T) {
 
 func TestPublicRouteAllowlistsMatchTheUnprovisionedExemption(t *testing.T) {
 	routes := manifestRoutes(t)
-	declared := map[string]bool{}
+	declared := map[manifestRoute]bool{}
 	for _, route := range routes {
-		declared[route.path] = true
+		declared[route] = true
 	}
-	for _, allowlist := range []map[string]string{publicRoutesWithoutCallerIdentity, unprovisionedClientExemptions} {
-		for path := range allowlist {
-			if !declared[path] {
-				t.Errorf("%s is allowlisted but is not a manifest route; remove the stale entry", path)
+	for _, allowlist := range []map[manifestRoute]string{publicRoutesWithoutCallerIdentity, unprovisionedClientExemptions} {
+		for route := range allowlist {
+			if !declared[route] {
+				t.Errorf("%s is allowlisted but is not a manifest route; remove the stale entry", route)
 			}
 		}
 	}
@@ -249,7 +251,7 @@ func TestPublicRouteAllowlistsMatchTheUnprovisionedExemption(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", route, err)
 		}
-		_, exempt := unprovisionedClientExemptions[route.path]
+		_, exempt := unprovisionedClientExemptions[route]
 		if served := !strings.Contains(recorder.Body.String(), "obo-unavailable"); served != exempt {
 			t.Errorf("%s served=%t without a caller-exchange transport, but unprovisionedClientExemptions says %t; the switch in appConfig and this reviewed list must agree, and a personal or tenant route belongs in neither. See %s.", route, served, exempt, routeRecipe)
 		}
