@@ -20,8 +20,7 @@
         "tr-TR",
         "zh-CN",
         "zh-Hans",
-        "zh-Hant",
-        "zh-TW"
+        "zh-Hant"
       ],
       "violations": [
         "missing-key:common.retry",
@@ -104,8 +103,7 @@
         "tr-TR",
         "zh-CN",
         "zh-Hans",
-        "zh-Hant",
-        "zh-TW"
+        "zh-Hant"
       ],
       "violations": ["missing-key:guideVersionNotice.body", "missing-key:guideVersionNotice.title"],
       "reason": "Existing catalog drift before translation parity enforcement.",
@@ -127,8 +125,7 @@
         "sv-SE",
         "zh-CN",
         "zh-Hans",
-        "zh-Hant",
-        "zh-TW"
+        "zh-Hant"
       ],
       "violations": [
         "missing-key:coverPage.earnsBadge",
