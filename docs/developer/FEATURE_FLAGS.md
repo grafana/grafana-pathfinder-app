@@ -59,7 +59,7 @@ The Learn home and `/docs/learning-hub/search/` stay single documents in both st
 
 **Do not enable this flag in any environment until Learn completion identity ([#2513](https://github.com/grafana/grafana-pathfinder-app/issues/2513)) has merged.** Today a milestone's progress and durable record are keyed by its last URL segment, and Learn step slugs repeat across journeys, so a step completed in one journey would count as done in another.
 
-The flag is read each time a Learn URL is routed or fetched, so a flip applies to the next open. Only `src/utils/learn-journey-mode.ts` and the flag registry may name it (`src/validation/learn-journey-flag-owner.test.ts`). Registering it in MTFF needs both a `flags/` file and a `Public()` entry in `flag-definitions.libsonnet` in `grafana/deployment_tools`, with the default kept `false`.
+The flag is read each time a Learn URL is routed or fetched, so a flip applies to the next open. Readers go through `src/utils/learn-journey-mode.ts`. `src/validation/learn-journey-gate-off.test.ts` pins the flag-off behavior of every Learn reader to the behavior before the flag existed. Registering it in MTFF needs both a `flags/` file and a `Public()` entry in `flag-definitions.libsonnet` in `grafana/deployment_tools`, with the default kept `false`.
 
 **Tracking key**: `learn_journey_mode`
 

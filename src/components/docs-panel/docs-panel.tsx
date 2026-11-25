@@ -661,7 +661,11 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         });
 
         // Completion readers key journey progress by the cover URL.
-        if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
+        if (
+          updatedTab?.type === 'learning-journey' &&
+          updatedTab.content &&
+          !updatedTab.content.metadata.learningJourney?.hasUnavailableMilestones
+        ) {
           const progress = getJourneyProgress(updatedTab.content);
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
           setJourneyCompletionPercentage(
