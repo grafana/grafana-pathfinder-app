@@ -359,19 +359,24 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
 
   const reportedBlocks = new Set<string>();
   const reportBlockedVisit = () => {
-    if (!cohortTargeting || !membership?.isCurrent() || contextKey !== getOnboardingIntentContextKey()) {
+    if (
+      !pageTargeting ||
+      (requiresCohort && !membership?.isCurrent()) ||
+      (requiresExploring && !hasSavedExploringIntent()) ||
+      contextKey !== getOnboardingIntentContextKey()
+    ) {
       return;
     }
     const path = getCurrentPath();
-    const known = membership.hasResult();
-    const candidates = cohortTargeting.experiences
+    const known = !requiresCohort || membership?.hasResult() === true;
+    const candidates = pageTargeting.experiences
       .map((experience, index) => ({ experience, index }))
       .filter(({ experience }) => matchesExperience(experience, path) && (!known || experienceEligible(experience)));
     const first = candidates[0];
     if (!first) {
       return;
     }
-    const visit = visitKey(eligibleExperiences(cohortTargeting), path);
+    const visit = visitKey(eligibleExperiences(pageTargeting), path);
     if (appliedThisLoad && visit && consumedVisit === visit) {
       return;
     }
@@ -385,12 +390,13 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     if (!reportedBlocks.has(key)) {
       reportedBlocks.add(key);
       reportAppInteraction(
-        UserInteraction.CohortAutoOpenBlocked,
+        UserInteraction.AutoOpenGuideBlocked,
         {
           reason,
           experience_index: first.index,
-          membership_status: known ? 'matched' : 'unknown',
-          experiment_cohort_auto_open: cohortTargeting.variant,
+          ...(requiresCohort && { membership_status: known ? 'matched' : 'unknown' }),
+          experiment_id: experimentId,
+          configured_variant: pageTargeting.variant,
         },
         { mirrorToFaro: false }
       );

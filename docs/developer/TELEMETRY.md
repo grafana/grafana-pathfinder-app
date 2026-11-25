@@ -232,11 +232,11 @@ Next-module clicks use `open_resource_click` with `interaction_location: content
 - **Fire and forget.** The guard is set before the event is sent, and Pathfinder never retries a dropped event, so one an ad blocker or network failure drops is lost. Counts are a floor.
 - **Synthetic traffic.** The e2e runner opens its guide as `bundled:e2e-test`, so a completed run reports `guide_source = 'bundled'`, `guide_visibility = 'private'` and `guide_id = 'e2e-test'`. Those runs come mostly from Grafana's synthetic e2e stacks; filter that guide out.
 
-## Cohort auto-open diagnostics
+## Guide auto-open diagnostics
 
-RudderStack records `pathfinder_cohort_auto_open_blocked` when a configured cohort entry page is blocked by a hidden tab, an open Pathfinder panel, a docked sidebar, kiosk mode, a deep link, or an existing offer marker for every candidate guide. The `reason` is the first blocking condition. The browser reports each combination of experience index, reason, and membership status once per experiment initialization. A later check can still enroll the visitor.
+RudderStack records `pathfinder_auto_open_guide_blocked` when a configured guide entry page is blocked by a hidden tab, an open Pathfinder panel, a docked sidebar, kiosk mode, a deep link, or an existing offer marker for every candidate guide. The `reason` is the first blocking condition. The browser reports each combination of experience index, reason, and membership status once per experiment initialization. A later check can still enroll the visitor.
 
-`experiment_cohort_auto_open` is the configured arm. `experience_index` identifies the first matching candidate. `membership_status=unknown` means membership has not been resolved, which can happen when a blocker prevents lookup. Join those events to cohort membership before counting eligible orgs. `matched` means membership was verified. The diagnostic is independent of exposure and is sent only to RudderStack. It requires the cohort experiment to initialize, so visits where the experiments SDK is unavailable (including unsupported Faro hostnames) remain unobserved.
+`experiment_id` identifies the guide auto-open, saved-exploring, or cohort experiment. `configured_variant` is its configured arm. Only the cohort flow includes `membership_status`. `experience_index` identifies the first matching candidate. `membership_status=unknown` means membership has not been resolved, which can happen when a blocker prevents lookup. Join those events to cohort membership before counting eligible orgs. `matched` means membership was verified. The diagnostic is independent of exposure and is sent only to RudderStack. It requires the experiment to initialize, so visits where the experiments SDK is unavailable (including unsupported Faro hostnames) remain unobserved.
 
 ## Gating and environments
 
