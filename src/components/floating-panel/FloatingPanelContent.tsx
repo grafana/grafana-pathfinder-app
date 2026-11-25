@@ -28,6 +28,7 @@ interface FloatingPanelContentProps {
   onResetGuide?: (progressKey: string, tab: LearningJourneyTab) => Promise<void> | void;
   surface?: MilestoneToolbarSurface;
   fullPageOverview?: boolean;
+  showGuideProgress?: boolean;
   /** The guide content to render */
   content: RawContent | null;
   /** Called when a guide completes all interactive sections */
@@ -71,6 +72,7 @@ export function FloatingPanelContent({
   onResetGuide,
   surface = 'floating',
   fullPageOverview = false,
+  showGuideProgress = true,
 }: FloatingPanelContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const journeyStyles = useStyles2(journeyContentHtml);
@@ -141,6 +143,9 @@ export function FloatingPanelContent({
   const coverPathId = typeof contentPathId === 'string' ? contentPathId : undefined;
 
   const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
+  const hasPathToolbar =
+    showEmbeddedToolbar && activeTab.type === 'learning-journey' && Boolean(completionSequence?.baseUrl);
+  const showStandaloneProgress = showGuideProgress && !hasPathToolbar;
 
   return (
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>
@@ -156,12 +161,16 @@ export function FloatingPanelContent({
               onResetGuide={onResetGuide!}
               compact
             />
-            <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
+            {showStandaloneProgress && (
+              <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
+            )}
           </div>
         ) : (
-          <div className={floatingStyles.stickyProgressBar}>
-            <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
-          </div>
+          showStandaloneProgress && (
+            <div className={floatingStyles.stickyProgressBar}>
+              <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
+            </div>
+          )
         )}
         <GuideVersionNotice
           manifests={[activeTab?.packageInfo?.packageManifest, content?.metadata.packageManifest]}

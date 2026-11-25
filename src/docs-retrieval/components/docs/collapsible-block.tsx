@@ -1,4 +1,5 @@
 import React, { useId, useState } from 'react';
+import { Icon } from '@grafana/ui';
 
 export interface CollapsibleBlockProps {
   /** Author-supplied HTML id, emitted on the wrapper for deep-linking */
@@ -34,9 +35,7 @@ export function CollapsibleBlock({ id, title, collapsed = true, children }: Coll
         data-testid="collapsible-toggle"
       >
         <span>{title || DEFAULT_TITLE}</span>
-        <span className={`journey-collapse-icon${isCollapsed ? ' collapsed' : ''}`} aria-hidden="true">
-          ▼
-        </span>
+        <Icon name={isCollapsed ? 'angle-down' : 'angle-up'} className="journey-collapse-icon" />
       </button>
       {!isCollapsed && (
         <div className="journey-collapse-content" id={contentId}>

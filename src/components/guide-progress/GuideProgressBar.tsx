@@ -58,7 +58,8 @@ export function GuideProgressBar({
     useCallback(() => (contentKey === undefined ? 0 : peekGuidePercentage(contentKey)), [contentKey])
   );
 
-  if (contentKey === undefined || isCoverPage || !getGuideIndex(contentKey)) {
+  const activeIndex = contentKey === undefined ? undefined : getGuideIndex(contentKey);
+  if (isCoverPage || !activeIndex?.index.completableBlockCount) {
     return null;
   }
 

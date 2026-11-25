@@ -105,7 +105,7 @@ export function BlockEditorContent({
   const deleteLabel = `Delete ${selectedCount} block${selectedCount === 1 ? '' : 's'}`;
 
   return (
-    <div className={styles.content} data-testid={testIds.blockEditor.content}>
+    <div className={styles.content} data-testid={testIds.blockEditor.content} data-view-mode={viewMode}>
       {/* Selection toolbar — only renders when selection mode is
           active. The trigger lives in BlockEditorHeader. */}
       {viewMode === 'edit' && hasBlocks && isSelectionMode && (
@@ -199,7 +199,7 @@ export function BlockEditorContent({
       ) : viewMode === 'preview' ? (
         // Header owns the "Reset guide" affordance in preview mode, so the
         // rendered guide stays free of editor chrome.
-        <BlockPreview guide={guide} hideResetButton />
+        <BlockPreview guide={guide} fullGuide />
       ) : viewMode === 'edit' && hasBlocks ? (
         <>
           <BlockList

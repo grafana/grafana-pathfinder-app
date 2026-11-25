@@ -1,14 +1,27 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 
+export const getGuideContentPadding = (theme: GrafanaTheme2) => theme.spacing(3);
+
+const getGuideAdmonitionColors = (theme: GrafanaTheme2, tone: 'info' | 'warning' | 'success') => {
+  const color = theme.colors[tone];
+  const refresh = theme.flags.visualDesignRefresh;
+  return {
+    '--guide-admonition-background': refresh ? color.subtleBackground : color.transparent,
+    '--guide-admonition-border': refresh ? color.subtleBorder : color.borderTransparent,
+    '--guide-admonition-icon': color.text,
+    '--guide-admonition-text': refresh ? color.textEmphasis : theme.colors.text.primary,
+  };
+};
+
 // Base shared styles for both journey and docs content
 const getBaseContentStyles = (theme: GrafanaTheme2) => ({
   // Base container and layout
-  padding: theme.spacing(3),
+  padding: getGuideContentPadding(theme),
   overflow: 'auto',
   flex: 1,
   lineHeight: 1.6,
-  fontSize: theme.typography.body.fontSize,
+  fontSize: theme.typography.base.fontSize,
 
   // Ensure container can handle wide content
   minWidth: 0,
@@ -25,10 +38,8 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
   // Basic HTML elements styling
   '& h1, & h2, & h3, & h4, & h5, & h6': {
     color: theme.colors.text.primary,
-    fontWeight: theme.typography.fontWeightMedium,
     marginBottom: theme.spacing(2),
     marginTop: theme.spacing(3),
-    lineHeight: 1.3,
 
     '&:first-child': {
       marginTop: 0,
@@ -36,30 +47,30 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '& h1': {
-    fontSize: theme.typography.h2.fontSize,
-    borderBottom: `2px solid ${theme.colors.border.medium}`,
-    paddingBottom: theme.spacing(1),
+    ...theme.typography.xl,
     marginBottom: theme.spacing(3),
   },
 
   '& h2': {
-    fontSize: theme.typography.h3.fontSize,
+    ...theme.typography.lg,
     marginTop: theme.spacing(4),
   },
 
   '& h3': {
-    fontSize: theme.typography.h4.fontSize,
+    ...theme.typography.md,
     marginTop: theme.spacing(3),
   },
 
   '& h4': {
-    fontSize: theme.typography.h5.fontSize,
+    ...theme.typography.base,
     marginTop: theme.spacing(2),
   },
 
+  '& h5, & h6': theme.typography.sm,
+
   '& p': {
     marginBottom: theme.spacing(2),
-    lineHeight: 1.7,
+    lineHeight: theme.typography.base.lineHeight,
     color: theme.colors.text.primary,
     wordWrap: 'break-word',
     overflowWrap: 'break-word',
@@ -78,6 +89,41 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     '& li': {
       marginBottom: theme.spacing(1),
       lineHeight: 1.6,
+    },
+  },
+
+  '&:where([data-guide-content-root]:not([data-journey-cover-page])) [data-guide-article]': {
+    '& h1': theme.typography.xxl,
+    '& h2': theme.typography.xl,
+    '& h3': theme.typography.lg,
+    '& :is(h1, h2, h3, h4, h5, h6)': {
+      marginBottom: theme.spacing(1.5),
+    },
+    [`& p:has(+ ul, + :is(.markdown-block, .html-block) > ul:first-child),
+      & :is(.markdown-block, .html-block):has(+ ul, + :is(.markdown-block, .html-block) > ul:first-child) > p:last-child`]:
+      {
+        marginBottom: theme.spacing(1),
+      },
+    '& .journey-quiz': {
+      margin: `${theme.spacing(2)} 0`,
+      '&:has(+ .journey-collapse)': { marginBottom: theme.spacing(1.5) },
+      '& + .journey-collapse': { marginTop: theme.spacing(1.5) },
+      '& + .journey-collapse + .journey-quiz': { marginTop: theme.spacing(4) },
+    },
+    [`& :is(h2, h3):not(:first-child),
+      & .orange-outline-list:not(:first-child) .icon-heading h2,
+      & > .markdown-block:not(:first-child) > h2:first-child,
+      & > :is(.markdown-block, .html-block):not(:first-child) > h3:first-child`]: {
+      marginTop: theme.spacing(5.5),
+    },
+    '& :is(h2, .orange-outline-list:has(h2)) + h3': {
+      marginTop: theme.spacing(3),
+    },
+    '& ol > li:not(:last-child)': {
+      marginBottom: theme.spacing(0.5),
+    },
+    '& :is(ul, ol) > li > p:last-child': {
+      marginBottom: 0,
     },
   },
 
@@ -538,6 +584,68 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
+  '& .guide-admonition-icon': { display: 'none' },
+
+  '&[data-guide-admonitions] [data-guide-admonition]': {
+    display: 'grid',
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+    columnGap: theme.spacing(1.5),
+    alignItems: 'center',
+    margin: theme.spacing(2, 0),
+    padding: `${theme.spacing(2)} calc(${theme.spacing(2)} - 1px)`,
+    border: '1px solid var(--guide-admonition-border)',
+    borderRadius: theme.shape.radius.lg,
+    color: 'var(--guide-admonition-text)',
+    backgroundColor: theme.flags.visualDesignRefresh
+      ? 'var(--guide-admonition-background)'
+      : theme.colors.background.primary,
+    backgroundImage: theme.flags.visualDesignRefresh
+      ? undefined
+      : 'linear-gradient(var(--guide-admonition-background), var(--guide-admonition-background))',
+
+    '&[data-guide-admonition="info"]': getGuideAdmonitionColors(theme, 'info'),
+    '&[data-guide-admonition="warning"]': getGuideAdmonitionColors(theme, 'warning'),
+    '&[data-guide-admonition="success"]': getGuideAdmonitionColors(theme, 'success'),
+
+    '& > .guide-admonition-icon': {
+      display: 'inline-flex',
+      alignSelf: 'start',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: theme.spacing(4.5),
+      height: theme.spacing(4.5),
+      borderRadius: theme.shape.radius.default,
+      color: 'var(--guide-admonition-icon)',
+      backgroundColor: theme.flags.visualDesignRefresh
+        ? 'color-mix(in srgb, var(--guide-admonition-background) 94%, var(--guide-admonition-icon) 6%)'
+        : undefined,
+    },
+
+    '& > :not(.guide-admonition-icon)': { gridColumn: 2 },
+    '& > blockquote': {
+      font: 'inherit',
+      color: 'inherit',
+      margin: 0,
+      padding: 0,
+      border: 0,
+      background: 'transparent',
+
+      '& > :is(.title, .admonition-title)': {
+        font: 'inherit',
+        fontWeight: theme.typography.fontWeightMedium,
+        color: 'inherit',
+        textTransform: 'none',
+        letterSpacing: 'inherit',
+        margin: theme.spacing(0, 0, 0.5),
+        '&::before': { content: 'none' },
+      },
+
+      '& p': { font: 'inherit', color: 'inherit' },
+      '& > :first-child, & > :is(.title, .admonition-title) + *': { marginTop: 0 },
+      '& > :last-child': { marginBottom: 0 },
+    },
+  },
+
   // Callout blocks (JSON-guide `callout` blocks, rendered by CalloutBlock).
   // Distinct from the `.admonition-*` classes above, which style
   // externally-sourced docs HTML from a different content pipeline. The
@@ -622,14 +730,14 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
   '& .journey-collapse': {
     margin: `${theme.spacing(2)} 0`,
     border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
+    borderRadius: theme.shape.radius.lg,
     overflow: 'hidden',
   },
 
   '& .journey-collapse-trigger': {
     width: '100%',
-    padding: theme.spacing(1.5),
-    backgroundColor: theme.colors.background.canvas,
+    padding: theme.spacing(1.5, 2),
+    backgroundColor: theme.colors.background.primary,
     border: 'none',
     cursor: 'pointer',
     display: 'flex',
@@ -646,19 +754,20 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '& .journey-collapse-icon': {
-    transition: 'transform 0.2s ease',
     color: theme.colors.text.secondary,
-    fontSize: '12px',
-
-    '&.collapsed': {
-      transform: 'rotate(-90deg)',
-    },
+    flexShrink: 0,
   },
 
   '& .journey-collapse-content': {
     padding: theme.spacing(2),
-    backgroundColor: theme.colors.background.primary,
     borderTop: `1px solid ${theme.colors.border.weak}`,
+
+    '& > :first-child, & > :is(.markdown-block, .html-block):first-child > :first-child': {
+      marginTop: 0,
+    },
+    '& > :last-child, & > :is(.markdown-block, .html-block):last-child > :last-child': {
+      marginBottom: 0,
+    },
   },
 
   '& .expandable-table': {
@@ -775,12 +884,10 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     margin: `${theme.spacing(2)} auto`,
     display: 'block',
     boxShadow: theme.shadows.z1,
-    transition: 'all 0.2s ease',
+    transition: 'border-color 0.2s ease',
     cursor: 'zoom-in',
 
     '&:hover': {
-      boxShadow: theme.shadows.z2,
-      transform: 'scale(1.02)',
       borderColor: theme.colors.primary.main,
     },
 
@@ -800,7 +907,6 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     '&.journey-conclusion-header': {
       cursor: 'default',
       '&:hover': {
-        transform: 'none',
         borderColor: theme.colors.border.weak,
       },
     },
@@ -1042,8 +1148,8 @@ const getJourneySpecificStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.body.fontSize,
   },
 
-  // Orange outline list styling (from learning journeys)
-  '& .orange-outline-list': {
+  // The full-page cover can apply these styles inside a Details article.
+  '&:where([data-journey-cover-page], [data-journey-cover-page] *) .orange-outline-list': {
     borderRadius: '12px',
     border: '2px solid #ff671d',
     padding: theme.spacing(1.5),
@@ -1235,8 +1341,6 @@ const getDocsSpecificStyles = (theme: GrafanaTheme2) => ({
     display: 'block',
 
     '&:hover': {
-      boxShadow: theme.shadows.z2,
-      transform: 'scale(1.02)',
       borderColor: theme.colors.primary.main,
     },
 

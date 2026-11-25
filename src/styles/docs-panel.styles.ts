@@ -1,5 +1,6 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
+import { getGuideContentPadding } from './content-html.styles';
 
 // Global modal styles for image lightbox functionality
 export const addGlobalModalStyles = () => {
@@ -550,7 +551,7 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
 
 export const getContentStyles = (theme: GrafanaTheme2) => ({
   journeyContent: css({
-    backgroundColor: theme.colors.background.secondary,
+    backgroundColor: theme.colors.background.page,
     border: 'none',
     overflow: 'auto',
     flex: 1,
@@ -558,12 +559,20 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
     flexDirection: 'column',
   }),
   docsContent: css({
-    backgroundColor: theme.colors.background.secondary,
+    backgroundColor: theme.colors.background.page,
     border: `1px solid ${theme.colors.border.weak}`,
     overflow: 'auto',
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
+  }),
+  innerDocsContent: css({
+    flex: 1,
+    overflow: 'auto',
+    minHeight: 0,
+    '& > [data-guide-content-root]': {
+      paddingTop: theme.spacing(4),
+    },
   }),
   // Dev Tools panel has its own internal layout - just provide scrolling container
   devToolsContent: css({
@@ -727,11 +736,19 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
   }),
 });
 
-export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
+export const getMilestoneStyles = (
+  theme: GrafanaTheme2,
+  surface: 'sidebar' | 'fullscreen' | 'floating' = 'sidebar'
+) => ({
   milestoneProgress: css({
-    padding: theme.spacing(1.5),
-    backgroundColor: theme.colors.background.canvas,
-    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    paddingBlock: theme.spacing(2),
+    paddingInline: {
+      fullscreen: 0,
+      sidebar: getGuideContentPadding(theme),
+      floating: `calc(${theme.spacing(1)} + ${getGuideContentPadding(theme)})`,
+    }[surface],
+    backgroundColor: theme.colors.background.page,
+    borderBottom: surface === 'fullscreen' ? undefined : `1px solid ${theme.colors.border.weak}`,
     flexShrink: 0,
   }),
   progressInfo: css({
@@ -745,28 +762,6 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     display: 'flex',
     alignItems: 'center',
     gap: theme.spacing(1),
-  }),
-  titleBlock: css({
-    display: 'flex',
-    flexDirection: 'column',
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'flex-start',
-    textAlign: 'left',
-  }),
-  milestoneTitle: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
-    color: theme.colors.text.primary,
-    whiteSpace: 'nowrap',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    maxWidth: '100%',
-  }),
-  milestoneSubtitle: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
-    whiteSpace: 'nowrap',
   }),
   // Used by the loading-skeleton milestone header in DocsPanelContentArea.tsx
   // (rendered while a journey tab's content is still fetching), not by the
@@ -820,22 +815,6 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
       height: '14px',
       flexShrink: 0,
     },
-  }),
-  // Continuous fill bar used by the loading-skeleton milestone header (see
-  // `milestoneText` above) — pre-existing, unrelated to the segmented bar
-  // below.
-  progressBar: css({
-    width: '100%',
-    height: '3px',
-    backgroundColor: theme.colors.background.secondary,
-    borderRadius: '2px',
-    overflow: 'hidden',
-    marginTop: theme.spacing(0.5),
-  }),
-  progressFill: css({
-    height: '100%',
-    backgroundColor: theme.colors.success.main,
-    transition: 'width 0.3s ease',
   }),
   progressSegments: css({
     display: 'flex',

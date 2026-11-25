@@ -25,6 +25,8 @@ import { parseKioskName } from '../lib/kiosk-attribution';
 export const PATHFINDER_PARAMS = [
   'doc',
   'type',
+  'readerLesson',
+  'readerTrack',
   'source',
   'page',
   'kiosk_session',
@@ -71,6 +73,8 @@ export interface DeepLinkParams {
   doc?: string;
   /** Tab kind override (`?type=`). Strict whitelist; unknowns drop to undefined. */
   type?: PathfinderDeepLinkType;
+  readerLesson?: string;
+  readerTrack?: string;
   /** Free-form analytics attribution from `?source=`. */
   source?: string;
   /** Pre-doc redirect target from `?page=`. */
@@ -103,6 +107,8 @@ export function parsePathfinderDeepLink(search: string): DeepLinkParams {
   return {
     doc: params.get('doc') ?? undefined,
     type,
+    readerLesson: params.get('readerLesson') || undefined,
+    readerTrack: params.get('readerTrack') || undefined,
     source: params.get('source') ?? undefined,
     page: params.get('page') ?? undefined,
     kioskSession: params.get('kiosk_session') ?? undefined,
@@ -163,6 +169,8 @@ export interface ShareLinkOpts {
    * milestone toolbar even when `findDocPage`'s URL classification can't tell.
    */
   guideType?: 'learning-journey' | 'docs';
+  lessonUrl?: string;
+  trackId?: string;
   /** Surface to request via `?panelMode=`. Omit to leave the param off. */
   panelMode?: PathfinderDeepLinkPanelMode;
   /** Analytics attribution via `?source=`. Omit to leave the param off. */
@@ -184,6 +192,16 @@ export interface ShareLinkOpts {
 export function buildPathfinderShareUrl(opts: ShareLinkOpts): string {
   const url = opts.base ? new URL(opts.base.toString()) : new URL(window.location.href);
   url.searchParams.set('doc', opts.doc);
+  if (opts.lessonUrl) {
+    url.searchParams.set('readerLesson', opts.lessonUrl);
+  } else {
+    url.searchParams.delete('readerLesson');
+  }
+  if (opts.lessonUrl && opts.trackId) {
+    url.searchParams.set('readerTrack', opts.trackId);
+  } else {
+    url.searchParams.delete('readerTrack');
+  }
   if (opts.panelMode) {
     url.searchParams.set('panelMode', opts.panelMode);
   }

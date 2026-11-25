@@ -27,18 +27,14 @@ export interface BlockPreviewProps {
   guide: JsonGuide;
   /** Whether to render the guide title above native JSON content. */
   showTitle?: boolean;
-  /**
-   * Hide the built-in "Reset guide" button. Use this when a parent surface
-   * (e.g. BlockEditorHeader) is responsible for rendering the reset action,
-   * to avoid duplicating editor chrome inside the rendered content.
-   */
-  hideResetButton?: boolean;
+  /** Full-guide preview with the reset action in the editor toolbar. */
+  fullGuide?: boolean;
 }
 
 const PREVIEW_COMPLETION: ContentRendererCompletion = { kind: 'untracked', reason: 'preview' };
 
-export function BlockPreview({ guide, showTitle = true, hideResetButton = false }: BlockPreviewProps) {
-  const styles = useStyles2(getBlockPreviewStyles);
+export function BlockPreview({ guide, showTitle = true, fullGuide = false }: BlockPreviewProps) {
+  const styles = useStyles2(getBlockPreviewStyles, fullGuide);
   const journeyStyles = useStyles2(journeyContentHtml);
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
@@ -139,9 +135,12 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
     );
   }
 
+  const progressBar = <GuideProgressBar key="preview-progress" contentUrl={content.url} />;
+
   // Stable sibling keys preserve renderer state when warnings or reset controls appear.
   return (
     <div className={styles.container}>
+      {fullGuide && progressBar}
       {warnings.length > 0 && (
         <Alert key="preview-warnings" title="Warnings" severity="warning">
           <ul>
@@ -152,7 +151,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
         </Alert>
       )}
 
-      {hasInteractiveProgress && !hideResetButton && (
+      {hasInteractiveProgress && !fullGuide && (
         <div key="preview-reset-actions" className={styles.resetActions}>
           <button
             className={styles.resetButton}
@@ -167,7 +166,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
         </div>
       )}
 
-      <GuideProgressBar key="preview-progress" contentUrl={content.url} />
+      {!fullGuide && progressBar}
       {/* Reset remounts the renderer to clear interactive component state. */}
       <ContentRenderer
         key={`preview-content-${resetKey}`}

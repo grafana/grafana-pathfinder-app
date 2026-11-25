@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button } from '@grafana/ui';
+import { Button, Icon } from '@grafana/ui';
 
 export interface ExpandableTableProps {
   defaultCollapsed?: boolean;
@@ -24,7 +24,7 @@ export function ExpandableTable({
       <div className={`journey-collapse${className ? ` ${className}` : ''}`}>
         <button onClick={() => setIsCollapsed(!isCollapsed)} className="journey-collapse-trigger" type="button">
           <span>{toggleText || 'Toggle section'}</span>
-          <span className={`journey-collapse-icon${isCollapsed ? ' collapsed' : ''}`}>▼</span>
+          <Icon name={isCollapsed ? 'angle-down' : 'angle-up'} className="journey-collapse-icon" />
         </button>
         {!isCollapsed && <div className="journey-collapse-content">{children}</div>}
       </div>

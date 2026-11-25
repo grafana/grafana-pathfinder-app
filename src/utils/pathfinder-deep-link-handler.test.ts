@@ -198,6 +198,20 @@ describe('handlePathfinderDeepLink', () => {
     expect(params.get('type')).toBe('learning-journey');
   });
 
+  it('forwards the reader position in a fullscreen share link', () => {
+    setSearch(
+      '?panelMode=fullscreen&type=learning-journey&doc=backend-guide%3Acourse&readerLesson=backend-guide%3Alesson&readerTrack=builder'
+    );
+
+    expect(handlePathfinderDeepLink(mkDeps())).toBe(true);
+
+    const [target] = mockLocationServiceReplace.mock.calls[0];
+    const url = new URL(target, window.location.origin);
+    expect(url.searchParams.get('doc')).toBe('backend-guide:course');
+    expect(url.searchParams.get('readerLesson')).toBe('backend-guide:lesson');
+    expect(url.searchParams.get('readerTrack')).toBe('builder');
+  });
+
   it('bails out on the full-screen route so it does not hijack the sidebar→full-screen handoff', async () => {
     // The handoff pushes `?doc=` onto the full-screen route; FullScreenPanel
     // owns that param. The global handler must not process it — otherwise a

@@ -1,7 +1,11 @@
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
+import { getGuideContentPadding } from '../../styles/content-html.styles';
 
-export const getFullScreenStyles = (theme: GrafanaTheme2, isCourseOverview: boolean) => ({
+const GUIDE_COLUMN_MAX_WIDTH = 1100;
+const FULL_SCREEN_CONTENT_GUTTER = 4;
+
+export const getFullScreenStyles = (theme: GrafanaTheme2, isCourseOverview: boolean, hasCourseLesson: boolean) => ({
   container: css({
     display: 'flex',
     flexDirection: 'column',
@@ -60,11 +64,25 @@ export const getFullScreenStyles = (theme: GrafanaTheme2, isCourseOverview: bool
     gap: theme.spacing(1),
     flexShrink: 0,
   }),
+  subHeader: css({
+    background: theme.colors.background.page,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    overflow: 'hidden',
+    scrollbarGutter: 'stable',
+  }),
+  subHeaderContent: css({
+    width: '100%',
+    maxWidth: GUIDE_COLUMN_MAX_WIDTH,
+    boxSizing: 'border-box',
+    marginInline: 'auto',
+    paddingInline: `calc(${theme.spacing(FULL_SCREEN_CONTENT_GUTTER)} + ${getGuideContentPadding(theme)})`,
+  }),
   body: css({
     flex: '1 1 0',
     overscrollBehavior: 'contain',
     minHeight: 0,
     overflow: 'auto',
+    scrollbarGutter: hasCourseLesson ? 'stable' : undefined,
     display: 'flex',
     justifyContent: 'center',
   }),
@@ -73,9 +91,10 @@ export const getFullScreenStyles = (theme: GrafanaTheme2, isCourseOverview: bool
   // attribute is preserved at the inner wrapper, not the scroll container.
   contentWrap: css({
     width: '100%',
-    maxWidth: isCourseOverview ? 1160 : 1100,
+    maxWidth: isCourseOverview ? 1160 : GUIDE_COLUMN_MAX_WIDTH,
+    boxSizing: hasCourseLesson ? 'border-box' : undefined,
     alignSelf: isCourseOverview ? 'flex-start' : undefined,
-    padding: theme.spacing(3, 4),
+    padding: theme.spacing(hasCourseLesson ? 2 : 3, FULL_SCREEN_CONTENT_GUTTER, 3),
   }),
   emptyState: css({
     display: 'flex',

@@ -1,7 +1,7 @@
 import { usePathfinderPluginConfig } from '../../../hooks';
 import { useBooleanFlag } from '../../../utils/openfeature';
 import { openGuideInSidebar } from '../utils/open-prepared-guide';
-import React, { Suspense, lazy, useSyncExternalStore } from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Button, Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { testIds } from '../../../constants/testIds';
@@ -22,13 +22,12 @@ import {
 } from '../../../lib/analytics';
 import {
   isJourneyCoverPage,
-  journeyProgressFromMilestones,
   resolveActiveMilestoneToolbarContext,
   resolveActiveMilestoneSequence,
 } from '../../../docs-retrieval';
-import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
 import { GuideProgressBar } from '../../guide-progress';
+import { PathLessonProgressBar, usePathLessonProgress } from '../../LearningPaths/PathLessonProgressBar';
 import { GuideLanguageSlot, TranslationNoticeSlot } from '../../guide-language';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
 import { AlignmentPendingContext } from '../../../global-state/alignment-pending-context';
@@ -137,8 +136,16 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
   const handleGuideTitleChange = React.useCallback((title: string) => model.updateEditorTabTitle(title), [model]);
 
-  // The loading toolbar also needs fresh completion evidence.
-  useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
+  const pathContext =
+    activeTab?.content && activeTab.type === 'learning-journey'
+      ? resolveActiveMilestoneToolbarContext(
+          activeTab.content,
+          activeTab.activeTrackId,
+          activeTab.activeTrackMilestones
+        )
+      : null;
+  const loadingPathContext = activeTab?.isLoading ? pathContext : null;
+  const loadingPathProgress = usePathLessonProgress(loadingPathContext);
 
   const activeSequence = stableContent
     ? resolveActiveMilestoneSequence(stableContent, activeTab?.activeTrackId, activeTab?.activeTrackMilestones)
@@ -229,21 +236,9 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
         }
 
         if (activeTab?.isLoading) {
-          const loadingActiveContext = activeTab.content
-            ? resolveActiveMilestoneToolbarContext(
-                activeTab.content,
-                activeTab.activeTrackId,
-                activeTab.activeTrackMilestones
-              )
-            : null;
-          const showBarWhileLoading =
-            Boolean(loadingActiveContext) &&
-            activeTab.content?.type === 'learning-journey' &&
-            (activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type));
-
           return (
             <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
-              {showBarWhileLoading && loadingActiveContext && (
+              {loadingPathContext && (
                 <div className={styles.milestoneProgress}>
                   <div className={styles.progressInfo}>
                     <div className={styles.progressHeader}>
@@ -258,13 +253,13 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         className={styles.navButton}
                       />
                       <span className={styles.milestoneText}>
-                        {loadingActiveContext.currentMilestone === 0
+                        {loadingPathContext.currentMilestone === 0
                           ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
-                              total: loadingActiveContext.totalMilestones,
+                              total: loadingPathContext.totalMilestones,
                             })
                           : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                              current: loadingActiveContext.currentMilestone,
-                              total: loadingActiveContext.totalMilestones,
+                              current: loadingPathContext.currentMilestone,
+                              total: loadingPathContext.totalMilestones,
                             })}
                       </span>
                       <IconButton
@@ -278,15 +273,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                         className={styles.navButton}
                       />
                     </div>
-                    <div className={styles.progressBar}>
-                      <div
-                        className={styles.progressFill}
-                        style={{
-                          // Completion evidence, rather than navigation, controls the fill.
-                          width: `${journeyProgressFromMilestones(loadingActiveContext.baseUrl, loadingActiveContext.milestones)}%`,
-                        }}
-                      />
-                    </div>
+                    <PathLessonProgressBar className={styles.progressSegments} progress={loadingPathProgress} />
                   </div>
                 </div>
               )}
@@ -308,17 +295,6 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
         if (activeTab?.content && !activeTab.isLoading) {
           const isLearningJourneyTab = activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type);
-          // Keep the metadata row and milestone toolbar mutually exclusive.
-          const showMilestoneProgress =
-            isLearningJourneyTab &&
-            activeTab.content?.type === 'learning-journey' &&
-            Boolean(
-              resolveActiveMilestoneToolbarContext(
-                activeTab.content,
-                activeTab.activeTrackId,
-                activeTab.activeTrackMilestones
-              )
-            );
 
           return (
             <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
@@ -338,7 +314,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </button>
                 </div>
               )}
-              {isLearningJourneyTab && !showMilestoneProgress && (
+              {isLearningJourneyTab && !pathContext && (
                 <div className={styles.contentMeta}>
                   <div className={styles.metaInfo}>
                     <small>
@@ -445,8 +421,8 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                 progressKey={progressKey}
                 onResetGuide={handleResetGuide}
               />
-              <div id="inner-docs-content" style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                {stableContent && (
+              <div id="inner-docs-content" className={styles.innerDocsContent}>
+                {stableContent && !pathContext && (
                   <GuideProgressBar contentUrl={stableContent.url} isCoverPage={isJourneyCoverPage(stableContent)} />
                 )}
                 {stableContent && surfaceCompletionInput && (

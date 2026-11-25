@@ -5,7 +5,11 @@ import { sidebarState } from '../../global-state/sidebar';
 import { StorageKeys } from '../../lib/storage-keys';
 import { dockOnLeavingFullScreen, type HistoryAction } from './full-screen-autodock';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
-import { navigateToCourseOverview } from './full-screen-course-navigation';
+import {
+  getCourseLessonPosition,
+  navigateToCourseOverview,
+  syncFullScreenCourseLocation,
+} from './full-screen-course-navigation';
 
 const mockPublish = jest.fn();
 
@@ -48,6 +52,14 @@ afterEach(() => {
 });
 
 it('keeps the overview URL in the same history entry after successfully loading it', async () => {
+  const params = new URLSearchParams({
+    doc: overviewUrl,
+    type: 'learning-journey',
+    readerLesson: moduleUrl,
+    readerTrack: 'builder',
+    orgId: '7',
+  });
+  locationService.replace(`${PLUGIN_BASE_URL}/fullscreen?${params.toString()}`);
   const panel = {
     getActiveTab: jest.fn().mockReturnValue(moduleTab),
     loadTab: jest.fn(async () => {
@@ -76,7 +88,35 @@ it('keeps the overview URL in the same history entry after successfully loading 
   expect(history.length).toBe(initialLength);
   expect(locationService.getSearch().get('doc')).toBe(overviewUrl);
   expect(locationService.getSearch().get('type')).toBe('learning-journey');
+  expect(locationService.getSearch().has('readerLesson')).toBe(false);
+  expect(locationService.getSearch().has('readerTrack')).toBe(false);
   expect(locationService.getSearch().get('orgId')).toBe('7');
+});
+
+it('records a track lesson in the current history entry and preserves unrelated URL state', () => {
+  locationService.replace({ ...locationService.getLocation(), hash: '#example', state: { example: true } });
+  const history = locationService.getHistory();
+  const initialLength = history.length;
+  const tab = {
+    ...moduleTab,
+    activeTrackId: 'builder',
+    activeTrackMilestones: [{ title: moduleTab.title, number: 1, url: moduleUrl, isActive: true }],
+  };
+
+  expect(getCourseLessonPosition(tab, overviewUrl)).toEqual({
+    doc: overviewUrl,
+    milestoneUrl: moduleUrl,
+    trackId: 'builder',
+  });
+  syncFullScreenCourseLocation(tab);
+
+  expect(history.action).toBe('REPLACE');
+  expect(history.length).toBe(initialLength);
+  expect(locationService.getSearch().get('doc')).toBe(overviewUrl);
+  expect(locationService.getSearch().get('readerLesson')).toBe(moduleUrl);
+  expect(locationService.getSearch().get('readerTrack')).toBe('builder');
+  expect(locationService.getSearch().get('orgId')).toBe('7');
+  expect(locationService.getLocation()).toMatchObject({ hash: '#example', state: { example: true } });
 });
 
 it('returns to Explore with its filters if the overview request fails', async () => {

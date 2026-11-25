@@ -1,7 +1,7 @@
 /**
  * Learning-journey milestone toolbar — the consolidated header shown above
- * journey content: nav arrows flanking a title, a "Milestone X of Y"
- * subtitle, a segmented per-milestone progress bar, and a kebab menu for
+ * journey content: nav arrows flanking a title, a completion count,
+ * a segmented per-milestone progress bar, and a kebab menu for
  * Open / Reset guide / Pop out (or Dock) / Full screen.
  *
  * Why this exists: ~130 lines of identical JSX previously lived in both
@@ -20,11 +20,12 @@
  * surfaces that previously had no way to change panel mode from here.
  */
 
-import React, { useSyncExternalStore } from 'react';
-import { Button, Dropdown, Menu, useStyles2 } from '@grafana/ui';
+import React from 'react';
+import { Dropdown, IconButton, Menu, Tooltip, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
-import { SegmentedProgressBar, type ProgressSegmentState } from '../../LearningPaths/SegmentedProgressBar';
+import { PathLessonHeader } from '../../LearningPaths/PathLessonHeader';
+import { usePathLessonProgress } from '../../LearningPaths/PathLessonProgressBar';
 
 import {
   reportAppInteraction,
@@ -33,12 +34,7 @@ import {
   tabTypeToContentType,
   AnalyticsLinkType,
 } from '../../../lib/analytics';
-import {
-  journeyMilestonePercentages,
-  percentagesToProgress,
-  resolveActiveMilestoneToolbarContext,
-} from '../../../docs-retrieval';
-import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../../global-state/progress-events';
+import { percentagesToProgress, resolveActiveMilestoneToolbarContext } from '../../../docs-retrieval';
 import { usePanelModeControls } from '../../../global-state/use-panel-mode';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import { testIds } from '../../../constants/testIds';
@@ -91,33 +87,33 @@ export function LearningJourneyMilestoneToolbar({
   onResetGuide,
   compact = false,
 }: LearningJourneyMilestoneToolbarProps) {
-  const styles = useStyles2(getMilestoneStyles);
+  const styles = useStyles2(getMilestoneStyles, surface);
   const { config: pluginConfig } = usePathfinderPluginConfig();
   const { panelMode, handleTogglePanelMode, handleGoFullScreen } = usePanelModeControls();
-  // The segments below read each milestone's percentage out of storage, so the
-  // store's announcement is what keeps them from painting a stale fill.
-  useSyncExternalStore(subscribeGuideProgressRevision, getGuideProgressRevision, getGuideProgressRevision);
-
   // Scoped to whichever sequence the reader actually navigated through —
   // base Foundations or their active Path Track (`activeTab.activeTrackId`/
   // `activeTrackMilestones`) — so a track-only guide (no `learningJourney` at
   // all) still gets nav/label/progress, and a guide that's a member of BOTH
   // sequences shows the one the reader is actually in rather than always the
   // base sequence. See `resolveActiveMilestoneToolbarContext`.
-  const activeMilestoneContext = activeTab.content
-    ? resolveActiveMilestoneToolbarContext(activeTab.content, activeTab.activeTrackId, activeTab.activeTrackMilestones)
-    : null;
-  const showMilestoneProgress = activeTab.type === 'learning-journey' && Boolean(activeMilestoneContext);
+  const activeMilestoneContext =
+    activeTab.type === 'learning-journey' && activeTab.content
+      ? resolveActiveMilestoneToolbarContext(
+          activeTab.content,
+          activeTab.activeTrackId,
+          activeTab.activeTrackMilestones
+        )
+      : null;
+  const progress = usePathLessonProgress(activeMilestoneContext);
 
-  if (!showMilestoneProgress || !activeMilestoneContext) {
+  if (!activeMilestoneContext) {
     return null;
   }
 
-  const milestonePercentages = journeyMilestonePercentages(
-    activeMilestoneContext.baseUrl,
-    activeMilestoneContext.milestones
-  );
-  const completionPercentage = percentagesToProgress(milestonePercentages);
+  const currentTitle =
+    activeMilestoneContext.milestones.find(({ number }) => number === activeMilestoneContext.currentMilestone)?.title ||
+    activeTab.title;
+  const completionPercentage = percentagesToProgress(progress.percentages);
 
   const handlePrev = () => {
     // Log the destination milestone (where the user is heading TO), not the
@@ -252,80 +248,48 @@ export function LearningJourneyMilestoneToolbar({
     </Menu>
   );
 
-  // Fill comes from the shared calculation (docs/design/COMPLETION-MODEL.md,
-  // decision 4), the same numbers the journey percentage is the mean of, so a
-  // reader who only pages forward leaves the segments behind them unfilled.
-  // The label and the current-position highlight stay navigation-derived.
-  const completedMilestoneNumbers = new Set(
-    milestonePercentages.filter(({ percent }) => percent === 100).map(({ milestone }) => milestone.number)
-  );
-
-  const segments: ProgressSegmentState[] = Array.from({ length: activeMilestoneContext.totalMilestones }, (_, i) => {
-    const number = i + 1;
-    if (number === activeMilestoneContext.currentMilestone) {
-      return 'current';
-    }
-    return completedMilestoneNumbers.has(number) ? 'done' : 'upcoming';
-  });
+  const isLesson = activeMilestoneContext.currentMilestone !== 0;
 
   return (
-    <div className={styles.milestoneProgress}>
-      <div className={styles.progressInfo}>
-        <div className={styles.progressHeader}>
-          <Button
-            icon="arrow-left"
-            size="md"
-            variant="primary"
-            aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
-            onClick={handlePrev}
-            tooltip={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')}
-            tooltipPlacement="top"
-            disabled={!panel.canNavigatePrevious() || activeTab.isLoading}
-            data-testid={testIds.docsPanel.previousMilestoneButton}
-          />
-          <div className={styles.titleBlock}>
-            <div className={styles.milestoneTitle} title={activeTab.title}>
-              {activeTab.title}
-            </div>
-            <div className={styles.milestoneSubtitle}>
-              {activeMilestoneContext.currentMilestone === 0
-                ? t('docsPanel.milestoneIntroduction', 'Introduction ({{total}} milestones)', {
-                    total: activeMilestoneContext.totalMilestones,
-                  })
-                : t('docsPanel.milestoneProgress', 'Milestone {{current}} of {{total}}', {
-                    current: activeMilestoneContext.currentMilestone,
-                    total: activeMilestoneContext.totalMilestones,
-                  })}
-            </div>
-          </div>
-          <Button
-            icon="arrow-right"
-            size="md"
-            variant="primary"
-            aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
-            onClick={handleNext}
-            tooltip={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')}
-            tooltipPlacement="top"
-            disabled={!panel.canNavigateNext() || activeTab.isLoading}
-            data-testid={testIds.docsPanel.nextMilestoneButton}
-          />
+    <PathLessonHeader
+      className={styles.milestoneProgress}
+      title={currentTitle}
+      progress={progress}
+      showProgressBar={isLesson}
+      actions={
+        <>
+          <Tooltip content={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')} placement="top">
+            <IconButton
+              name={isLesson ? 'angle-left' : 'arrow-left'}
+              size="md"
+              aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
+              onClick={handlePrev}
+              disabled={!panel.canNavigatePrevious() || activeTab.isLoading}
+              data-testid={testIds.docsPanel.previousMilestoneButton}
+            />
+          </Tooltip>
+          <Tooltip content={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')} placement="top">
+            <IconButton
+              name={isLesson ? 'angle-right' : 'arrow-right'}
+              size="md"
+              aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
+              onClick={handleNext}
+              disabled={!panel.canNavigateNext() || activeTab.isLoading}
+              data-testid={testIds.docsPanel.nextMilestoneButton}
+            />
+          </Tooltip>
           {!compact && (
             <Dropdown overlay={kebabMenu} placement="bottom-end">
-              <Button
-                variant="secondary"
+              <IconButton
                 size="md"
-                icon="ellipsis-v"
+                name="ellipsis-v"
                 tooltip={t('docsPanel.moreActions', 'More actions')}
-                aria-label={t('docsPanel.moreActions', 'More actions')}
                 data-testid={testIds.docsPanel.milestoneMoreActionsButton}
               />
             </Dropdown>
           )}
-        </div>
-        <div className={styles.progressSegments}>
-          <SegmentedProgressBar segments={segments} />
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   );
 }

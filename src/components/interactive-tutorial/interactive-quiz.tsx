@@ -1,7 +1,7 @@
 import type { ConditionInput } from '../../types/requirements.types';
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { css, cx, keyframes } from '@emotion/css';
-import { Button, Icon, useStyles2 } from '@grafana/ui';
+import { Button, Checkbox, Icon, RadioButtonDot, useStyles2 } from '@grafana/ui';
 import { GrafanaTheme2 } from '@grafana/data';
 
 import { useStepChecker } from '../../requirements-manager';
@@ -11,10 +11,10 @@ import {
   UserInteraction,
   buildInteractiveStepProperties,
 } from '../../lib/analytics';
-import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetStep, useStepCompletion } from '../../global-state/completion-store';
 import type { ProgressReason } from '../../global-state/progress-events';
+import { getLearningIconTileStyle } from '../../styles/learning-icon-tile.styles';
 import { getTrackedStepRootAttributes } from './tracked-step-root-attributes';
 
 // ============ Types ============
@@ -66,12 +66,6 @@ export interface InteractiveQuizProps {
 }
 
 // ============ Component ============
-
-// Thresholds for the compact side-by-side pill layout — short questions
-// (True/False, single-word choices) read better as pills; anything longer
-// or more numerous falls back to the stacked full-width rows.
-const PILL_LAYOUT_MAX_CHOICES = 4;
-const PILL_LAYOUT_MAX_CHOICE_LENGTH = 20;
 
 // Counter for generating unique quiz IDs
 let quizCounter = 0;
@@ -143,6 +137,32 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   sectionTitle,
 }) => {
   const styles = useStyles2(getQuizStyles);
+  const choiceGroupId = useId();
+  const questionId = `${choiceGroupId}-question`;
+  const questionRef = useRef<HTMLDivElement>(null);
+  const [hasLongQuestion, setHasLongQuestion] = useState(false);
+
+  useLayoutEffect(() => {
+    const element = questionRef.current;
+    if (!element) {
+      return;
+    }
+
+    const measure = () => {
+      const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+      setHasLongQuestion(element.offsetHeight > 2 * lineHeight + 1);
+    };
+
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [children, question]);
 
   // Generate stable step ID using useState lazy initialization (runs once on mount)
   const [generatedStepId] = useState(() => {
@@ -446,168 +466,124 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
     [isRevealed, isCompleted, displayedResult, displayedSelection]
   );
 
-  // Map choice state to style class
-  const getChoiceClassName = (state: ChoiceState): string => {
-    switch (state) {
-      case 'selected':
-        return styles.choiceSelected;
-      case 'correct':
-        return styles.choiceCorrect;
-      case 'incorrect':
-        return styles.choiceIncorrect;
-      case 'revealed':
-        return styles.choiceRevealed;
-      case 'default':
-        return styles.choiceDefault;
-      default:
-        assertExhaustive(state);
-        return styles.choiceDefault;
-    }
-  };
-
   // Determine if we should show the blocked state
   const isBlocked = !isEnabled && !isCompleted;
   const showCheckButton = !isCompleted && !isRevealed && displayedSelection.size > 0;
+  const choicesDisabled = isCompleted || isRevealed || isBlocked;
   const attemptsRemaining = completionMode === 'max-attempts' ? maxAttempts - attempts : null;
   const showAttemptsRemaining = attemptsRemaining !== null && !isCompleted && !isRevealed;
-  // Compact pill layout only for short single-select questions — a handful
-  // of short choices (True/False, single words) reads better side-by-side;
-  // longer or more numerous choices keep the stacked full-width rows. Exactly
-  // 4 short choices get a 2x2 grid instead of a single row of 4 — one row
-  // stays readable up to 3 pills, but a 4-wide row starts feeling cramped.
-  // Multi-select always keeps the stacked layout too: pills drop the leading
-  // indicator, and without the checkbox there's no visual cue that more than
-  // one choice can be selected.
-  const useCompactChoiceLayout =
-    !multiSelect &&
-    displayChoices.length <= PILL_LAYOUT_MAX_CHOICES &&
-    displayChoices.every((c) => c.text.length <= PILL_LAYOUT_MAX_CHOICE_LENGTH);
-  const useGridChoiceLayout = useCompactChoiceLayout && displayChoices.length === 4;
+  const firstCorrectChoiceId = displayChoices.find((choice) => choice.correct)?.id;
 
   return (
     <div
-      className={cx(styles.container, {
-        [styles.blocked]: isBlocked,
-      })}
+      className={cx('journey-quiz', styles.layout)}
       {...getTrackedStepRootAttributes('quiz', stepId)}
       data-testid={testIds.interactive.quiz(stepId)}
     >
-      {/* Label header */}
-      <div className={styles.header}>
-        <div className={styles.headerLabel}>
-          <Icon name="pen" size="sm" className={styles.headerIcon} />
-          <span>Knowledge check</span>
-        </div>
-        {showAttemptsRemaining && (
-          <span className={styles.attempts}>
-            {attemptsRemaining} attempt{attemptsRemaining !== 1 ? 's' : ''} remaining
+      <div className={cx(styles.container, { [styles.blocked]: isBlocked })}>
+        <div className={styles.header}>
+          <span className={cx(styles.questionIcon, hasLongQuestion && styles.topAligned)} aria-hidden="true">
+            <Icon name="question-circle" size="lg" />
           </span>
-        )}
-      </div>
-
-      {/* Question */}
-      <div className={styles.questionContent}>{children}</div>
-
-      {/* Blocked message */}
-      {isBlocked && (
-        <div className={styles.blockedMessage}>
-          <Icon name="lock" size="sm" />
-          <span>{explanation || 'Complete previous step'}</span>
+          <div className={styles.questionContent} id={questionId} ref={questionRef}>
+            {children ?? question}
+          </div>
+          {showAttemptsRemaining && (
+            <span className={styles.attempts}>
+              {attemptsRemaining} attempt{attemptsRemaining !== 1 ? 's' : ''} remaining
+            </span>
+          )}
         </div>
-      )}
 
-      {/* Choices */}
-      <div
-        className={cx(styles.choices, {
-          [styles.choicesCompact]: useCompactChoiceLayout && !useGridChoiceLayout,
-          [styles.choicesGrid]: useGridChoiceLayout,
-          [styles.shake]: displayedResult === 'incorrect',
-        })}
-        key={shakeKey}
-      >
-        {displayChoices.map((choice) => {
-          const state = getChoiceState(choice);
-          const isSelected = displayedSelection.has(choice.id);
+        <div className={styles.answerPanel}>
+          {isBlocked && (
+            <div className={styles.blockedMessage}>
+              <Icon name="lock" size="sm" />
+              <span>{explanation || 'Complete previous step'}</span>
+            </div>
+          )}
+          <div
+            role={multiSelect ? 'group' : 'radiogroup'}
+            aria-labelledby={questionId}
+            className={cx(styles.choices, displayedResult === 'incorrect' && styles.shake)}
+            key={shakeKey}
+          >
+            {displayChoices.map((choice, index) => {
+              const state = getChoiceState(choice);
+              const isSelected = displayedSelection.has(choice.id);
+              const controlProps = {
+                id: `${choiceGroupId}-${index}`,
+                label: choice.text,
+                onChange: () => handleChoiceClick(choice.id),
+                disabled: choicesDisabled,
+                'aria-invalid': state === 'incorrect' || undefined,
+                'data-testid': testIds.interactive.quizChoice(stepId, choice.id),
+              };
 
-          return (
-            <button
-              key={choice.id}
-              type="button"
-              className={cx(styles.choice, getChoiceClassName(state), {
-                [styles.choiceCompact]: useCompactChoiceLayout && !useGridChoiceLayout,
-                [styles.choiceGridItem]: useGridChoiceLayout,
-              })}
-              onClick={() => handleChoiceClick(choice.id)}
-              disabled={isCompleted || isRevealed || isBlocked}
-              aria-pressed={isSelected}
-              data-testid={testIds.interactive.quizChoice(stepId, choice.id)}
-            >
-              {!useCompactChoiceLayout && (
-                <span className={styles.choiceIndicator}>
+              return (
+                <div key={choice.id} className={styles.choice} data-answer-state={state}>
                   {multiSelect ? (
-                    <span className={cx(styles.checkbox, { [styles.checked]: isSelected })}>
-                      {isSelected && <Icon name="check" size="xs" />}
-                    </span>
+                    <Checkbox {...controlProps} value={isSelected} htmlValue={choice.id} />
                   ) : (
-                    <span className={cx(styles.radio, { [styles.radioSelected]: isSelected })} />
+                    <RadioButtonDot {...controlProps} name={choiceGroupId} checked={isSelected} value={choice.id} />
                   )}
+                  <div
+                    role={!multiSelect || choice.id === firstCorrectChoiceId ? 'status' : undefined}
+                    className={styles.correctStatus}
+                  >
+                    {state === 'correct' && (
+                      <>
+                        <Icon name="check" size="sm" />
+                        <span>Correct</span>
+                      </>
+                    )}
+                  </div>
+                  {state === 'revealed' && <Icon name="check" size="sm" className={styles.revealedIcon} />}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className={styles.hint} aria-live="polite">
+            {!isCompleted && showHint && (
+              <>
+                <span className={styles.hintIcon}>
+                  <Icon name="times" size="sm" />
                 </span>
+                <span>{showHint}</span>
+              </>
+            )}
+          </div>
+
+          {isRevealed && (
+            <div className={styles.revealed}>
+              <Icon name="info-circle" size="sm" />
+              <span>The correct answer{correctIds.size > 1 ? 's have' : ' has'} been revealed above.</span>
+            </div>
+          )}
+
+          {(showCheckButton || (canSkip && !isCompleted)) && (
+            <div className={styles.actions}>
+              {showCheckButton && (
+                <Button onClick={handleCheckAnswer} disabled={disabled || isBlocked}>
+                  Check Answer
+                </Button>
               )}
-              <span className={styles.choiceText}>{choice.text}</span>
-              {state === 'correct' && <Icon name="check-circle" className={styles.correctIcon} />}
-              {state === 'revealed' && <Icon name="check-circle" className={styles.revealedIcon} />}
-              {state === 'incorrect' && <Icon name="times-circle" className={styles.incorrectIcon} />}
-            </button>
-          );
-        })}
+              {canSkip && !isCompleted && (
+                <Button
+                  variant="secondary"
+                  fill="text"
+                  onClick={handleSkip}
+                  disabled={disabled}
+                  data-testid={testIds.interactive.quizSkipButton(stepId)}
+                >
+                  Skip
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-
-      {/* Hint/Feedback */}
-      {showHint && !isCompleted && (
-        <div className={styles.hint}>
-          <Icon name="info-circle" size="sm" />
-          <span>{showHint}</span>
-        </div>
-      )}
-
-      {/* Success message */}
-      {isCompleted && displayedResult === 'correct' && (
-        <div className={styles.success}>
-          <Icon name="check-circle" size="lg" />
-          <span>Correct! Well done.</span>
-        </div>
-      )}
-
-      {/* Revealed message */}
-      {isRevealed && (
-        <div className={styles.revealed}>
-          <Icon name="info-circle" size="sm" />
-          <span>The correct answer{correctIds.size > 1 ? 's have' : ' has'} been revealed above.</span>
-        </div>
-      )}
-
-      {/* Actions */}
-      {(showCheckButton || (canSkip && !isCompleted)) && (
-        <div className={styles.actions}>
-          {showCheckButton && (
-            <Button onClick={handleCheckAnswer} disabled={disabled || isBlocked}>
-              Check Answer
-            </Button>
-          )}
-
-          {canSkip && !isCompleted && (
-            <Button
-              variant="secondary"
-              fill="text"
-              onClick={handleSkip}
-              disabled={disabled}
-              data-testid={testIds.interactive.quizSkipButton(stepId)}
-            >
-              Skip
-            </Button>
-          )}
-        </div>
-      )}
     </div>
   );
 };
@@ -627,23 +603,36 @@ const pulse = keyframes`
 `;
 
 const getQuizStyles = (theme: GrafanaTheme2) => {
-  // Purple label to match Callout's "colored label" treatment (see
-  // content-html.styles.ts) with a different accent so the two read as
-  // distinct at a glance — but scoped to the label text only. The container
-  // itself stays neutral regardless of answer state: a left-border accent or
-  // a success-tinted background here would compete with the per-choice
-  // correct/incorrect highlighting and the success message box, all in the
-  // same small area.
-  const accent = theme.visualization.getColorByName('purple');
-
   return {
+    layout: css`
+      margin: ${theme.spacing(1.5)} 0;
+    `,
+
     container: css`
+      background: ${theme.colors.background.primary};
+      border-radius: ${theme.shape.radius.lg};
+      box-shadow: ${theme.shadows.z1};
+    `,
+
+    header: css`
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: ${theme.spacing(0.5, 1.5)};
+      padding: ${theme.spacing(2)};
+    `,
+
+    questionIcon: getLearningIconTileStyle(theme, 4.5, { bright: true }),
+    topAligned: css({ alignSelf: 'start' }),
+
+    answerPanel: css`
+      display: flex;
+      flex-direction: column;
+      gap: ${theme.spacing(1)};
+      padding: calc(${theme.spacing(2)} - 1px);
       background: ${theme.colors.background.secondary};
       border: 1px solid ${theme.colors.border.weak};
-      border-radius: ${theme.shape.radius.default};
-      padding: ${theme.spacing(2)};
-      margin: ${theme.spacing(1.5)} 0;
-      transition: all 0.2s ease;
+      border-radius: ${theme.shape.radius.lg};
     `,
 
     blocked: css`
@@ -651,37 +640,11 @@ const getQuizStyles = (theme: GrafanaTheme2) => {
       pointer-events: none;
     `,
 
-    header: css`
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: ${theme.spacing(1)};
-      margin-bottom: ${theme.spacing(1)};
-    `,
-
-    headerLabel: css`
-      display: flex;
-      align-items: center;
-      gap: ${theme.spacing(0.5)};
-      color: ${accent};
-      font-weight: ${theme.typography.fontWeightBold};
-      font-size: ${theme.typography.bodySmall.fontSize};
-      text-transform: uppercase;
-      letter-spacing: 0.02em;
-    `,
-
-    headerIcon: css`
-      flex-shrink: 0;
-    `,
-
-    questionContent: css`
-      font-weight: ${theme.typography.fontWeightMedium};
-      margin-bottom: ${theme.spacing(2)};
-
-      p {
-        margin: 0;
-      }
-    `,
+    questionContent: css({
+      ...theme.typography.base,
+      overflowWrap: 'anywhere',
+      p: { margin: 0 },
+    }),
 
     blockedMessage: css`
       display: flex;
@@ -692,198 +655,88 @@ const getQuizStyles = (theme: GrafanaTheme2) => {
       border-radius: ${theme.shape.radius.default};
       color: ${theme.colors.warning.text};
       font-size: ${theme.typography.bodySmall.fontSize};
-      margin-bottom: ${theme.spacing(1.5)};
     `,
 
     choices: css`
       display: flex;
       flex-direction: column;
-      gap: ${theme.spacing(1)};
-      margin-bottom: ${theme.spacing(2)};
-    `,
-
-    choicesCompact: css`
-      flex-direction: row;
-      flex-wrap: wrap;
-    `,
-
-    choicesGrid: css`
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      gap: 1px;
     `,
 
     shake: css`
       animation: ${shake} 0.5s ease;
     `,
 
-    choice: css`
-      display: flex;
-      align-items: center;
-      gap: ${theme.spacing(1.5)};
-      padding: ${theme.spacing(1.5)} ${theme.spacing(2)};
-      background: ${theme.colors.background.primary};
-      border: 1px solid ${theme.colors.border.weak};
-      border-radius: ${theme.shape.radius.default};
-      cursor: pointer;
-      transition: all 0.15s ease;
-      text-align: left;
-      width: 100%;
+    choice: css({
+      position: 'relative',
+      display: 'flex',
+      alignItems: 'center',
+      borderRadius: theme.shape.radius.default,
+      '& > label': {
+        ...theme.typography.base,
+        boxSizing: 'border-box',
+        display: 'grid',
+        alignContent: 'center',
+        alignItems: 'center',
+        gridTemplateColumns: `${theme.spacing(2)} minmax(0, 1fr)`,
+        columnGap: theme.spacing(1),
+        flex: 1,
+        minWidth: 0,
+        minHeight: theme.spacing(5),
+        padding: theme.spacing(0.5, 1),
+        color: theme.colors.text.primary,
+        cursor: 'pointer',
+        '& > :last-child': { font: 'inherit', color: 'inherit', overflowWrap: 'anywhere' },
+      },
+      '&:hover:has(input:enabled)': {
+        backgroundImage: `linear-gradient(${theme.colors.action.hover}, ${theme.colors.action.hover})`,
+      },
+      '&:has(input:disabled) > label, &:has(input:disabled) > label > :last-child': { cursor: 'default' },
+      '&[data-answer-state="correct"]': {
+        backgroundColor: theme.colors.success.subtleBackground,
+        boxShadow: `inset 0 0 0 1px ${theme.colors.success.border}`,
+        animation: `${pulse} 0.3s ease`,
+      },
+      '&[data-answer-state="incorrect"]': {
+        backgroundColor: theme.colors.error.transparent,
+        boxShadow: `inset 0 0 0 1px ${theme.colors.error.border}`,
+      },
+      '&:has(> svg) > label': {
+        paddingInlineEnd: theme.spacing(4),
+      },
+    }),
 
-      &:hover:not(:disabled) {
-        border-color: ${theme.colors.border.medium};
-        background: ${theme.colors.action.hover};
-      }
+    correctStatus: css({
+      ...theme.typography.sm,
+      display: 'flex',
+      alignItems: 'center',
+      flexShrink: 0,
+      gap: theme.spacing(0.5),
+      color: theme.colors.success.text,
+      '&:empty': { position: 'absolute' },
+      '&:not(:empty)': { paddingInlineEnd: theme.spacing(1) },
+    }),
 
-      &:focus-visible {
-        outline: 2px solid ${theme.colors.primary.main};
-        outline-offset: 2px;
-      }
+    revealedIcon: css({
+      position: 'absolute',
+      insetInlineEnd: theme.spacing(1),
+      top: '50%',
+      transform: 'translateY(-50%)',
+      pointerEvents: 'none',
+      color: theme.colors.text.secondary,
+    }),
 
-      &:disabled {
-        cursor: default;
-      }
-    `,
+    hint: css({
+      ...theme.typography.sm,
+      fontWeight: theme.typography.fontWeightRegular,
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: theme.spacing(0.5),
+      color: theme.colors.error.text,
+      '&:empty': { position: 'absolute' },
+    }),
 
-    choiceCompact: css`
-      width: auto;
-      flex: 1 1 0;
-      min-width: 0;
-      justify-content: center;
-      text-align: center;
-    `,
-
-    choiceGridItem: css`
-      width: 100%;
-      justify-content: center;
-      text-align: center;
-    `,
-
-    choiceDefault: css``,
-
-    choiceSelected: css`
-      border-color: ${theme.colors.primary.border};
-      background: ${theme.colors.primary.transparent};
-    `,
-
-    choiceCorrect: css`
-      border-color: ${theme.colors.success.border};
-      background: ${theme.colors.success.transparent};
-      animation: ${pulse} 0.3s ease;
-    `,
-
-    choiceIncorrect: css`
-      border-color: ${theme.colors.error.border};
-      background: ${theme.colors.error.transparent};
-    `,
-
-    choiceRevealed: css`
-      border-color: ${theme.colors.success.border};
-      background: ${theme.colors.success.transparent};
-    `,
-
-    choiceIndicator: css`
-      flex-shrink: 0;
-    `,
-
-    checkbox: css`
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 18px;
-      height: 18px;
-      border: 2px solid ${theme.colors.border.strong};
-      border-radius: 3px;
-      background: ${theme.colors.background.primary};
-      transition: all 0.15s ease;
-    `,
-
-    checked: css`
-      background: ${theme.colors.primary.main};
-      border-color: ${theme.colors.primary.main};
-      color: ${theme.colors.primary.contrastText};
-    `,
-
-    radio: css`
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 18px;
-      height: 18px;
-      border: 2px solid ${theme.colors.border.strong};
-      border-radius: 50%;
-      background: ${theme.colors.background.primary};
-      transition: all 0.15s ease;
-      box-sizing: border-box;
-
-      &::after {
-        content: '';
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: ${theme.colors.primary.main};
-        transform: scale(0);
-        transition: transform 0.15s ease;
-      }
-    `,
-
-    radioSelected: css`
-      border-color: ${theme.colors.primary.main};
-
-      &::after {
-        transform: scale(1);
-      }
-    `,
-
-    choiceText: css`
-      flex: 1;
-    `,
-
-    correctIcon: css`
-      color: ${theme.colors.success.text};
-      flex-shrink: 0;
-    `,
-
-    incorrectIcon: css`
-      color: ${theme.colors.error.text};
-      flex-shrink: 0;
-    `,
-
-    revealedIcon: css`
-      color: ${theme.colors.success.text};
-      flex-shrink: 0;
-    `,
-
-    hint: css`
-      display: flex;
-      align-items: flex-start;
-      gap: ${theme.spacing(1)};
-      padding: ${theme.spacing(1.5)};
-      background: ${theme.colors.warning.transparent};
-      border: 1px solid ${theme.colors.warning.border};
-      border-radius: ${theme.shape.radius.default};
-      color: ${theme.colors.warning.text};
-      font-size: ${theme.typography.bodySmall.fontSize};
-      margin-bottom: ${theme.spacing(2)};
-
-      svg {
-        flex-shrink: 0;
-        margin-top: 2px;
-      }
-    `,
-
-    success: css`
-      display: flex;
-      align-items: center;
-      gap: ${theme.spacing(1)};
-      padding: ${theme.spacing(1.5)};
-      background: ${theme.colors.success.transparent};
-      border: 1px solid ${theme.colors.success.border};
-      border-radius: ${theme.shape.radius.default};
-      color: ${theme.colors.success.text};
-      font-weight: ${theme.typography.fontWeightMedium};
-      margin-bottom: ${theme.spacing(2)};
-      animation: ${pulse} 0.3s ease;
-    `,
+    hintIcon: css({ display: 'flex', alignItems: 'center', flexShrink: 0, height: '1lh' }),
 
     revealed: css`
       display: flex;
@@ -895,17 +748,17 @@ const getQuizStyles = (theme: GrafanaTheme2) => {
       border-radius: ${theme.shape.radius.default};
       color: ${theme.colors.text.secondary};
       font-size: ${theme.typography.bodySmall.fontSize};
-      margin-bottom: ${theme.spacing(2)};
     `,
 
     actions: css`
       display: flex;
       align-items: center;
-      justify-content: flex-end;
       gap: ${theme.spacing(1.5)};
+      margin-top: ${theme.spacing(1)};
     `,
 
     attempts: css`
+      grid-column: 2;
       color: ${theme.colors.text.secondary};
       font-size: ${theme.typography.bodySmall.fontSize};
       white-space: nowrap;

@@ -24,6 +24,8 @@ import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants'
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { reportPathfinderSurface } from '../../lib/telemetry/surface';
 import { REQUEST_FULLSCREEN_GUIDE_EVENT, REQUEST_SIDEBAR_HANDOFF_EVENT } from '../../lib/event-names';
+import { logger } from '../../lib/logging';
+import type { ReaderPosition } from '../../types/cross-tab.types';
 import { findDocPage } from '../../utils/find-doc-page';
 import {
   buildPathfinderShareUrl,
@@ -35,8 +37,13 @@ import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-side
 import { getCourseTitle } from '../../integrations/assistant-integration/course-context';
 import { FullScreenLayout } from './FullScreenLayout';
 import { CourseAssistant } from './CourseAssistant';
-import { isJourneyCoverPage } from '../../docs-retrieval';
-import { navigateToCourseOverview } from './full-screen-course-navigation';
+import { isJourneyCoverPage, resolveActiveMilestoneToolbarContext } from '../../docs-retrieval';
+import {
+  getCourseLessonPosition,
+  getCourseOverviewUrl,
+  navigateToCourseOverview,
+  syncFullScreenCourseLocation,
+} from './full-screen-course-navigation';
 import { dockOnLeavingFullScreen, type HistoryAction, type FullScreenExitReason } from './full-screen-autodock';
 import {
   resolveSafeTargetPath,
@@ -141,6 +148,37 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   // persists that one tab over everything else the user had open.
   const { tabs, activeTabId } = panel.useState();
   const [restorationDone, setRestorationDone] = useState(false);
+  const restoringLessonRef = useRef<ReaderPosition | undefined>(undefined);
+
+  const restoreLesson = useCallback(
+    (position: ReaderPosition) => {
+      const startingLocation = locationService.getLocation();
+      const startingLink = parsePathfinderDeepLink(startingLocation.search);
+      const isCurrent = () => {
+        const location = locationService.getLocation();
+        const link = parsePathfinderDeepLink(location.search);
+        return (
+          location.pathname === startingLocation.pathname &&
+          link.doc === startingLink.doc &&
+          link.readerLesson === startingLink.readerLesson &&
+          link.readerTrack === startingLink.readerTrack
+        );
+      };
+      restoringLessonRef.current = position;
+      void panel
+        .restoreReaderPosition(position, isCurrent)
+        .catch((error) => logger.error('Failed to restore the course lesson', { error }))
+        .finally(() => {
+          if (restoringLessonRef.current === position) {
+            restoringLessonRef.current = undefined;
+            if (isCurrent()) {
+              syncFullScreenCourseLocation(panel.getActiveTab());
+            }
+          }
+        });
+    },
+    [panel]
+  );
 
   useEffect(() => {
     initializationRef.current ??= initializePanelTabsOnMount(panel, 'fullscreen_handoff', () => {
@@ -162,7 +200,12 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     if (!restorationDone || guideOpenInFlightRef.current) {
       return;
     }
-    const { doc: docParam, type: typeParam } = parsePathfinderDeepLink(window.location.search);
+    const {
+      doc: docParam,
+      type: typeParam,
+      readerLesson,
+      readerTrack,
+    } = parsePathfinderDeepLink(window.location.search);
     if (!docParam) {
       return;
     }
@@ -174,12 +217,14 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     // URL classification (which can mis-tag package URLs as 'interactive').
     const isJourney = shouldOpenAsLearningJourney(typeParam, undefined) || docsPage.type === 'learning-journey';
     guideOpenInFlightRef.current = true;
-    if (isJourney) {
+    if (isJourney && readerLesson) {
+      restoreLesson({ doc: docsPage.url, milestoneUrl: readerLesson, trackId: readerTrack });
+    } else if (isJourney) {
       panel.openLearningJourney(docsPage.url, docsPage.title, { source: 'url_param' });
     } else {
       panel.openDocsPage(docsPage.url, docsPage.title, { source: 'url_param' });
     }
-  }, [restorationDone, panel]);
+  }, [restorationDone, panel, restoreLesson]);
 
   // Flip the in-flight flag synchronously so the empty-state fallback doesn't
   // fire on top of an incoming guide.
@@ -246,9 +291,12 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     return unlisten;
   }, []);
 
-  // Step progress for the header counter. Shared subscription with the
-  // floating panel — see `useStepProgressFromEvents` for the rationale.
-  const stepProgress = useStepProgressFromEvents(hasActiveGuide);
+  const hasPathToolbar =
+    !isCoverPage &&
+    activeTab?.type === 'learning-journey' &&
+    !!content &&
+    !!resolveActiveMilestoneToolbarContext(content, activeTab.activeTrackId, activeTab.activeTrackMilestones);
+  const stepProgress = useStepProgressFromEvents(hasActiveGuide && !hasPathToolbar);
 
   const { hasInteractiveProgress, progressKey } = useGuideProgressState(activeTab);
 
@@ -377,11 +425,19 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     void handleExitToSidebar('manual_exit');
   }, [handleExitToSidebar]);
 
-  const overviewCandidate = !isCoverPage
-    ? content?.metadata.learningJourney?.baseUrl || content?.metadata.trackMemberBaseUrl
-    : undefined;
-  const courseOverviewUrl =
-    overviewCandidate !== content?.url && overviewCandidate !== guideUrl ? overviewCandidate : undefined;
+  const courseOverviewUrl = getCourseOverviewUrl(activeTab);
+  const activeCourseUrl = isCoverPage ? content?.metadata.learningJourney?.baseUrl : courseOverviewUrl;
+  const lessonPosition = useMemo(
+    () => (activeTab && courseOverviewUrl ? getCourseLessonPosition(activeTab, courseOverviewUrl) : undefined),
+    [activeTab, courseOverviewUrl]
+  );
+
+  useEffect(() => {
+    if (restorationDone && !restoringLessonRef.current && activeTab && panel.getActiveTab() === activeTab) {
+      syncFullScreenCourseLocation(activeTab);
+    }
+  }, [restorationDone, activeTab, panel]);
+
   const isCourseModule =
     !isCoverPage &&
     Boolean(
@@ -432,20 +488,32 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   }, [_props.model, courseReturnPath, courseOverviewUrl, content, title, tabBaseUrl, isEditorTab]);
 
   useEffect(() => {
-    if (!courseOverviewUrl || !activeTab) {
+    if (!activeCourseUrl || !activeTab) {
       return;
     }
     const tabId = activeTab.id;
-    return locationService.getHistory().listen((location: { pathname: string; search: string }) => {
-      if (location.pathname !== `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`) {
-        return;
-      }
-      const currentContent = panel.getActiveTab()?.content;
-      if (currentContent === activeTab.content && parsePathfinderDeepLink(location.search).doc === courseOverviewUrl) {
-        void navigateToCourseOverview(panel, tabId, courseOverviewUrl);
-      }
-    });
-  }, [courseOverviewUrl, activeTab, panel]);
+    return locationService
+      .getHistory()
+      .listen((location: { pathname: string; search: string }, action: HistoryAction) => {
+        if (location.pathname !== `${PLUGIN_BASE_URL}/${ROUTES.FullScreen}`) {
+          return;
+        }
+        const { doc, readerLesson, readerTrack } = parsePathfinderDeepLink(location.search);
+        if (doc !== activeCourseUrl || panel.getActiveTab()?.content !== activeTab.content) {
+          return;
+        }
+        if (readerLesson) {
+          if (
+            action === 'POP' &&
+            (readerLesson !== lessonPosition?.milestoneUrl || readerTrack !== lessonPosition?.trackId)
+          ) {
+            restoreLesson({ doc: activeCourseUrl, milestoneUrl: readerLesson, trackId: readerTrack });
+          }
+        } else if (courseOverviewUrl) {
+          void navigateToCourseOverview(panel, tabId, activeCourseUrl);
+        }
+      });
+  }, [activeCourseUrl, courseOverviewUrl, activeTab, lessonPosition, panel, restoreLesson]);
 
   // Stable ref to the latest exit-to-sidebar callback. `handleExitToSidebar`
   // only depends on `panel` (a stable useMemo'd reference) so its identity
@@ -545,12 +613,8 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     };
   }, [panel]);
 
-  // Learning-journey milestone toolbar — shared with the sidebar via the
-  // `LearningJourneyMilestoneToolbar` component. Renders as a sub-header
-  // beneath the layout's main header. Returns null for non-journey tabs
-  // (editor and bundled docs render without it, mirroring sidebar behavior).
   const journeyToolbar =
-    activeTab && !isCoverPage ? (
+    activeTab && hasPathToolbar ? (
       <LearningJourneyMilestoneToolbar
         panel={panel}
         activeTab={activeTab}
@@ -570,10 +634,11 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   return (
     <FullScreenLayout
       title={title}
-      showTitle={!isCoverPage && !courseOverviewUrl}
+      showTitle={!isCoverPage && !hasPathToolbar}
       isCourseOverview={isCoverPage}
       stepProgress={stepProgress}
       guideUrl={guideUrl}
+      lessonPosition={lessonPosition}
       guideType={guideType}
       hasActiveGuide={hasActiveGuide}
       onExit={handleBack}
@@ -595,6 +660,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       ) : (
         <FloatingPanelContent
           fullPageOverview
+          showGuideProgress={!hasPathToolbar}
           content={content}
           pendingAlignment={activeTab?.pendingAlignment}
           onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}

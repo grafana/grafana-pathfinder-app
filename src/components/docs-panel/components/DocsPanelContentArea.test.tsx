@@ -31,7 +31,9 @@ jest.mock('../../../lib/analytics', () => ({
 }));
 
 jest.mock('../../../docs-retrieval', () => ({
-  journeyProgressFromMilestones: jest.fn(() => 0),
+  journeyMilestonePercentages: jest.fn((_baseUrl, milestones: unknown[]) =>
+    milestones.map((milestone) => ({ milestone, percent: 0 }))
+  ),
   isJourneyCoverPage: (content: any) =>
     content.type === 'learning-journey' && content.metadata.learningJourney?.currentMilestone === 0,
   resolveActiveMilestoneToolbarContext: jest.requireActual('../../../docs-retrieval/active-milestone-sequence')
@@ -111,7 +113,7 @@ jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestone
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
 
 const { reportAppInteraction } = jest.requireMock('../../../lib/analytics');
-const { journeyProgressFromMilestones } = jest.requireMock('../../../docs-retrieval');
+const { journeyMilestonePercentages } = jest.requireMock('../../../docs-retrieval');
 
 function makeProps(overrides: Partial<DocsPanelContentAreaProps> = {}): DocsPanelContentAreaProps {
   const activeTab: any = {
@@ -179,7 +181,7 @@ describe('sidebar sticky progress eligibility', () => {
     if (kind === 'cover') {
       publishGuideIndex({
         contentKey: url,
-        index: computeGuideBlockIndex([{ type: 'markdown' }]),
+        index: computeGuideBlockIndex([{ type: 'quiz' }]),
         denominatorSource: 'live-pre-inlining',
       });
     }
@@ -198,11 +200,39 @@ describe('sidebar sticky progress eligibility', () => {
     act(() =>
       publishGuideIndex({
         contentKey: url,
-        index: computeGuideBlockIndex([{ type: 'markdown' }]),
+        index: computeGuideBlockIndex([{ type: 'quiz' }]),
         denominatorSource: 'live-pre-inlining',
       })
     );
     expect(await screen.findByRole('progressbar')).toBeInTheDocument();
+  });
+
+  it('hides guide progress for a path lesson with tracked exercises', async () => {
+    const props = makeProps();
+    const url = props.stableContent!.url;
+    const content = {
+      ...props.stableContent!,
+      type: 'learning-journey' as const,
+      metadata: {
+        title: 'Lesson',
+        learningJourney: {
+          baseUrl: 'backend-guide:path',
+          currentMilestone: 1,
+          totalMilestones: 1,
+          milestones: [{ number: 1, url, title: 'Lesson', isActive: true }],
+        },
+      },
+    };
+    publishGuideIndex({
+      contentKey: url,
+      index: computeGuideBlockIndex([{ type: 'quiz' }]),
+      denominatorSource: 'live-pre-inlining',
+    });
+
+    render(<DocsPanelContentArea {...props} activeTab={{ ...props.activeTab!, content }} stableContent={content} />);
+    await act(async () => {});
+
+    expect(screen.queryByTestId(testIds.guideProgress.bar)).not.toBeInTheDocument();
   });
 });
 
@@ -489,16 +519,15 @@ describe('DocsPanelContentArea', () => {
   });
 
   describe('loading-state milestone bar', () => {
-    // Decision 4 (docs/design/COMPLETION-MODEL.md): the bar shown while a
-    // journey tab is loading must use the shared calculation — earned
-    // progress, not currentMilestone/totalMilestones navigation position —
-    // so a reader never sees two different numbers for the same journey on
-    // adjacent screens.
-    it('sizes the fill from the shared journeyProgressFromMilestones calculation', () => {
-      journeyProgressFromMilestones.mockReturnValue(31);
+    const milestones = [
+      { number: 1, title: 'First lesson', url: 'backend-guide:first', isActive: false },
+      { number: 2, title: 'Second lesson', url: 'backend-guide:second', isActive: true },
+    ];
+    const lj = { baseUrl: 'backend-guide:path', totalMilestones: 2, currentMilestone: 2, milestones };
+
+    function loadingLessonProps() {
       const base = makeProps();
-      const lj = { baseUrl: 'backend-guide:path', totalMilestones: 4, currentMilestone: 2, milestones: [] };
-      const props = makeProps({
+      return makeProps({
         activeTab: {
           ...base.activeTab,
           type: 'learning-journey',
@@ -511,51 +540,42 @@ describe('DocsPanelContentArea', () => {
           },
         } as any,
       });
+    }
 
-      const { container } = render(<DocsPanelContentArea {...props} />);
+    it('shows the current lesson in the segmented bar without counting it as complete', () => {
+      render(<DocsPanelContentArea {...loadingLessonProps()} />);
 
-      expect(journeyProgressFromMilestones).toHaveBeenCalledWith(lj.baseUrl, lj.milestones);
-      const fill = container.querySelector('.progressFill') as HTMLElement;
-      expect(fill.style.width).toBe('31%');
+      expect(journeyMilestonePercentages).toHaveBeenCalledWith(lj.baseUrl, lj.milestones);
+      const bar = screen.getByRole('progressbar', { name: 'Learning path' });
+      expect(bar).toHaveAttribute('aria-valuenow', '0');
+      expect(bar.querySelector('[data-segment-state="current"]')).toBeInTheDocument();
     });
 
-    // The bar reads storage during render, so it goes stale once mounted
-    // unless the component re-renders on the completion store's own
-    // announcement — the same revision seam useLearningPaths and the
-    // milestone toolbar already subscribe to (round 5). Without that
-    // subscription here, this test fails: the fill stays at 10%.
     it('follows new evidence without an unrelated prop change forcing the re-render', () => {
-      journeyProgressFromMilestones.mockReturnValue(10);
-      const base = makeProps();
-      const lj = { baseUrl: 'backend-guide:path', totalMilestones: 4, currentMilestone: 2, milestones: [] };
-      const props = makeProps({
-        activeTab: {
-          ...base.activeTab,
-          type: 'learning-journey',
-          isLoading: true,
-          content: {
-            url: base.activeTab!.baseUrl,
-            type: 'learning-journey',
-            content: '',
-            metadata: { learningJourney: lj },
-          },
-        } as any,
-      });
+      let firstLessonPercent = 0;
+      journeyMilestonePercentages.withImplementation(
+        () => [
+          { milestone: milestones[0], percent: firstLessonPercent },
+          { milestone: milestones[1], percent: 0 },
+        ],
+        () => {
+          render(<DocsPanelContentArea {...loadingLessonProps()} />);
+          const bar = screen.getByRole('progressbar', { name: 'Learning path' });
+          expect(bar).toHaveAttribute('aria-valuenow', '0');
 
-      const { container } = render(<DocsPanelContentArea {...props} />);
-      const fill = container.querySelector('.progressFill') as HTMLElement;
-      expect(fill.style.width).toBe('10%');
+          firstLessonPercent = 100;
+          act(() => {
+            window.dispatchEvent(
+              new CustomEvent('pathfinder:progress', {
+                detail: { kind: 'guide', contentKey: milestones[0]!.url, percentage: 100, hasProgress: true },
+              })
+            );
+          });
 
-      journeyProgressFromMilestones.mockReturnValue(30);
-      act(() => {
-        window.dispatchEvent(
-          new CustomEvent('pathfinder:progress', {
-            detail: { kind: 'guide', contentKey: 'irrelevant', percentage: 30, hasProgress: true },
-          })
-        );
-      });
-
-      expect(fill.style.width).toBe('30%');
+          expect(bar).toHaveAttribute('aria-valuenow', '1');
+          expect(bar.querySelector('[data-segment-state="done"]')).toBeInTheDocument();
+        }
+      );
     });
   });
 
@@ -636,7 +656,7 @@ describe('DocsPanelContentArea', () => {
       render(<DocsPanelContentArea {...props} />);
 
       expect(screen.getByText('Milestone 1 of 2')).toBeInTheDocument();
-      expect(journeyProgressFromMilestones).toHaveBeenCalledWith(
+      expect(journeyMilestonePercentages).toHaveBeenCalledWith(
         'https://example.com/path',
         expect.arrayContaining([expect.objectContaining({ number: 1 })])
       );
@@ -653,9 +673,9 @@ describe('DocsPanelContentArea', () => {
         } as any,
       });
 
-      const { container } = render(<DocsPanelContentArea {...props} />);
+      render(<DocsPanelContentArea {...props} />);
 
-      expect(container.querySelector('.progressFill')).not.toBeInTheDocument();
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
 
     it('scopes the loading bar to the active track for a dual-membership guide, not the base sequence', () => {
