@@ -19,7 +19,6 @@
         "sv-SE",
         "tr-TR",
         "zh-CN",
-        "zh-Hans",
         "zh-Hant"
       ],
       "violations": [
@@ -102,7 +101,6 @@
         "sv-SE",
         "tr-TR",
         "zh-CN",
-        "zh-Hans",
         "zh-Hant"
       ],
       "violations": ["missing-key:guideVersionNotice.body", "missing-key:guideVersionNotice.title"],
@@ -124,7 +122,6 @@
         "ru-RU",
         "sv-SE",
         "zh-CN",
-        "zh-Hans",
         "zh-Hant"
       ],
       "violations": [
