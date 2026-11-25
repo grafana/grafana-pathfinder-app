@@ -28,6 +28,7 @@ import { findGuidesSpec } from './find-guides';
 import { inspectSpec } from './inspect';
 import { moveBlockSpec } from './move-block';
 import { removeBlockSpec } from './remove-block';
+import { renameBlockSpec } from './rename-block';
 import { renameIdSpec } from './rename-id';
 import { requirementsGroup } from './requirements';
 import { schemaSpec } from './schema';
@@ -56,6 +57,7 @@ export const COMMAND_MANIFEST: readonly CommandEntry[] = Object.freeze([
   // Structural edits (P2).
   entry(moveBlockSpec),
   entry(renameIdSpec),
+  entry(renameBlockSpec),
   // Validation, build, schema export, e2e.
   entry(validateCliSpec),
   entry(e2eSpec),
