@@ -29,6 +29,7 @@ export function TerminalConnectBlockForm({
   const styles = useStyles2(getBlockFormStyles);
 
   const initial = initialData && isTerminalConnectBlock(initialData) ? initialData : null;
+  const credentials = initial?.credentials;
 
   const [content, setContent] = useState(initial?.content ?? '');
   const [buttonText, setButtonText] = useState(initial?.buttonText ?? '');
@@ -61,12 +62,12 @@ export function TerminalConnectBlockForm({
         ...(vmTemplate.trim() && { vmTemplate: vmTemplate.trim() }),
         ...(vmApp.trim() && { vmApp: vmApp.trim() }),
         ...(vmScenario.trim() && { vmScenario: vmScenario.trim() }),
-        ...(initial?.credentials && { credentials: initial.credentials }),
+        ...(credentials && { credentials }),
       };
 
       onSubmit(block as JsonBlock);
     },
-    [content, buttonText, vmTemplate, vmApp, vmScenario, initial?.credentials, onSubmit]
+    [content, buttonText, vmTemplate, vmApp, vmScenario, credentials, onSubmit]
   );
 
   const isValid = content.trim().length > 0;

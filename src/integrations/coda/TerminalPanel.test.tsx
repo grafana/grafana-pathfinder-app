@@ -10,8 +10,6 @@ import { testIds } from '../../constants/testIds';
 
 jest.mock('./useTerminalLive.hook', () => ({ useTerminalLive: jest.fn() }));
 
-jest.mock('./useGcxCredential.hook', () => ({ useGcxCredential: () => ({}) }));
-jest.mock('./GcxSetupPanel', () => ({ GcxReadyLine: () => null, GcxSetupPanel: () => null }));
 jest.mock('./WorkspaceLink', () => ({ WorkspaceLink: () => null }));
 jest.mock('@xterm/xterm', () => ({
   Terminal: jest.fn(() => ({

@@ -106,11 +106,11 @@ Terminal roots retain their tracked kind and stable step ID. The root test IDs a
 | `data-test-terminal-status`       | Live connection status from the terminal context                     |
 | `data-test-terminal-unavailable`  | A disconnected terminal has an unmet availability or permission gate |
 | `data-test-terminal-checking`     | The Coda availability probe has not settled                          |
-| `data-test-terminal-gcx`          | Connection step requests credential provisioning                     |
+| `data-test-terminal-gcx`          | Always false in the current terminal                                 |
 | `data-test-terminal-vm-requested` | Connection step specifies a VM template, app, or scenario            |
 | `data-test-skippable`             | Command step permits an authored Skip                                |
 
-The controls use `interactive-terminal-connect-button-${stepId}` and `interactive-terminal-exec-${stepId}`. `interactive-terminal-skip-${stepId}` is Skip on a blocked command step and Continue on a connected connection step. The runner never uses Copy or the gcx refusal controls as execution substitutes.
+The controls use `interactive-terminal-connect-button-${stepId}` and `interactive-terminal-exec-${stepId}`. `interactive-terminal-skip-${stepId}` is Skip on a blocked command step and Continue on a connected connection step. The runner does not use Copy to execute a command.
 
 Errors use `interactive-error-${stepId}`. Requirement and availability messages use `interactive-requirement-${stepId}`. Command dispatch errors and connection errors expose `data-test-step-state="error"`.
 
@@ -118,7 +118,7 @@ After an action, success requires an attached root with `data-test-step-state="c
 
 A command completion proves product dispatch only. It does not prove process exit, exit code zero, or expected output. The runner sends no extra shell commands and does not use the Coda exec API.
 
-The runner refuses `credentials: [{ "tool": "gcx" }]` before connection because credential provisioning is outside this implementation. An explicit VM request also refuses an existing connection rather than silently accepting an unverified VM. This includes connected or connecting sessions started by earlier steps in the same run; a later VM-requesting step fails as an unmet prerequisite. A missing `data-test-terminal-status` fails with a plugin-contract diagnostic.
+Older builds can set `data-test-terminal-gcx="true"`, which the runner rejects. On current builds, a published guide with credential metadata connects normally. An explicit VM request also refuses an existing connection rather than silently accepting an unverified VM. This includes connected or connecting sessions started by earlier steps in the same run; a later VM-requesting step fails as an unmet prerequisite. A missing `data-test-terminal-status` fails with a plugin-contract diagnostic.
 
 Component tests in `terminal-step.test.tsx` and `terminal-connect-step.test.tsx` cover these attributes and controls. `tests/e2e-runner/terminal-driver.spec.ts` covers driver execution with browser DOM fixtures.
 
@@ -704,7 +704,6 @@ Contract tests enforce the stability of E2E attributes at build time, preventing
 - `src/interactive-engine/comment-box.contract.test.ts` - DOM-created element attributes
 - `src/components/docs-panel/docs-panel.contract.test.tsx` - Docs panel test IDs (constant values, source reference mapping, auto-derived exhaustiveness, bootstrap signals, scroll-restoration)
 - `src/components/LearningPaths/BadgeUnlockedToast.contract.test.ts` - Badge celebration test IDs and source references
-- `src/integrations/coda/GcxSetupPanel.contract.test.tsx` - gcx credential test IDs, source references, and the form's visibility states
 
 ### Pattern: Dual Assertion
 
@@ -859,48 +858,9 @@ await page.waitForSelector('[data-step-id="my-step"][data-test-step-state="compl
 
 ---
 
-### gcx credential setup
+### Published guides with GCX metadata
 
-A `terminal-connect` block with `credentials: [{ "tool": "gcx" }]` does not finish at `connected`: the step stays incomplete
-until a credential is installed, so a runner that waits only for the connection hangs. The same form
-appears in the terminal toolbar's **gcx** modal, keyed by fixed ids rather than a step id.
-
-| Control                       | Step id (`testIds.interactive.*`)          | Toolbar id (`testIds.codaTerminal.*`) | Rendered when                                                         |
-| ----------------------------- | ------------------------------------------ | ------------------------------------- | --------------------------------------------------------------------- |
-| Open the toolbar modal        | —                                          | `coda-terminal-gcx`                   | The terminal is connected                                             |
-| Mint a token                  | `interactive-gcx-mint-${stepId}`           | `coda-terminal-gcx-mint`              | No mint has been refused for this session yet                         |
-| Paste a token                 | `interactive-gcx-token-${stepId}`          | `coda-terminal-gcx-token`             | Always, while the form is shown — the paste path is primary           |
-| Pasted-token lifetime warning | `interactive-gcx-token-lifetime-${stepId}` | `coda-terminal-gcx-token-lifetime`    | Always, while the form is shown                                       |
-| Install the pasted token      | `interactive-gcx-install-${stepId}`        | `coda-terminal-gcx-install`           | Always, while the form is shown; disabled until the field has a value |
-| Continue without gcx          | `interactive-gcx-skip-${stepId}`           | — (dismiss the modal instead)         | Always, while the form is shown                                       |
-| Credential installed          | `interactive-gcx-ready-${stepId}`          | `coda-terminal-gcx-ready`             | A credential exists for this session                                  |
-| Set up again                  | —                                          | `coda-terminal-gcx-redo`              | A credential exists for this session                                  |
-| Refusal message               | `interactive-gcx-error-${stepId}`          | `coda-terminal-gcx-error`             | The last attempt was refused                                          |
-
-Lifecycle notes a runner has to honour:
-
-- **The whole form disappears while provisioning.** `state === 'provisioning'` renders a spinner and
-  nothing else, so mint, paste and install all detach mid-flight. Poll for the ready line or the error,
-  not for the control you just clicked.
-- **The step's controls are gated on the `gcx` flag, not on the store.** A `terminal-connect` step
-  without `gcx` never renders any of the step-scoped ids above, even while another surface is installing
-  a credential into the same session. It completes on its **Continue** button
-  (`interactive-terminal-skip-${stepId}`) as it always did.
-- **A sequentially blocked step renders none of the form either.** Inside a section the whole action
-  area — connect button, **Continue**, and every step-scoped id above — sits behind the step's own
-  eligibility gate, so a `terminal-connect` step whose predecessor is incomplete shows only
-  "Complete previous step" at `data-test-step-state="requirements-unmet"`. The block takes no
-  `skippable`, so there is no skip control to fall back on: drive the earlier steps first.
-- **A credential belongs to one session.** After a reconnect the ready line detaches and the form
-  returns, because the new VM holds no credential.
-- **A held-back mint brings its own button back.** A mint whose preflight could not reach an answer is
-  retryable rather than refused, so the error appears _and_ the mint control re-attaches. Only a refusal
-  detaches it for the rest of the session.
-- **Skipping still completes the step.** "Continue without gcx" marks it complete, so
-  `data-test-step-state` reaches `completed` on that path too.
-
-The values and the visibility states above are pinned by
-`src/integrations/coda/GcxSetupPanel.contract.test.tsx`.
+A connected terminal completes a legacy GCX step without prompting for a token. `src/components/interactive-tutorial/terminal-connect-step.test.tsx` covers that behavior. `src/integrations/coda/TerminalPanel.test.tsx` checks that the connected toolbar has no GCX action.
 
 ---
 

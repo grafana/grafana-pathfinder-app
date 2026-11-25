@@ -110,152 +110,9 @@ Use `isNotReady`, `isRoleForbidden` and `isUnavailable` from `coda-api.ts`.
 Timeouts default to 5 s and are capped at 120 s (the cap accommodates `setupScript` runs such as
 `apt-get install`). Output is capped at 32 KB per stream, with `truncated: true` when it overflows.
 
-## GCX credentials
+## Published guides with GCX credentials
 
-The terminal and guide editor no longer offer GCX setup. Published guides that request a GCX credential open a regular terminal. The SDK workspace image provides Bash and does not include GCX.
-
-<details>
-<summary>Historical credential flow</summary>
-
-Every sandbox image ships the [`gcx`](https://github.com/grafana/gcx) CLI, and it has no credential
-until something gives it one. A `terminal-connect` block with `credentials: [{ "tool": "gcx" }]` does that: once the terminal
-is connected, `provisionGcx(sessionId, { token? })` sends a Grafana service account token to
-`POST /v1/sessions/{id}/credential`, and the Coda backend writes
-`$HOME/.config/gcx/config.yaml` (mode `0600`, `current-context: coda`) into the VM over the SSH channel
-it already owns. gcx then talks to **this** Grafana as **this** learner.
-
-**The browser mints; the backend cannot.** Grafana refuses to create a service account whose role
-exceeds the caller's own, and a plugin's managed service account is created with no basic role at all —
-`plugin.json` `iam` grants fine-grained permissions, never a role. So the plugin can mint nothing
-usable, by design, and minting with the user's own session satisfies Grafana's guard by construction
-instead of re-implementing it. Whatever comes back is capped at what the user already had.
-
-**The cap holds only for a newly created account, so the account name is part of the guard.** One
-service account per user, reused, with a fresh short-lived token per session. Pathfinder names that
-account itself — `coda-gcx-u<userId>`, in `integrations/coda/gcx-service-account.ts` — rather than
-taking the client's `coda-gcx-<login>` default: that default lowercases the login and rewrites every
-non-`[a-z0-9-]` run to `-`, so `a.b` and `a-b` land on one name, and reuse is by exact name. A
-collision would hand one person a token minted against another person's account, at that account's
-role. Numeric ids do not collide. Reuse also outlives a role change — Grafana caps the role when the
-account is created and grants the creator write on it, so an Admin who mints and is later demoted keeps
-a route to an Admin token — and `assertServiceAccountIsMintable` refuses a reused account that
-outranks the caller today. _Today_ is the load-bearing word: the comparison reads the caller's role
-from `/api/user/orgs` rather than from `config.bootData`, which carries the role the page was loaded
-with. That refusal carries its own code, `service_account_outranks_caller`, rather than folding into
-`mint_forbidden`: both branch to the paste field, but only this one names something an operator can
-delete, and only this one is a rung an operator can clear.
-
-**A lookup that cannot answer holds the mint back.** The client reuses an exact name match without
-checking its role, so an account this code could not read is an _unknown_ role rather than an absent
-one — passing the name on regardless would hand the reuse straight back to the client. Grafana's `403`
-on `serviceaccounts:read` is the ordinary route to the paste field below Admin, so it is reported as
-`mint_forbidden`; any other failure is `service_account_check_unavailable`, which returns to `idle`
-with the mint still on offer rather than sending a transient `503` to the paste field for good. The
-preflight runs before the token name is claimed, so neither refusal burns one, and a pasted token skips
-it entirely — there is no account to reason about.
-
-**Minting is Admin-only in practice, so the paste path is not a fallback.** `serviceaccounts:create` is
-an Admin permission by default while sandbox sessions are open to Editors, so most people who can open
-a terminal cannot mint. Grafana answers `403` on the service-account _search_, not only the create, and
-`@grafana/coda-client` maps that to the client-synthesised code `mint_forbidden`. Treat it as a branch,
-not an error: the step reveals a token field and the same flow works for everyone. **Never ship a
-mint-only UI.**
-
-**The token is readable inside the VM.** The learner has a root shell on the same box, so it is exposed
-for as long as the token lives. For a **minted** token that is bounded rather than prevented — it is
-the learner's own identity, capped at their own role by Grafana's guard on creating the account. A
-**pasted** token carries whatever role its own service account holds, so a pasted Admin token is an
-Admin credential readable at root, and `GcxSetupPanel` attaches the cap claim to the mint button only
-and asks for least privilege next to the field. Recorded as an accepted risk in the Coda plugin's
-`docs/SECURITY.md`.
-
-**Only a minted token's lifetime is ours.** A mint asks for a short-lived token that expires on its
-own, inside the VM's lifetime. A **pasted** token is forwarded to the backend unchanged: Pathfinder
-cannot shorten it, and holds no `serviceaccounts:delete` to revoke it, so one created without an expiry
-stays valid long after the sandbox is gone. `GcxSetupPanel` says so next to the field rather than
-repeating the minted token's bound over both paths.
-
-**There is no capability flag for the route.** `capabilities.features` still lists only
-`exec.readyFile`, and a Coda plugin older than 1.3.0 answers `404 session_not_found` — the same code as
-a bad session id. Since the call only ever follows a session we just connected, `terminal-connect-step`
-reads that 404 as "the plugin is too old" and says so, rather than doing version arithmetic on
-`pluginVersion`.
-
-A refusal never dead-ends a guide. The terminal is connected either way, so the step offers **Continue
-without gcx**, and later steps gated on `is-terminal-active` still pass — their `gcx` commands just fail
-unauthenticated, which is visible in the terminal.
-
-**Two entry points, one implementation.** A guide drives it through
-`terminal-connect` with `credentials: [{ "tool": "gcx" }]`; anyone using the terminal on its own gets the **gcx** button in the
-panel toolbar, which opens the same form in a modal. The shared parts live in `integrations/coda/` —
-`useGcxCredential.hook.ts` for the flow and `GcxSetupPanel.tsx` for the form — and they have to live
-there, not in `components/`: `TerminalPanel` is tier 3 and cannot import from tier 4, while
-`terminal-connect-step` is tier 4 and can import from tier 3. The hook takes `onReady` as an injected
-callback because marking a step complete is the step's business and means nothing to a toolbar button.
-
-**One credential per session, shared by both.** The state lives in
-`integrations/coda/gcx-credential-store.ts`, not in either component. Two independent copies would let
-one surface offer a mint the other has already made — and Grafana rejects a duplicate token name, so
-that second mint fails with a message about token names rather than anything a learner can act on.
-The ready credential is visible to every surface on the session, but completion is requester-scoped:
-the snapshot carries the stable step id that started the run, and only that step receives `onReady`.
-A toolbar install has no requester and completes no step.
-
-**Sharing one store makes the reader's identity load-bearing.**
-`useGcxCredential(onReady, sessionId, requesterId)`
-answers only for the session named, and everything it reports — state, credential, error — is `idle`
-for any other. Without that, a credential installed from the toolbar would render a ready line on a
-step targeting a different VM. On the same session it reports shared readiness, but fires `onReady`
-only when the snapshot requester matches that hook's stable step id. `terminal-connect-step` passes
-both only when `gcx` is set, and guards its gcx render on the same flag, so an ordinary connect step
-that only needed a **Continue** click is never completed by someone else's credential. It is the
-additive contract holding: a block without `gcx` behaves exactly as it did before the field existed.
-
-**Completed GCX setup follows the VM across recovered sessions.** `TerminalProvider` registers both
-the session ID and VM ID with `invalidateGcxCredentialForSession`. A new session on the same known VM
-inherits a completed install and its step ownership without minting another token, and a mint
-requested for a session that already holds a completed install does nothing. The VM ID is latched
-whenever it arrives for the installing session, even after the install started. A different or
-unknown VM clears the state. An unfinished install is never carried into a replacement session; its
-late result is ignored. A `null` session ID during an interruption preserves the stored result, but
-callers cannot use it until a connected session is available. `openTerminal` waits for that session
-when provisioning or recovery is already in progress.
-
-**An install that settles late cannot publish over its replacement.** Provisioning takes long enough
-for the terminal to reconnect underneath it, so every reset and every run start bumps a generation
-counter, and a run publishes its result only while it still holds the current generation _and_ the
-snapshot still names its session. Without that guard, session A finishing after the terminal moved to B
-would report ready — and complete B's step — for a VM that never received a credential.
-
-**A retry asks for a token name nothing holds.** Tokens expire well inside a long session, so the modal
-keeps a **Set up again** control next to the ready line; without it the form is unreachable once a
-credential exists. Grafana rejects a duplicate token name even after the first token has expired, so
-the store hands each mint for a session a name of its own — `coda-<sessionId>`, then
-`coda-<sessionId>-2`, and so on. That also covers a mint whose delivery failed: the token was created,
-its only value was discarded with the error, and the retry must not ask for the same name back.
-
-**Do Section stops at a gcx step.** Not by the step's `executeStep` handle — `terminal-connect` is
-`refTarget: 'none'`, so no ref is attached to it and that handle has no runner-side caller. The runner
-routes the step through `executeInteractiveAction`, which has no `terminal-connect` case and so takes its
-`default:` branch and _reports success_. `TERMINAL_CONNECT_STEP_SCHEMA` sets
-`pausesSectionRun: props.gcx === true`, which stops the run cleanly at the step and hands the learner
-back the controls.
-
-**The ladder is measured.** `recordGcxCredentialDegradation` emits the rung that stopped an install
-(`mint_forbidden`, `account_outranks_caller`, `account_check_unavailable`, `plugin_too_old`,
-`refused`) and
-`gcx_credential_installed` / `gcx_setup_skipped`
-count the outcomes. The whole shape of this surface rests on how often `mint_forbidden` comes back, so
-that rate cannot be left unmeasurable — no token, session id, or backend error text goes with it.
-
-**Backend rollout:** deploy the credentials schema from
-[grafana-pathfinder-backend#92](https://github.com/grafana/grafana-pathfinder-backend/pull/92)
-before releasing this frontend. Both top-level and nested terminal blocks use an optional
-`credentials` list containing named requests such as `{ "tool": "gcx" }`. Only `gcx` is supported;
-these objects never contain tokens. Existing bundled or local guides using `gcx: true` must replace
-that field with `credentials: [{ "tool": "gcx" }]`. The old flag was never persisted by the deployed CRD.
-
-</details>
+A published `terminal-connect` step can still contain `credentials: [{ "tool": "gcx" }]`. The guide editor preserves this metadata on save. The step completes when the terminal connects and the learner gets a Bash prompt. The terminal toolbar and guide editor offer no GCX setup.
 
 ## Requirements and a connecting terminal
 
@@ -442,26 +299,22 @@ Grafana restart.
 
 ## Key files
 
-| File                                                            | Purpose                                                                                         |
-| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `src/integrations/coda/coda-api.ts`                             | The only module that knows the Coda plugin id                                                   |
-| `src/integrations/coda/useTerminalLive.hook.ts`                 | Live subscription and shared VM/lifetime lookup on connect, every 15 seconds, and focus         |
-| `src/integrations/coda/TerminalContext.tsx`                     | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()`        |
-| `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                                |
-| `src/integrations/coda/SandboxLifetime.tsx`                     | Compact extension action using the hook's shared VM snapshot; retains idempotent retry state    |
-| `src/integrations/coda/SandboxRecovery.tsx`                     | Recovery actions for an unreachable sandbox                                                     |
-| `src/integrations/coda/WorkspaceLink.tsx`                       | Capability-gated IDE navigation for the connected VM                                            |
-| `src/integrations/coda/useGcxCredential.hook.ts`                | The gcx mint/paste flow, shared by the toolbar button and the guide step                        |
-| `src/integrations/coda/gcx-credential-store.ts`                 | Shared gcx install state; same-VM recovery, session generation guards, and telemetry            |
-| `src/integrations/coda/gcx-service-account.ts`                  | Which service account a mint may use: the collision-free name, and the role reconcile           |
-| `src/integrations/coda/GcxSetupPanel.tsx`                       | The gcx form and its result line; test ids come in as a prop                                    |
-| `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                           |
-| `src/integrations/coda/terminal-storage.ts`                     | Panel state, scrollback, last VM opts                                                           |
-| `src/requirements-manager/checks/coda.ts`                       | `coda-exit-zero:` check (always gated)                                                          |
-| `src/requirements-manager/checks/terminal.ts`                   | `is-terminal-active` check                                                                      |
-| `src/components/AppConfig/CodaBackendStatus.tsx`                | Backend availability reporting                                                                  |
-| `src/components/interactive-tutorial/challenge-block.tsx`       | CTF-style block                                                                                 |
-| `src/components/interactive-tutorial/terminal-connect-step.tsx` | "Try in terminal" button, and the gcx mint/paste flow behind `credentials: [{ "tool": "gcx" }]` |
+| File                                                            | Purpose                                                                                      |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `src/integrations/coda/coda-api.ts`                             | The only module that knows the Coda plugin id                                                |
+| `src/integrations/coda/useTerminalLive.hook.ts`                 | Live subscription and shared VM/lifetime lookup on connect, every 15 seconds, and focus      |
+| `src/integrations/coda/TerminalContext.tsx`                     | Shared context + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()`     |
+| `src/integrations/coda/TerminalPanel.tsx`                       | xterm.js panel with FitAddon, WebLinks, Serialize, Search, WebGL                             |
+| `src/integrations/coda/SandboxLifetime.tsx`                     | Compact extension action using the hook's shared VM snapshot; retains idempotent retry state |
+| `src/integrations/coda/SandboxRecovery.tsx`                     | Recovery actions for an unreachable sandbox                                                  |
+| `src/integrations/coda/WorkspaceLink.tsx`                       | Capability-gated IDE navigation for the connected VM                                         |
+| `src/integrations/coda/useCodaAvailability.hook.ts`             | Runtime plugin detection and caller eligibility, cached per page load                        |
+| `src/integrations/coda/terminal-storage.ts`                     | Panel state, scrollback, last VM opts                                                        |
+| `src/requirements-manager/checks/coda.ts`                       | `coda-exit-zero:` check (always gated)                                                       |
+| `src/requirements-manager/checks/terminal.ts`                   | `is-terminal-active` check                                                                   |
+| `src/components/AppConfig/CodaBackendStatus.tsx`                | Backend availability reporting                                                               |
+| `src/components/interactive-tutorial/challenge-block.tsx`       | CTF-style block                                                                              |
+| `src/components/interactive-tutorial/terminal-connect-step.tsx` | Connects the terminal for a guide step                                                       |
 
 `coda-exit-zero` executes only when the caller passes `allowCodaExecution: true` for an explicit user check; passive evaluations leave it false. The command also remains gated on `PATHFINDER_READY_FILE`.
 
@@ -490,13 +343,13 @@ a **new** session; the backend reuses the underlying VM when template, app, and 
 }
 ```
 
-| Field         | Type   | Default             | Description                                                             |
-| ------------- | ------ | ------------------- | ----------------------------------------------------------------------- |
-| `content`     | string | (required)          | Markdown shown above the button                                         |
-| `buttonText`  | string | `"Try in terminal"` | Button label                                                            |
-| `vmTemplate`  | string | `""` (→ `vm-aws`)   | VM template to provision                                                |
-| `vmApp`       | string | `""`                | App name for `vm-aws-sample-app`                                        |
-| `vmScenario`  | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`)               |
+| Field         | Type   | Default             | Description                                                                |
+| ------------- | ------ | ------------------- | -------------------------------------------------------------------------- |
+| `content`     | string | (required)          | Markdown shown above the button                                            |
+| `buttonText`  | string | `"Try in terminal"` | Button label                                                               |
+| `vmTemplate`  | string | `""` (→ `vm-aws`)   | VM template to provision                                                   |
+| `vmApp`       | string | `""`                | App name for `vm-aws-sample-app`                                           |
+| `vmScenario`  | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`)                  |
 | `credentials` | array  | omitted             | Accepted for compatibility with published guides. The terminal ignores it. |
 
 Defined in `src/types/json-guide.types.ts` and validated by `src/types/json-guide.schema.ts`. The
@@ -518,7 +371,7 @@ The authoritative list is `GET /v1/capabilities`; prefer feature-detecting over 
 
 ## Open the connected VM in Coda IDE
 
-The terminal toolbar shows **IDE** beside **GCX** only when Coda advertises both `workspace-files`
+The terminal toolbar shows **IDE** when Coda advertises both `workspace-files`
 and `explicit-vm-attachment`, and the shared capability cache reports a usable backend. It is enabled
 only while connected with a known `vmId`, and navigates within the current Grafana tab without a full
 page reload from sidebar or floating mode. From fullscreen it opens a new tab to keep the guide and
@@ -572,18 +425,6 @@ key and must register again at `/plugins/grafana-coda-app`. Reported by `credent
 The gated sentinel may be missing. Confirm setup completed — the challenge block writes
 `/tmp/pathfinder-ready` as its last setup step, and a gated exec cannot pass before that exists.
 
-### "Grafana would not let this account mint a token"
-
-Expected below Admin: `serviceaccounts:create` is an Admin permission by default. Paste a service
-account token into the field the step reveals (Administration → Service accounts), or ask an
-administrator for the permission. This is a branch, not a bug.
-
-### "This Grafana's Coda plugin is too old to install a gcx credential"
-
-`POST /v1/sessions/{id}/credential` arrived in `grafana-coda-app` 1.3.0. An older plugin has no such
-route and answers `404` with the same code as an unknown session, so this is the best reading available
-— there is no capability flag to feature-detect with. Upgrade the Coda plugin.
-
 ### `11;rgb:…` or similar escape text appears after command output
 
 A program in the VM asked the terminal for its background colour (OSC 11) and the answer was echoed as
@@ -593,18 +434,6 @@ termios ECHO, and the shell echoes it. `TerminalPanel` now swallows those three 
 `registerOscHandler(code, () => true)`, and the Coda plugin stops them being asked at all by running the
 PTY under `TERM=screen-256color`, which is the prefix Go's `termenv` skips. If you see this again, a
 different escape sequence is involved — check which, before adding another handler.
-
-Worth knowing why it mattered beyond the cosmetics: `gcx` links `bubbletea`, whose package `init()`
-issues that query and then blocks **five seconds** waiting for a reply it never uses. Fixing this made
-every `gcx` command in a sandbox five seconds faster.
-
-### `gcx` commands fail to connect, but `gcx config check` shows both ✔ lines
-
-The config is fine and this is the expected result in local dev. The server written into the VM is
-Grafana's own `AppURL`, which in the dev stack is `http://localhost:3000` — the **VM's** loopback,
-where nothing is listening. Both ✔ lines prove gcx read our file and selected our context; only
-reachability is missing. Exercising the commands needs a Grafana the VM can reach. Do not "fix" this by
-rewriting the URL.
 
 ### VM stuck provisioning, SSH failures, quota problems
 

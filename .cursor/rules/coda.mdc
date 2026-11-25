@@ -83,58 +83,11 @@ boundary** — the learner has full shell access to the same VM. Use `PATHFINDER
 Classify failures with `isNotReady` / `isRoleForbidden` / `isUnavailable`, never by matching on the
 message. Several distinct failures share a status.
 
-## gcx credentials
+## Legacy GCX metadata
 
-`terminal-connect` with `credentials: [{ "tool": "gcx" }]` installs a Grafana credential into the VM after the terminal
-connects, so the `gcx` CLI in every sandbox image can talk to this Grafana as the learner.
-`provisionGcx(sessionId, { token? })` in `coda-api.ts` wraps the SDK call, because this module owns the
-only `CodaClient` instance.
+Published terminal-connect blocks may contain `credentials: [{ "tool": "gcx" }]`. Preserve the field when editing a block. Connection completes the step. The toolbar, guide runner, and editor have no credential setup flow.
 
-**Minting happens in the browser and cannot move into the plugin.** Grafana refuses to create a service
-account whose role exceeds the caller's own, and a plugin's managed service account has no basic role,
-so the backend can mint nothing usable — by design, not an oversight. Do not "simplify" this by asking
-the Coda backend to mint.
-
-**Never ship a mint-only UI.** `serviceaccounts:create` is Admin by default while sessions are open to
-Editors, so most people who can open a terminal cannot mint. `mint_forbidden` is a **branch** — reveal a
-token field — not an error to surface raw. Use `isMintForbidden`, never a status or message match.
-
-**Never treat an unread service account as an absent one.** Pathfinder names the mint account itself
-(`coda-gcx-u<userId>` in `gcx-service-account.ts`) because the client's login-derived default collides,
-and the client reuses an exact name match without checking its role. The preflight therefore fails
-closed: it compares against the caller's *live* role from `/api/user/orgs`, not `config.bootData`, and a
-lookup that cannot answer refuses — `mint_forbidden` for Grafana's own `403`, else the retryable
-`service_account_check_unavailable`. Do not restore a `catch { return; }` there.
-
-**Only a minted token's role and lifetime are ours to claim.** A pasted token is forwarded unchanged and
-opaque to us, so keep the role cap and the expiry claim attached to the mint path and ask for least
-privilege next to the field.
-
-**Do not complete the step on connection alone.** With `gcx` set, the step is done when the credential is
-in; ticking it off at `connected` marks success while every command it exists to enable would still fail
-unauthenticated.
-
-**Do Section must stop at a gcx step, via `pausesSectionRun`.** `executeInteractiveAction` has no
-`terminal-connect` case, so the runner takes its `default:` branch and *reports success* — and the step's
-own `executeStep` handle is not the guard, because `refTarget: 'none'` means no ref is ever attached to
-it. `TERMINAL_CONNECT_STEP_SCHEMA` therefore sets `pausesSectionRun: props.gcx === true`. See
-`.cursor/rules/tracked-step-types.mdc`.
-
-**A `404` on the credential route means an old plugin, not a bad session.** There is no capability flag
-for it — `features` is still `["exec.readyFile"]` — and the call only ever follows a session we just
-connected, so `session_not_found` there is read as "Coda plugin predates 1.3.0". Do not do version
-arithmetic on `pluginVersion` instead.
-
-**The flow is shared and lives in tier 3.** `useGcxCredential.hook.ts` and `GcxSetupPanel.tsx` sit in
-`integrations/coda/` because `TerminalPanel` (tier 3) cannot import from `components/` (tier 4). Do not
-move them up; add consumers instead. The hook takes `onReady` rather than calling `markComplete` itself —
-step semantics do not belong in it.
-
-**Credential install state is shared and follows VM identity.** `gcx-credential-store.ts`
-is shared by the guide step and toolbar. `TerminalProvider` registers both session and VM ids;
-a same-VM reconnect retains a completed install, while a different VM invalidates it. A null
-session id is an interruption, not proof that the VM changed. An interrupted install still
-fails so the user can retry it explicitly. Step completion remains requester-scoped.
+## Terminal recovery and output
 
 **Recovery belongs to the SDK.** `CodaTerminalLink` in SDK 1.13.2 owns bounded retries and
 the absolute five-minute outage deadline, including in-flight reservation and provisioning.
@@ -144,9 +97,6 @@ Do not add a second deadline timer or replay input after reconnecting.
 
 **Never answer OSC 10/11/12.** xterm replies through `onData`, `onData` goes to the PTY, and a late reply
 is echoed by the shell as text. `TerminalPanel` registers suppressing handlers after `open()`; keep them.
-
-**A refusal must not dead-end a guide.** The terminal is connected either way, so offer "Continue
-without gcx" and let `is-terminal-active` steps proceed.
 
 ## A connecting terminal must re-open the requirement
 
@@ -232,8 +182,6 @@ on a connection must check `isTerminalRegistered` or it hangs (issue #1541).
 | File | Purpose |
 |------|---------|
 | `src/integrations/coda/coda-api.ts` | The only module that knows the Coda plugin id. `createSession`, `execInSession`, `getCapabilities`, `provisionGcx`, `sessionChannelAddress` |
-| `src/integrations/coda/gcx-credential-store.ts` | Shared gcx install state, retained across same-VM reconnects |
-| `src/integrations/coda/gcx-service-account.ts` | Names the mint account on the numeric user id, and the fail-closed role preflight before a mint |
 | `src/integrations/coda/useTerminalLive.hook.ts` | SDK recovery coordinator, input gating and provisioning progress |
 | `src/integrations/coda/TerminalContext.tsx` | Shared context (`isTerminalRegistered`, `error`) + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` for the requirements checker |
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |
@@ -276,7 +224,7 @@ migrated across plugins**, so operators must re-enter their enrollment key there
 | `vmTemplate` | `""` (→ `vm-aws`) | VM template to provision |
 | `vmApp` | `""` | App name for `vm-aws-sample-app` |
 | `vmScenario` | `""` | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
-| `credentials` | omitted | Also install a gcx credential — see above |
+| `credentials` | omitted | Legacy guide metadata preserved on save and ignored at runtime |
 
 ## Constraints
 
