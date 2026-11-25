@@ -177,9 +177,18 @@ describe('strong match', () => {
   ]);
   const group = (query: string) => searchSteps(corpus, { queries: [query], limit: 1 })[0]!;
 
-  it('is weak when a distinctive query term is missing from the top hit', () => {
-    const weak = group('create service account');
-    expect(weak.hits[0]?.procedure.id).toBe('aws#0');
+  it("is weak when a distinctive term is only in the top hit's title, not its steps, labels or selectors", () => {
+    const titleOnly = buildStepIndex([
+      procedure('zebra#0', 'Zebra crossing dashboards', ['Open dashboards', 'Save']),
+      ...Array.from({ length: 10 }, (_, i) =>
+        procedure(`filler#${i}`, `Unrelated topic ${i}`, ['Open dashboards', 'Save'])
+      ),
+    ]);
+    const weak = searchSteps(titleOnly, { queries: ['zebra crossing dashboards'], limit: 1 })[0]!;
+    expect(weak.hits[0]?.procedure.id).toBe('zebra#0');
+    expect(weak.absentWords).toEqual([]);
+    expect(weak.commonOnly).toBe(false);
+    expect(weak.hits[0]!.score).toBeGreaterThanOrEqual(STRONG_SCORE);
     expect(weak.noStrongMatch).toBe(true);
   });
 
