@@ -34,7 +34,7 @@ Versions below are major versions only; `package.json`, `package-lock.json`, and
 
 ## Technical Constraints
 
-- **Grafana Version**: Requires Grafana >=12.3.0-0 for extension points compatibility
+- **Grafana Version**: Requires Grafana 13.3.0 or later because of the App Platform migration; `grafanaDependency` in `src/plugin.json` is `>=13.1.0-0`
 - **Plugin Architecture**: Must use Grafana's app plugin structure with `plugin.json`
 - **Extension Points**: `grafana/extension-sidebar/v0-alpha` for the sidebar, plus `grafana/commandpalette/action` links
 - **Browser Support**: Modern browsers only (ES2022+, the SWC target set in `webpack.config.ts`), no IE support

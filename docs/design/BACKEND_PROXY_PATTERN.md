@@ -29,7 +29,7 @@ parent migration PR is the code rollback point.
 OSS installations without SDK registration retain plugin `jsonData` settings reads
 and writes. They did not previously support App Platform backend features. The plugin
 needs Grafana 13.3.0 or later; the verified runtime for the new backend features
-is OSS 13.3.0 with the flags above. `grafanaDependency` in `src/plugin.json` is still `>=13.1.0-0`. On self-hosted Grafana before 13.3, the host can advertise both registration flags even when SDK health returns 404. That combination keeps plugin JSON settings available until discovery succeeds. An outage, an unknown host version, or a Cloud namespace keeps SDK storage authoritative. Registered SDK failures never fall back to JSON
+is OSS 13.3.0 with the flags above. `grafanaDependency` in `src/plugin.json` is still `>=13.1.0-0`. Self-hosted Grafana before 13.3 has no `appplugins.loadAppManifest` toggle, so such a host does not normally advertise both registration flags. If SDK health still returns 404 there, discovery keeps plugin JSON settings available until it succeeds. An outage, an unknown host version, or a Cloud namespace keeps SDK storage authoritative. Registered SDK failures never fall back to JSON
 writes. A settings resource already read remains authoritative.
 
 `grafana.useRouterMiddleware` is a server-only feature toggle (`Generate{Go: true}`

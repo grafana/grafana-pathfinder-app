@@ -125,7 +125,7 @@ Guide storage is available on Grafana Cloud and on self-managed Grafana, both op
 | Grafana Cloud                                     | Nothing. Grafana Cloud always runs the latest Grafana and Interactive learning plugin.                                                                                               |
 | Self-managed Grafana (open source and Enterprise) | Grafana 13.3.0 or later, Interactive learning plugin version TBD (the first release after 2.30.0 that includes the App Platform migration), and the feature toggles described below. |
 
-The plugin needs Grafana 13.3.0 or later, because that is the first Grafana release with all three feature toggles.
+The plugin needs Grafana 13.3.0 or later because of the App Platform migration. Grafana 13.3.0 is also the first Grafana release that has all three feature toggles.
 
 On self-managed Grafana, turn on these experimental feature toggles in the Grafana configuration file, then restart Grafana:
 
