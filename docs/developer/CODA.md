@@ -315,9 +315,9 @@ is why an absent optional plugin must never reach it.
 which core's `@grafana/runtime` did not export before 13.1 and which throws synchronously rather than
 rejecting when absent. Nothing else on the path needs it: `@grafana/coda-client` uses only
 `getBackendSrv().fetch` and `getGrafanaLiveSrv`, and `grafana-coda-app` itself declares
-`>=12.3.0-0`, so the sandbox would work on 12.3–13.0 but for this probe. Pathfinder's own
-`grafanaDependency` deliberately stays `>=12.3.0-0` — raising it would block the entire plugin from
-installing on those versions for the sake of one optional, dev-mode-gated feature. Instead,
+`>=12.3.0-0`, so the sandbox would work on 12.3–13.0 but for this probe. Pathfinder itself now
+needs Grafana 13.3.0 or later because of the App Platform migration, and its own `grafanaDependency`
+in `src/plugin.json` is `>=13.1.0-0`, so the probe floor limits no supported host. Even so,
 `isCodaProbeSupported()` separates "this Grafana cannot answer" from "the plugin is absent", and
 `CodaBackendStatus` renders a distinct `grafana-too-old` notice for the former rather than claiming
 the plugin is missing.

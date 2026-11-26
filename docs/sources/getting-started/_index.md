@@ -20,7 +20,7 @@ If **Help** opens the classic menu, your administrator might have disabled Pathf
 
 ## Self-managed Grafana
 
-The current plugin requires Grafana 12.3 or later. You need permission to install plugins and restart Grafana.
+The current plugin requires Grafana 13.3.0 or later. You need permission to install plugins and restart Grafana.
 
 ### Install from the plugin catalog
 

@@ -62,7 +62,7 @@ Interactive learning, also called Pathfinder, brings documentation and guided pr
 
 ## Availability and administration
 
-Interactive learning is in public preview for Grafana Cloud and self-managed Grafana. Availability depends on the instance configuration and Cloud rollout. The current plugin requires Grafana 12.3 or later.
+Interactive learning is in public preview for Grafana Cloud and self-managed Grafana. Availability depends on the instance configuration and Cloud rollout. The current plugin requires Grafana 13.3.0 or later.
 
 On a Cloud stack where it is available, select **Help** to open Interactive learning. For self-managed installation and your first guide, refer to [Get started](getting-started/).
 
