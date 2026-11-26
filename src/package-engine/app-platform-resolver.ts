@@ -5,11 +5,8 @@ import { observeGuideRequest, finishGuideLoad } from '../lib/telemetry/guide-loa
 /**
  * App Platform Package Resolver
  *
- * Resolves bare package IDs against private, namespace-scoped InteractiveGuide
- * CRDs served by the Pathfinder backend's App Platform aggregator. Reads the
- * resource directly via getBackendSrv() — session-authenticated, so a
- * resolution can only ever return resources the caller's session is already
- * authorized to read (no new credential store, no cross-tenant surface).
+ * Resolves a package ID through the namespaced SDK guide route. The provider
+ * reads the InteractiveGuide with the caller's delegated identity.
  *
  * Unlike the bundled/CDN resolvers, this repository is mutable — guides are
  * edited in place — so the composite resolver must not memoize successful
@@ -19,7 +16,7 @@ import { observeGuideRequest, finishGuideLoad } from '../lib/telemetry/guide-loa
  * @coupling API: GET SDK backend/custom-guide?name={name}
  *   — group/version/availability come from utils/interactive-guides-api.ts (GAP).
  * @coupling Catalogue/listing needs (Custom Guides, My Learning) go through the
- *   separate /custom-guide-repository backend proxy instead of this resolver —
+ *   SDK catalogue route instead of this resolver —
  *   a raw per-ID resolve() here doesn't give a cheap way to enumerate packages.
  */
 

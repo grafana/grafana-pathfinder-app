@@ -29,7 +29,7 @@ export type FieldShape =
   | { kind: 'number'; optional: boolean; description: string | undefined }
   | { kind: 'boolean'; optional: boolean; description: string | undefined }
   | { kind: 'enum'; optional: boolean; values: readonly string[]; description: string | undefined }
-  | { kind: 'array-string'; optional: boolean; description: string | undefined }
+  | { kind: 'array-string'; optional: boolean; acceptsSingle?: true; description: string | undefined }
   | { kind: 'array-enum'; optional: boolean; values: readonly string[]; description: string | undefined }
   | { kind: 'union'; optional: boolean; branches: readonly UnionBranchKind[]; description: string | undefined }
   | { kind: 'literal'; optional: boolean; description: string | undefined }
@@ -106,7 +106,15 @@ export function describeField(field: z.ZodType): FieldShape {
   }
 
   if (t === 'union') {
-    const branches = (def?.options ?? []).map((branch) => zodDef(branch)?.type);
+    const branchDefs = (def?.options ?? []).map((branch) => zodDef(branch));
+    const branches = branchDefs.map((branch) => branch?.type);
+    if (
+      branches.length === 2 &&
+      branches.includes('string') &&
+      branchDefs.some((branch) => branch?.type === 'array' && zodDef(branch.element)?.type === 'string')
+    ) {
+      return { kind: 'array-string', optional, acceptsSingle: true, description };
+    }
     const isUnionBranchKind = (kind: string | undefined): kind is UnionBranchKind =>
       kind === 'string' || kind === 'number' || kind === 'boolean';
     if (branches.length > 0 && branches.every(isUnionBranchKind)) {

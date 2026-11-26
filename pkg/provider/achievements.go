@@ -9,9 +9,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
 	authlib "github.com/grafana/authlib/types"
 	"github.com/grafana/grafana-app-sdk/app"
 	"github.com/grafana/grafana-app-sdk/simple"
+
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 	"github.com/grafana/grafana-pathfinder-app/pkg/resourceaccess"
 	"github.com/grafana/grafana-pathfinder-app/pkg/services"
@@ -80,7 +83,7 @@ func achievementHandler(clients *resourceaccess.AchievementClients, definitions 
 			return fail(503, "definitions-unavailable")
 		}
 		person := achievements.Person{ID: caller.Subject}
-		store := services.NewAchievementStore(clients, services.AchievementWriter{Namespace: caller.Namespace, OrgID: caller.OrgID, UserLogin: caller.Login, UserDisplayName: caller.DisplayName}, time.Now)
+		store := services.NewAchievementStore(clients, services.AchievementWriter{Namespace: caller.Namespace, OrgID: caller.OrgID, UserLogin: caller.Login, UserDisplayName: caller.DisplayName}, time.Now, log.DefaultLogger)
 		switch operation {
 		case "definitions":
 			stack := achievements.Stack{}

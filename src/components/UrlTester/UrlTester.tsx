@@ -10,6 +10,7 @@ import {
 } from '../../security';
 import { testIds } from '../../constants/testIds';
 import { StorageKeys } from '../../lib/storage-keys';
+import { classifyDocsUrl, isLegacyJourneyFamily } from '../../lib/docs-url-family';
 import { usePersistedString } from '../../hooks';
 
 export interface UrlTesterProps {
@@ -94,11 +95,7 @@ export const UrlTester = ({ onOpenDocsPage, onOpenLearningJourney }: UrlTesterPr
 
       const tutorialName = extractTitleFromUrl(testUrl);
 
-      // Detect if this is a learning journey URL and use the appropriate handler
-      // Support both /learning-journeys/ (legacy) and /learning-paths/ (new)
-      const isLearningJourneyUrl =
-        cleanedUrl.includes('/learning-journeys/') || cleanedUrl.includes('/learning-paths/');
-      if (isLearningJourneyUrl && onOpenLearningJourney) {
+      if (isLegacyJourneyFamily(classifyDocsUrl(cleanedUrl)) && onOpenLearningJourney) {
         onOpenLearningJourney(testUrl, tutorialName);
       } else {
         onOpenDocsPage(testUrl, tutorialName);

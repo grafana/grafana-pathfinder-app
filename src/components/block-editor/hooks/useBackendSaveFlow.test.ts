@@ -479,6 +479,96 @@ describe('useBackendSaveFlow — while a write is settling', () => {
   });
 });
 
+describe('recovering a deleted guide', () => {
+  const draft = guide({ title: 'My local edits' });
+  const saved = { metadata: { name: 'g1', resourceVersion: '4' }, spec: { title: 'Original' } };
+  const editor = { getGuide: () => draft };
+
+  it.each(['library', 'restore', 'update', 'unpublish'] as const)(
+    'keeps the draft and creates it on request after a %s deletion',
+    async (source) => {
+      const backendGuides = makeBackendGuides([], { saveGuide: jest.fn().mockResolvedValue({ written: saved }) });
+      const localDraft = JSON.stringify({ guide: draft, viewMode: 'edit', version: 2 });
+      localStorage.setItem(StorageKeys.BLOCK_EDITOR_STATE, localDraft);
+      if (source === 'restore') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ resourceName: 'g1' }));
+      }
+      const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+      await flushReads();
+      if (source !== 'restore') {
+        act(() => result.current.trackLoadedGuide(draft, 'g1', saved));
+        if (source === 'library') {
+          act(() => result.current.forgetDeletedGuide('another-guide'));
+          expect(result.current.currentGuideResourceName).toBe('g1');
+          act(() => result.current.forgetDeletedGuide('g1'));
+        } else if (source === 'unpublish') {
+          (backendGuides.unpublishGuide as jest.Mock).mockRejectedValueOnce({ status: 404 });
+          await act(() => result.current.performUnpublish());
+        } else {
+          (backendGuides.saveGuide as jest.Mock).mockRejectedValueOnce({ status: 404 });
+          await act(() => result.current.performSaveDraft());
+        }
+      }
+      expect(result.current.canSaveAsNew).toBe(true);
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(StorageKeys.BLOCK_EDITOR_STATE)).toBe(localDraft);
+      expect(result.current.lastPublishedJson).toBeNull();
+      await act(() => result.current.performSaveDraft());
+      expect(backendGuides.readGuide).toHaveBeenCalledTimes(source === 'restore' ? 1 : 0);
+      expect(backendGuides.saveGuide).toHaveBeenLastCalledWith(draft, undefined, undefined, 'draft', false, undefined);
+      expect(result.current.canSaveAsNew).toBe(false);
+    }
+  );
+
+  it('shares a pending restore read with a save made while the editor is opening', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ resourceName: 'g1' }));
+    let finishRead!: (entry: undefined) => void;
+    const backendGuides = makeBackendGuides([], {
+      readGuide: jest.fn(
+        () =>
+          new Promise<undefined>((resolve) => {
+            finishRead = resolve;
+          })
+      ),
+    });
+    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    await act(async () => {
+      const saving = result.current.performSaveDraft();
+      finishRead(undefined);
+      await saving;
+    });
+    expect(backendGuides.readGuide).toHaveBeenCalledTimes(1);
+    expect(backendGuides.saveGuide).not.toHaveBeenCalled();
+    expect(result.current.canSaveAsNew).toBe(true);
+  });
+
+  it('stops on the first missing read during a save and handles a reclaimed name without overwriting', async () => {
+    const backendGuides = makeBackendGuides();
+    const { result } = renderHook(() => useBackendSaveFlow({ editor, backendGuides }));
+    act(() => result.current.trackLoadedGuide(draft, 'g1', makeGuideEntry('g1', 'Original')));
+    await act(() => result.current.performSaveDraft());
+    expect(result.current.canSaveAsNew).toBe(true);
+    expect(backendGuides.saveGuide).not.toHaveBeenCalled();
+    (backendGuides.saveGuide as jest.Mock).mockRejectedValueOnce({ status: 409 });
+    await act(() => result.current.performSaveDraft());
+    expect(backendGuides.readGuide).toHaveBeenCalledTimes(1);
+    expect(backendGuides.saveGuide).toHaveBeenCalledTimes(1);
+    expect(result.current.currentGuideResourceName).toBeNull();
+    expect(result.current.canSaveAsNew).toBe(false);
+    (backendGuides.readGuide as jest.Mock).mockResolvedValue(saved);
+    let saving!: Promise<void>;
+    await act(async () => {
+      saving = result.current.performSaveDraft();
+    });
+    expect(result.current.confirmModal.isOpen).toBe(true);
+    await act(async () => {
+      result.current.confirmModal.onCancel();
+      await saving;
+    });
+    expect(backendGuides.saveGuide).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('useBackendSaveFlow — after a failed restore read', () => {
   // The restore read failed, so the editor holds no status or version for the guide it tracks.
   const restoredUnread = (

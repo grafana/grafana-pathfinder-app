@@ -272,9 +272,8 @@ export interface EditBlockOptions {
  * Block fields `editBlock` refuses to patch.
  *
  * `type` is a discriminator and the child collections are structure, both owned
- * by other commands. `id` is here because a block-level rename is non-trivial:
- * every conditional / quiz / guided reference and every cross-block link in the
- * package would need updating.
+ * by other commands. `id` is here because a rename has to rewrite references
+ * across the package, which `rename-block` owns.
  *
  * Exported because `edit-block` omits exactly these from its parameter surface, so the
  * two cannot disagree about what is editable.

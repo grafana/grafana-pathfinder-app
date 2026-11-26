@@ -3,6 +3,8 @@ alwaysApply: false
 description: Describes technologies, frameworks, and other tools used in this repository.
 globs:
   - "pkg/**/*.go"
+  - "kinds/manifest.cue"
+  - "src/lib/backend-routes.ts"
   - "go.mod"
   - "go.sum"
   - "magefile.go"
@@ -52,6 +54,8 @@ Versions below are major versions only; `package.json`, `package-lock.json`, and
 - `grafana/authlib` - authenticated SDK identity and namespace types
 - `grafana-plugin-sdk-go` - plugin logging/runtime integration beneath the App SDK
 - Kubernetes client libraries - resource versions, status errors, and bounded REST access
+
+Before adding or changing a route (`pkg/provider`, `kinds/manifest.cue`, or the `src/lib/backend-routes.ts` allowlist), follow `docs/design/BACKEND_PROXY_PATTERN.md#how-to-add-or-change-a-route` and keep its route invariants.
 
 There is no WebSocket or SSH dependency: sandbox VMs and terminal streaming live in the separate `grafana-coda-app` plugin. See `.cursor/rules/systemPatterns.mdc` ("What is deliberately NOT here").
 

@@ -3,11 +3,15 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { SaveActions } from './SaveActions';
 
 describe('SaveActions: smart label + routing', () => {
-  it('not-saved → "Save" (secondary), routes to onSaveDraft', () => {
+  it.each([
+    [false, 'Save'],
+    [true, 'Save as new'],
+  ] as const)('routes %s / %s to a draft save', (canSaveAsNew, label) => {
     const onSaveDraft = jest.fn();
     const onPostToBackend = jest.fn();
     render(
       <SaveActions
+        canSaveAsNew={canSaveAsNew}
         publishedStatus="not-saved"
         hasUnsyncedChanges={false}
         isPosting={false}
@@ -15,7 +19,7 @@ describe('SaveActions: smart label + routing', () => {
         onPostToBackend={onPostToBackend}
       />
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: label }));
     expect(onSaveDraft).toHaveBeenCalledTimes(1);
     expect(onPostToBackend).not.toHaveBeenCalled();
   });

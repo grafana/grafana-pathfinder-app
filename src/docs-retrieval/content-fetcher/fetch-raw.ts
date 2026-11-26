@@ -18,6 +18,7 @@ import {
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
 import { logger } from '../../lib/logging';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
+import { classifyDocsUrl, isLegacyJourneyFamily } from '../../lib/docs-url-family';
 import { normalizeTelemetryUrl } from '../../lib/telemetry';
 import { isJsonContentUrl, generateInteractiveLearningVariations, getContentUrls } from './url-utils';
 
@@ -220,11 +221,7 @@ async function tryGrafanaDocsContentLadder(
   const { jsonUrl, htmlUrl } = getContentUrls(finalUrl);
   let fallback: GuideDiagnostic | undefined;
 
-  const urlPath = new URL(finalUrl).pathname;
-  const hasContentJson =
-    urlPath.includes('/learning-journeys/') ||
-    urlPath.includes('/learning-paths/') ||
-    isInteractiveLearningUrl(finalUrl);
+  const hasContentJson = isLegacyJourneyFamily(classifyDocsUrl(finalUrl)) || isInteractiveLearningUrl(finalUrl);
 
   if (hasContentJson && jsonUrl !== finalUrl) {
     try {

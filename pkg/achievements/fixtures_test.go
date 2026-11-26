@@ -17,29 +17,42 @@ const testRegistryJSON = `{"entities":{
     "context":{"guideSource":{"type":"string"},"guideId":{"type":"string"},
                "guideCategory":{"type":"string","enum":["interactive","documentation","learning-journey"]}},
     "resources":[{"unit":"guide","id":["guideSource","guideId"]},{"unit":"guide-category","id":["guideCategory"]}]}}},
-  "alert-rules":{"actions":{"created":{"context":{}}}}
+  "alert-rules":{"actions":{"created":{"context":{}}}},
+  "folders":{"actions":{"created":{"context":{"folderUid":{"type":"string"}},"resources":[{"unit":"folder","id":["folderUid"]}]}}},
+  "contact-points":{"actions":{"created":{"context":{}}}}
 }}`
 
 const testCatalogJSON = `{"achievements":[
   {"id":"dash-builder","title":"Dashboard builder","description":"Create dashboards.",
-   "counter":{"unit":"dashboard","evidence":[
-     {"entity":"dashboards","action":"created","countBy":"resource","where":[{"field":"numPanels","op":"gte","value":1}]}]},
    "tiers":[
-     {"id":"bronze","at":1,"art":"dash-1","or":[{"entity":"guides","action":"completed","where":[
-        {"field":"guideSource","op":"eq","value":"bundled"},{"field":"guideId","op":"eq","value":"first-dashboard-cloud"}]}]},
-     {"id":"silver","at":5,"art":"dash-2"},
-     {"id":"gold","at":25,"art":"dash-3"}]},
+     {"id":"bronze","goal":1,"art":"dash-1","rules":[
+        {"entity":"dashboards","action":"created","countBy":"resource","where":[{"field":"numPanels","op":"gte","value":1}]},
+        {"entity":"guides","action":"completed","countBy":"resource","where":[
+          {"field":"guideSource","op":"eq","value":"bundled"},{"field":"guideId","op":"eq","value":"first-dashboard-cloud"}]}]},
+     {"id":"silver","goal":4,"art":"dash-2","rules":[
+        {"entity":"dashboards","action":"created","countBy":"resource","where":[{"field":"numPanels","op":"gte","value":1}]}]},
+     {"id":"gold","goal":10,"art":"dash-3","rules":[
+        {"entity":"dashboards","action":"created","countBy":"resource","where":[{"field":"numPanels","op":"gte","value":3}]},
+        {"entity":"dashboards","action":"created","countBy":"resource","worth":2,"where":[
+          {"field":"numPanels","op":"gte","value":3},{"field":"starred","op":"eq","value":true}]}]}]},
   {"id":"well-rounded","title":"Well rounded","description":"Finish guides of different kinds.",
-   "counter":{"unit":"guide-category","evidence":[
-     {"entity":"guides","action":"completed","countBy":{"resource":"guide-category"}}]},
-   "tiers":[{"id":"bronze","at":2},{"id":"silver","at":3}]},
+   "tiers":[
+     {"id":"bronze","goal":2,"rules":[{"entity":"guides","action":"completed","countBy":{"resource":"guide-category"}}]},
+     {"id":"silver","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":{"resource":"guide-category"}}]}]},
   {"id":"alert-starter","title":"Alert starter","description":"Create alert rules.",
-   "counter":{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]},
-   "tiers":[{"id":"bronze","at":1},{"id":"silver","at":3}]},
+   "tiers":[
+     {"id":"bronze","goal":1,"rules":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]},
+     {"id":"silver","goal":2,"rules":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}]},
+  {"id":"journey","title":"Journey","description":"Make folders, then contact points, then finish the journey.",
+   "tiers":[
+     {"id":"builder","goal":3,"rules":[{"entity":"folders","action":"created","countBy":"resource"}]},
+     {"id":"watcher","goal":2,"rules":[{"entity":"contact-points","action":"created","countBy":"occurrence"}]},
+     {"id":"capstone","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource","where":[
+        {"field":"guideId","op":"eq","value":"observability-journey"}]}]}]},
   {"id":"guide-routes","title":"Guide routes","description":"Finish the named guides.",
    "tiers":[
-     {"id":"bronze","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"eq","value":"intro"}]}]},
-     {"id":"silver","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"in","value":["advanced","expert"]}]}]}]}
+     {"id":"bronze","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource","where":[{"field":"guideId","op":"eq","value":"intro"}]}]},
+     {"id":"silver","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource","where":[{"field":"guideId","op":"in","value":["advanced","expert"]}]}]}]}
 ]}`
 
 var fixedNow = time.Date(2026, 11, 2, 9, 30, 0, 0, time.FixedZone("test", 3600))
@@ -66,6 +79,12 @@ func dashboardCreated(uid string, panels float64) Event {
 	return Event{ID: "evt-" + uid, Entity: "dashboards", Action: "created", Context: map[string]any{"resourceId": uid, "numPanels": panels}}
 }
 
+func starredDashboard(uid string, panels float64) Event {
+	ev := dashboardCreated(uid, panels)
+	ev.Context["starred"] = true
+	return ev
+}
+
 func guideCompleted(id, category string) Event {
 	return Event{ID: "evt-" + id, Entity: "guides", Action: "completed",
 		Context: map[string]any{"guideSource": "bundled", "guideId": id, "guideCategory": category}}
@@ -73,6 +92,14 @@ func guideCompleted(id, category string) Event {
 
 func alertCreated(eventID string) Event {
 	return Event{ID: eventID, Entity: "alert-rules", Action: "created"}
+}
+
+func folderCreated(uid string) Event {
+	return Event{ID: "evt-" + uid, Entity: "folders", Action: "created", Context: map[string]any{"folderUid": uid}}
+}
+
+func contactPointCreated(eventID string) Event {
+	return Event{ID: eventID, Entity: "contact-points", Action: "created"}
 }
 
 func decisionJSON(t testing.TB, d any) string {
@@ -86,14 +113,32 @@ func decisionJSON(t testing.TB, d any) string {
 
 func intp(n int) *int { return &n }
 
-func unitKey(parts ...string) string {
+func unitKey(unit string, parts ...string) string {
 	var key strings.Builder
+	key.WriteString(unit)
+	key.WriteByte(':')
 	for _, p := range parts {
 		key.WriteString(strconv.Itoa(len(p)))
 		key.WriteByte(':')
 		key.WriteString(p)
 	}
 	return key.String()
+}
+
+func dash(uids ...string) []string {
+	keys := make([]string, len(uids))
+	for i, uid := range uids {
+		keys[i] = unitKey("dashboard", uid)
+	}
+	return keys
+}
+
+func occurrences(ids ...string) []string {
+	keys := make([]string, len(ids))
+	for i, id := range ids {
+		keys[i] = unitKey(unitOccurrence, id)
+	}
+	return keys
 }
 
 type fakeStore struct {
@@ -107,7 +152,7 @@ type fakeStore struct {
 	// beforeSave runs at the start of each SaveProgress, to model another replica writing first.
 	beforeSave func(s *fakeStore, attempt int)
 
-	loads, creates, saves, awardCalls int
+	loads, creates, saves, awardCalls, awardLoads int
 }
 
 func newFakeStore() *fakeStore {
@@ -120,7 +165,7 @@ func (s *fakeStore) seed(p Progress) {
 	s.progress[p.AchievementID] = p
 }
 
-func (s *fakeStore) calls() int { return s.loads + s.creates + s.saves + s.awardCalls }
+func (s *fakeStore) calls() int { return s.loads + s.creates + s.saves + s.awardCalls + s.awardLoads }
 
 func (s *fakeStore) LoadProgress(_ context.Context, _ Person, ids []string) (map[string]Progress, error) {
 	s.loads++
@@ -177,6 +222,15 @@ func (s *fakeStore) CreateAward(_ context.Context, _ Person, a Award) error {
 	}
 	s.awards[key] = a
 	return nil
+}
+
+func (s *fakeStore) LoadAward(_ context.Context, _ Person, achievementID, tierID string) (Award, bool, error) {
+	s.awardLoads++
+	if s.loadErr != nil {
+		return Award{}, false, s.loadErr
+	}
+	a, ok := s.awards[achievementID+"/"+tierID]
+	return a, ok, nil
 }
 
 type fakePolicy struct {

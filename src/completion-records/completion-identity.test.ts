@@ -15,6 +15,9 @@ import {
   manifestGuideSource,
   normalizeGuideId,
   bundledGuideIdReadVariants,
+  isGrafanaLearnUrl,
+  resolveLearnJourneyCompletionIdentity,
+  resolveLearnStepCompletionIdentity,
 } from './completion-identity';
 
 describe('resolveCompletionIdentity', () => {
@@ -241,5 +244,83 @@ describe('normalizeGuideId with a localized content file', () => {
       'bundled:first-dashboard',
       'bundled:first-dashboard/content.json',
     ]);
+  });
+});
+
+describe('Grafana Learn completion identity', () => {
+  const HUB = 'https://grafana.com/docs/learning-hub';
+  const STEP = `${HUB}/get-started-grafana-cloud/01-intro/01-course-overview/`;
+
+  it('keys a step on its path below the Learn root and its journey slug', () => {
+    expect(resolveLearnStepCompletionIdentity(STEP)).toEqual({
+      guideSource: 'grafana-learn',
+      guideId: 'get-started-grafana-cloud/01-intro/01-course-overview',
+      pathId: 'get-started-grafana-cloud',
+    });
+  });
+
+  it.each([
+    `${HUB}/get-started-grafana-cloud/01-intro/01-course-overview`,
+    `${HUB}/get-started-grafana-cloud/01-intro/01-course-overview/unstyled.html`,
+    `${HUB}/get-started-grafana-cloud/01-intro/01-course-overview/?utm_source=x#top`,
+  ])('gives every spelling of a step one identity: %s', (url) => {
+    expect(resolveLearnStepCompletionIdentity(url)).toEqual(resolveLearnStepCompletionIdentity(STEP));
+  });
+
+  it('keeps steps with the same slug in different journeys apart', () => {
+    const other = resolveLearnStepCompletionIdentity(
+      `${HUB}/intro-to-grafana-assistant/01-modules/01-course-overview/`
+    );
+    expect(other?.guideId).toBe('intro-to-grafana-assistant/01-modules/01-course-overview');
+    expect(other?.guideId).not.toBe(resolveLearnStepCompletionIdentity(STEP)?.guideId);
+  });
+
+  it.each([
+    `${HUB}/`,
+    `${HUB}/get-started-grafana-cloud/`,
+    `${HUB}/get-started-grafana-cloud/01-intro/`,
+    `${HUB}/get-started-grafana-cloud/01-intro/01-course-overview/extra/`,
+    'https://grafana.com.evil.com/docs/learning-hub/j/s/step/',
+    'https://grafana.com/docs/learning-paths/j/s/step/',
+  ])('gives no step identity to %s', (url) => {
+    expect(resolveLearnStepCompletionIdentity(url)).toBeUndefined();
+  });
+
+  it('keys a journey on its slug, and only from the journey page', () => {
+    expect(resolveLearnJourneyCompletionIdentity(`${HUB}/get-started-grafana-cloud`)).toEqual({
+      guideSource: 'grafana-learn',
+      guideId: 'get-started-grafana-cloud',
+    });
+    expect(resolveLearnJourneyCompletionIdentity(`${HUB}/get-started-grafana-cloud/`)).toEqual({
+      guideSource: 'grafana-learn',
+      guideId: 'get-started-grafana-cloud',
+    });
+    expect(resolveLearnJourneyCompletionIdentity(STEP)).toBeUndefined();
+    expect(resolveLearnJourneyCompletionIdentity(`${HUB}/`)).toBeUndefined();
+  });
+
+  it('routes a Learn milestone through its path, whatever the manifest or repository says', () => {
+    expect(
+      resolveMilestoneCompletionIdentity({
+        milestoneSlug: '01-course-overview',
+        milestoneUrl: STEP,
+        repository: 'app-platform',
+        packageManifest: { id: 'x', repository: 'interactive-tutorials' },
+      })
+    ).toEqual({ guideSource: 'grafana-learn', guideId: 'get-started-grafana-cloud/01-intro/01-course-overview' });
+  });
+
+  it('leaves a non-Learn milestone on its slug', () => {
+    expect(
+      resolveMilestoneCompletionIdentity({
+        milestoneSlug: 'm1',
+        milestoneUrl: 'https://grafana.com/docs/learning-paths/linux/m1/',
+      })
+    ).toEqual({ guideSource: 'bundled', guideId: 'm1' });
+  });
+
+  it('tells Learn URLs of any depth from the rest', () => {
+    expect(isGrafanaLearnUrl(`${HUB}/get-started-grafana-cloud/01-intro/`)).toBe(true);
+    expect(isGrafanaLearnUrl('https://grafana.com/docs/learning-paths/linux/')).toBe(false);
   });
 });

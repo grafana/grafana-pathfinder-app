@@ -33,13 +33,16 @@ import { createCliSpec } from './commands/create';
 import { e2eSpec } from './commands/e2e';
 import { editBlockSpec } from './commands/edit-block';
 import { findGuidesSpec } from './commands/find-guides';
+import { findStepsSpec } from './commands/find-steps';
 import { inspectSpec } from './commands/inspect';
 import { moveBlockSpec } from './commands/move-block';
 import { removeBlockSpec } from './commands/remove-block';
+import { renameBlockSpec } from './commands/rename-block';
 import { renameIdSpec } from './commands/rename-id';
 import { requirementsGroup } from './commands/requirements';
 import { schemaSpec } from './commands/schema';
 import { setManifestSpec } from './commands/set-manifest';
+import { stampIdsSpec } from './commands/stamp-ids';
 import { syncTranslationsSpec } from './commands/sync-translations';
 import { validateCliSpec } from './commands/validate';
 import { CURRENT_SCHEMA_VERSION } from '../types/json-guide.schema';
@@ -89,6 +92,7 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
     // `<new-id>` keeps the hyphenated spelling the usage line has always shown.
     placeholders: { newId: 'new-id' },
   },
+  'rename-block': { positionals: ['dir', 'id', 'newId'], placeholders: { newId: 'new-id' } },
   validate: {
     positionals: ['files'],
     placeholders: {
@@ -145,6 +149,7 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
     shorts: { output: 'o' },
     negatable: { lint: 'Suppress lint output' },
   },
+  'stamp-ids': { positionals: ['dir'] },
   'sync-translations': {
     positionals: ['dir'],
     placeholders: { locale: 'tag', accept: 'entry...' },
@@ -159,6 +164,15 @@ const PRESENTATIONS: Record<string, CommanderPresentation> = {
       excludeIds: 'id',
       limit: 'n',
       instanceUrl: 'url',
+    },
+  },
+  'find-steps': {
+    placeholders: {
+      queries: 'text',
+      pageUrl: 'path',
+      procedureId: 'id',
+      excludeIds: 'id',
+      limit: 'n',
     },
   },
   requirements: {
@@ -185,15 +199,18 @@ const RENDERED: Record<string, Command> = {
   'remove-block': mountCommander(removeBlockSpec, PRESENTATIONS['remove-block']),
   'move-block': mountCommander(moveBlockSpec, PRESENTATIONS['move-block']),
   'rename-id': mountCommander(renameIdSpec, PRESENTATIONS['rename-id']),
+  'rename-block': mountCommander(renameBlockSpec, PRESENTATIONS['rename-block']),
   validate: mountCommander(validateCliSpec, PRESENTATIONS.validate),
   e2e: mountCommander(e2eSpec, PRESENTATIONS.e2e),
   'build-repository': mountCommander(buildRepositorySpec, PRESENTATIONS['build-repository']),
   'build-stats': mountCommander(buildStatsSpec, PRESENTATIONS['build-stats']),
   'build-snippets': mountCommander(buildSnippetsSpec, PRESENTATIONS['build-snippets']),
   'build-graph': mountCommander(buildGraphSpec, PRESENTATIONS['build-graph']),
+  'stamp-ids': mountCommander(stampIdsSpec, PRESENTATIONS['stamp-ids']),
   'sync-translations': mountCommander(syncTranslationsSpec, PRESENTATIONS['sync-translations']),
   schema: mountCommander(schemaSpec, PRESENTATIONS.schema),
   'find-guides': mountCommander(findGuidesSpec, PRESENTATIONS['find-guides']),
+  'find-steps': mountCommander(findStepsSpec, PRESENTATIONS['find-steps']),
   requirements: mountCommanderGroup(requirementsGroup, PRESENTATIONS.requirements),
   mcp: mountCommander(mcpSpec, PRESENTATIONS.mcp).version(CURRENT_SCHEMA_VERSION),
 };

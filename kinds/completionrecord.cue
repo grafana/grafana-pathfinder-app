@@ -13,13 +13,8 @@ completionRecordKind: {
 
 // completionrecordv1alpha1 is the v1alpha1 version of the CompletionRecord kind.
 //
-// Enforcement note (manifest-only deploy posture, see PR #64): in production this
-// kind is served by a shared generic apiserver directly from the generated CRD
-// schema. The hand-written Go handlers in pkg/plugin are NOT in the production
-// request path. The CUE schema below is therefore the ONLY enforcement surface
-// that ships, so every invariant we can express is pushed into it: field
-// presence (all fields required except completedAt, which is absent while a
-// guide is in progress), value domains (enums), and bounds.
+// The SDK provider validates tenant requests. The resource schema also enforces
+// field constraints on writes to the backing API server.
 completionrecordv1alpha1: completionRecordKind & {
 	schema: {
 		spec: {

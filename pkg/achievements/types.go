@@ -27,20 +27,37 @@ type Event struct {
 	Context    map[string]any
 }
 
-// SchemaVersion versions the stored progress row's shape, not the grammar.
+// SchemaVersion versions a posted event and a stored award row, not the grammar.
 const SchemaVersion = 1
+
+// ProgressSchemaVersion versions the stored progress row's shape. Version 2
+// rows hold points and unit-named ledger keys, so builds that wrote version 1
+// leave them alone as record_newer. A version 1 row read here keeps its held
+// tiers, starts at 0 points, and its old ledger keys never match a new one.
+const ProgressSchemaVersion = 2
 
 // Progress is one person's stored state for one achievement.
 type Progress struct {
 	AchievementID string
 	// TierIDs is the set of tier ids held, including ids a newer catalog defined.
 	TierIDs []string
-	// Units is the ledger of counted units. A unit counted by resource is its id
-	// fields, each as byte length, ":" and the field ("7:bundled4:tour"); a unit
-	// counted by occurrence is the event id. Stores must return Units sorted
-	// ascending and distinct, which the evaluator binary-searches.
-	Units         []string
+	// Units is the achievement-wide ledger of counted units, so a unit counts
+	// toward one tier only. Each is the unit name, ":", then its id fields (the
+	// event id for an occurrence), each as byte length, ":" and the field
+	// ("guide:7:bundled4:tour"). Stores must return Units sorted ascending and
+	// distinct, which the evaluator binary-searches.
+	Units []string
+	// EventIDs lists the events counted, so a re-sent one counts nothing more
+	// whatever unit it brings. Stores must return it sorted ascending and
+	// distinct; older rows have none.
+	EventIDs []string
+	// Points is earned toward the lowest tier TierIDs does not hold, and resets
+	// to 0 when that tier is earned.
+	Points        int
 	SchemaVersion int
+	// MissingFields names required fields of the current version that the
+	// stored row lacked; Classify reports such a row as repairable.
+	MissingFields []string
 	// Version is the store's opaque compare-and-swap token.
 	Version string
 }
@@ -49,7 +66,12 @@ type Award struct {
 	AchievementID string
 	TierID        string
 	Entity        string
-	EarnedAt      time.Time
+	// Unit and EventID are the ledger key and the id of the earning event, so a
+	// progress save that failed after the award can be completed. Both are empty
+	// on rows that predate them.
+	Unit     string
+	EventID  string
+	EarnedAt time.Time
 }
 
 // Store is the persistence port. Implementations write as the caller.
@@ -63,6 +85,8 @@ type Store interface {
 	SaveProgress(ctx context.Context, person Person, p Progress) (Progress, error)
 	// CreateAward returns ErrExists when the tier was already awarded.
 	CreateAward(ctx context.Context, person Person, a Award) error
+	// LoadAward reports false when the tier's award row does not exist.
+	LoadAward(ctx context.Context, person Person, achievementID, tierID string) (Award, bool, error)
 }
 
 // Policy is the admission port: people only, with a per-user rate limit. A
@@ -103,7 +127,8 @@ func (r Reason) Transient() bool {
 	}
 }
 
-// Decision is the advisory outcome for one achievement (RFC §6.3, §6.5).
+// Decision is the advisory outcome for one achievement (RFC §6.3 and §6.5, with
+// the departures in docs/design/ACHIEVEMENTS_RFC_DEPARTURES.md).
 type Decision struct {
 	AchievementID string `json:"achievementId"`
 	Decision      Kind   `json:"decision"`
@@ -112,9 +137,12 @@ type Decision struct {
 	Awarded []string `json:"awarded"`
 	// Final reports that every tier in the catalog is held.
 	Final bool `json:"final"`
-	Units int  `json:"units"`
-	// Next is the lowest threshold among tiers not held, nil when there is none.
+	// Units is the points earned toward the lowest tier not held, 0 when Final.
+	Units int `json:"units"`
+	// Next is that tier's goal, nil when Final.
 	Next *int `json:"next"`
+	// NextTier is the id of that tier, empty when Final.
+	NextTier string `json:"nextTier,omitempty"`
 }
 
 // Retry reports whether any decision has a transient reason, so the event stays queued.

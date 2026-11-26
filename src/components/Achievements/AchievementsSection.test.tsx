@@ -89,8 +89,8 @@ describe('AchievementsSection', () => {
     expect(within(dash).getByText('Dashboard builder')).toBeInTheDocument();
     expect(within(dash).getByText('Silver')).toBeInTheDocument();
     expect(within(dash).queryByText('Bronze')).not.toBeInTheDocument();
-    expect(within(dash).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '3');
-    expect(within(dash).getByText('3 of 5 toward the next tier')).toBeInTheDocument();
+    expect(within(dash).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+    expect(within(dash).getByText('1 of 2 toward the next tier')).toBeInTheDocument();
     expect(within(dash).getByTestId('achievement-badge-image')).toHaveAttribute(
       'src',
       'https://interactive-learning.grafana.net/achievements/art/dash-builder-2.svg'
@@ -198,7 +198,7 @@ describe('HomeAchievementsShelf', () => {
     expect(within(shelf).getByRole('heading', { name: 'Achievements', level: 2 })).toBeInTheDocument();
     expect(within(shelf).getByRole('link', { name: 'Show all achievements' })).toHaveAttribute('href', '/a/app/badges');
     expect(within(shelf).getByTestId(testIds.achievements.hubRow('dash-builder'))).toBeInTheDocument();
-    expect(within(shelf).getByText('3 of 5 toward the next tier')).toBeInTheDocument();
+    expect(within(shelf).getByText('1 of 2 toward the next tier')).toBeInTheDocument();
   });
 
   it('shows at most four rows, leaving the rest to the badges page', () => {

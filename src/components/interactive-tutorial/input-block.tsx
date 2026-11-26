@@ -18,7 +18,7 @@ import { StorageEvents } from '../../lib/event-names';
 import { logger } from '../../lib/logging';
 import { testIds } from '../../constants/testIds';
 import { DataCheckControls } from './data-check-controls';
-import { filterDatasourcesByType, toDatasourceOptions } from './datasource-options';
+import { useDatasourceOptions } from './use-datasource-options';
 import { useDataCheck } from './use-data-check';
 import { toAnalyticsValue } from '../../lib/analytics-values';
 
@@ -162,11 +162,11 @@ export function InputBlock({
     });
   };
 
-  const datasources = useMemo(
-    () => (inputType === 'datasource' ? filterDatasourcesByType(datasourceFilter) : []),
-    [inputType, datasourceFilter]
-  );
-  const datasourceOptions = useMemo(() => toDatasourceOptions(datasources), [datasources]);
+  const {
+    datasources,
+    options: datasourceOptions,
+    loading: datasourcesLoading,
+  } = useDatasourceOptions(datasourceFilter, inputType === 'datasource');
 
   // Local state for the input value
   const [textValue, setTextValue] = useState<string>(() => {
@@ -505,7 +505,7 @@ export function InputBlock({
         );
 
       case 'datasource':
-        if (datasourceOptions.length === 0) {
+        if (!datasourcesLoading && datasourceOptions.length === 0) {
           const filterMsg = datasourceFilter ? ` of type "${datasourceFilter}"` : '';
           return (
             <Alert title="No data sources available" severity="warning" className={styles.noDataSourcesAlert}>
@@ -519,6 +519,8 @@ export function InputBlock({
               <Combobox
                 options={datasourceOptions}
                 value={datasourceValue}
+                loading={datasourcesLoading}
+                disabled={datasourcesLoading}
                 onChange={handleDatasourceChange}
                 placeholder={placeholder || 'Select a data source...'}
                 isClearable
