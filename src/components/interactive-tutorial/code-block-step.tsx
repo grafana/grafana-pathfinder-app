@@ -278,6 +278,7 @@ export const CodeBlockStep = forwardRef<
     }, [fullScreenFallbackLocation]);
 
     const handleInsert = useCallback(async () => {
+      recordGuideAction();
       reportAppInteraction(
         UserInteraction.DoItButtonClick,
         buildInteractiveStepProperties(

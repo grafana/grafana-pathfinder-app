@@ -30,6 +30,7 @@ const checkerMock = jest.mocked(useStepChecker);
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  localStorage.clear();
   await interactiveStepStorage.clearAll();
   resetCompletionStoreForTests();
   checkerMock.mockReturnValue({ isEnabled: true, isChecking: false } as ReturnType<typeof useStepChecker>);
@@ -47,7 +48,9 @@ it('exposes the root, Insert control, and explicit successful completion', async
   expect(root()).toHaveAttribute('data-test-step-id', STEP_ID);
   expect(root()).toHaveAttribute('data-test-step-state', 'idle');
   expect(root()).toHaveAttribute('data-test-skippable', 'false');
+  expect(hasUsedGuideAction()).toBe(false);
   fireEvent.click(insert());
+  expect(hasUsedGuideAction()).toBe(true);
 
   await waitFor(() => expect(root()).toHaveAttribute('data-test-step-state', 'completed'));
   expect(insertMock).toHaveBeenCalledWith('#editor', 'up');
