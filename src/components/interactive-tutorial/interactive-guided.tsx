@@ -1,3 +1,4 @@
+import { recordGuideAction } from '../../lib/guide-action-history';
 import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { getActiveTabUrl, getContentKey, getContentKeyOverride } from '../../global-state/content-key';
@@ -617,7 +618,7 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           return;
         }
 
-        // Track analytics
+        recordGuideAction();
         reportAppInteraction(
           UserInteraction.DoItButtonClick,
           buildInteractiveStepProperties(

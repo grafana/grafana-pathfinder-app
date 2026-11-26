@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { clearHeldCompletionRequests, renderWithCoordinator as render } from '../../test-utils/completion-coordinator';
 import { InteractiveStep } from './interactive-step';
+import { hasUsedGuideAction } from '../../lib/guide-action-history';
 import { testIds } from '../../constants/testIds';
 import { resetCompletionStoreForTests } from '../../global-state/completion-store';
 import { subscribeProgressEvent, type ProgressReason } from '../../global-state/progress-events';
@@ -81,9 +82,11 @@ it('credits Do it to the engine, not to an observed reader click', async () => {
   const doIt = await screen.findByTestId(testIds.interactive.doItButton('top-level-do-it'));
   await waitFor(() => expect(doIt).toBeEnabled());
 
+  expect(hasUsedGuideAction()).toBe(false);
   await act(async () => {
     fireEvent.click(doIt);
   });
+  expect(hasUsedGuideAction()).toBe(true);
 
   await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(progress.reasons).toEqual([['top-level-do-it', 'manual']]));

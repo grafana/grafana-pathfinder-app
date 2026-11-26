@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 
 import { SceneComponentProps, SceneObjectBase } from '@grafana/scenes';
 import { useStyles2 } from '@grafana/ui';
 import { EnableRecommenderBanner } from '../EnableRecommenderBanner';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
+import { hasUsedGuideAction, subscribeGuideAction } from '../../lib/guide-action-history';
 import { HelpFooter } from '../HelpFooter';
 import {
   SidebarHub,
@@ -443,7 +444,12 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
 
   const { recommendations, recommendationsError } = contextData;
 
+  const usedGuideAction = useSyncExternalStore(subscribeGuideAction, hasUsedGuideAction);
+  const showLearning = usedGuideAction || progress.completedGuides.length > 0;
   const hubLearning = useMemo(() => {
+    if (!showLearning) {
+      return null;
+    }
     const deps: HubLearningDeps = {
       paths: [...paths, ...onlinePaths],
       assignmentByTargetId,
@@ -456,6 +462,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
       stats: selectHubStats(deps, assignedNotDone, progress.completedGuides.length),
     };
   }, [
+    showLearning,
     paths,
     onlinePaths,
     assignmentByTargetId,
@@ -471,7 +478,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
         completedGuides: progress.completedGuides,
         featuredRecommendations: contextData.featuredRecommendations,
         recommendations,
-        resume: hubLearning.resume ?? undefined,
+        resume: hubLearning?.resume ?? undefined,
         assignments: assignedNotDone,
         openLearningJourney,
         openDocsPage,
@@ -481,7 +488,7 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
       progress.completedGuides,
       contextData.featuredRecommendations,
       recommendations,
-      hubLearning.resume,
+      hubLearning?.resume,
       assignedNotDone,
       openLearningJourney,
       openDocsPage,
@@ -579,10 +586,10 @@ function ContextPanelRenderer({ model }: SceneComponentProps<ContextPanel>) {
             {...hubGuides}
             customGuides={hubCustomGuides}
             isLoadingCustomGuides={isLoadingCustomGuides}
-            resume={hubLearning.resume}
-            stats={hubLearning.stats}
+            resume={hubLearning?.resume ?? null}
+            stats={hubLearning?.stats ?? null}
             isLoadingGuides={isLoadingRecommendations || contextData.isLoading}
-            isLoadingLearning={isLoadingLearning || !hasLoadedAssignments}
+            isLoadingLearning={showLearning && (isLoadingLearning || !hasLoadedAssignments)}
             recommendationsError={recommendationsError}
             onOpenMyLearning={openMyLearning}
             onResume={resumeLearning}

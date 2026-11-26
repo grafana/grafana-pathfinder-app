@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { recordGuideAction } from '../../lib/guide-action-history';
 import { ContextPanel } from './context-panel';
 import { PLUGIN_BASE_URL } from '../../constants';
 import { testIds } from '../../constants/testIds';
@@ -176,6 +177,7 @@ function setup({
 
 describe('ContextPanelRenderer sidebar hub', () => {
   beforeEach(() => {
+    localStorage.clear();
     jest.clearAllMocks();
     mockUsePublishedGuides.mockReturnValue({
       guides: [],
@@ -577,21 +579,42 @@ describe('ContextPanelRenderer sidebar hub', () => {
     expect(screen.getByText('Title other')).toBeInTheDocument();
   });
 
+  it('keeps the spotlight and more recommendations visible until the first guide action', () => {
+    const options = {
+      featured: [pkg('getting-started')],
+      recommendations: [pkg('other')],
+      assignments: [assignment('getting-started', { progress: 50 })],
+    };
+    const { unmount } = setup(options);
+    expect(screen.getByTestId(testIds.sidebarHub.featured)).toHaveTextContent('Title getting-started');
+    expect(screen.getByTestId(testIds.sidebarHub.moreList)).toHaveTextContent('Title other');
+    expect(screen.queryByTestId(testIds.sidebarHub.tiles)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.sidebarHub.resume)).not.toBeInTheDocument();
+
+    act(recordGuideAction);
+    expect(screen.getByTestId(testIds.sidebarHub.tiles)).toBeInTheDocument();
+    expect(screen.getByTestId(testIds.sidebarHub.resume)).toBeInTheDocument();
+    unmount();
+
+    setup(options);
+    expect(screen.getByTestId(testIds.sidebarHub.tiles)).toBeInTheDocument();
+  });
+
   it('counts assignments from the assignments hook', async () => {
-    setup({ recommendations: [pkg('one')], assignments: [assignment('x'), assignment('y')] });
+    setup({ startedPath: true, recommendations: [pkg('one')], assignments: [assignment('x'), assignment('y')] });
 
     expect(within(screen.getByTestId(testIds.sidebarHub.tile('assignments'))).getByText('2')).toBeInTheDocument();
   });
 
   it('waits for assignments before showing the tiles', async () => {
-    setup({ recommendations: [pkg('one')], hasLoadedAssignments: false });
+    setup({ startedPath: true, recommendations: [pkg('one')], hasLoadedAssignments: false });
 
     expect(screen.queryByTestId(testIds.sidebarHub.tiles)).not.toBeInTheDocument();
     expect(screen.getByTestId(testIds.sidebarHub.loading)).toBeInTheDocument();
   });
 
   it('navigates to My learning from the header and every tile and reports each source', async () => {
-    setup({ recommendations: [pkg('one')] });
+    setup({ startedPath: true, recommendations: [pkg('one')] });
 
     await click(screen.getByTestId(testIds.sidebarHub.myLearning));
     await click(screen.getByTestId(testIds.sidebarHub.tile('assignments')));

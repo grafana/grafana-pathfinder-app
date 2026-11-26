@@ -1,3 +1,4 @@
+import { recordGuideAction } from '../../lib/guide-action-history';
 import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import type { ConditionInput } from '../../types/requirements.types';
@@ -632,6 +633,7 @@ export const InteractiveMultiStep = forwardRef<
       }
 
       // Track "Do it" button click analytics for multi-step
+      recordGuideAction();
       reportAppInteraction(
         UserInteraction.DoItButtonClick,
         buildInteractiveStepProperties(

@@ -24,7 +24,7 @@ interface SidebarHubProps {
   groupTitle?: string;
   guides: HubGuide[];
   resume: HubResume | null;
-  stats: HubStats;
+  stats: HubStats | null;
   customGuides: CustomHubGuide[];
   isLoadingCustomGuides: boolean;
   isLoadingGuides: boolean;
@@ -108,7 +108,7 @@ export function SidebarHub({
       ) : (
         <>
           {resume && <ResumeCard resume={resume} disabled={pending} onResume={() => run(() => onResume(resume))} />}
-          <StatTiles stats={stats} onOpen={onOpenMyLearning} />
+          {stats && <StatTiles stats={stats} onOpen={onOpenMyLearning} />}
         </>
       )}
 

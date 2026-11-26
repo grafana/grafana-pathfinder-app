@@ -6,6 +6,7 @@
  * Participates in section step counting and sequential execution the same way InteractiveStep does.
  */
 
+import { recordGuideAction } from '../../lib/guide-action-history';
 import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef, useMemo } from 'react';
 import {
@@ -246,6 +247,7 @@ export const CodeBlockStep = forwardRef<
       if (isShowRunning) {
         return;
       }
+      recordGuideAction();
       reportAppInteraction(
         UserInteraction.ShowMeButtonClick,
         buildInteractiveStepProperties(
