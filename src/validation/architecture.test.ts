@@ -331,16 +331,6 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
     tracking: '#1923',
   },
   {
-    violation: 'components/block-editor/forms/index.ts',
-    reason: 'Barrel with no importer — BlockFormModal.tsx deep-imports every form file directly.',
-    tracking: '#1923',
-  },
-  {
-    violation: 'components/block-editor/hooks/index.ts',
-    reason: 'Barrel with no importer — BlockEditor.tsx deep-imports every hook file directly.',
-    tracking: '#1923',
-  },
-  {
     violation: 'components/block-editor/lint/types.ts',
     reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
     tracking: '#1923',
@@ -353,11 +343,6 @@ const ALLOWED_ORPHANED_MODULES_ENTRIES: readonly AllowedArchitectureEntry[] = [
   {
     violation: 'components/docs-panel/types.ts',
     reason: 'Pure type module — every importer uses `import type`, so it has no edge in the value-only graph.',
-    tracking: '#1923',
-  },
-  {
-    violation: 'lib/index.ts',
-    reason: 'Barrel with no importer — both re-exports (analytics, hash.util) are imported directly by consumers.',
     tracking: '#1923',
   },
   {

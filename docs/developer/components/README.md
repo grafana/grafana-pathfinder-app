@@ -118,11 +118,9 @@ App (root)
 │   │               │   │       └── UrlTester (URL validation)
 │   │               │   ├── My Learning Tab
 │   │               │   │   └── MyLearningTab
-│   │               │   │       ├── LearningPathsPanel
-│   │               │   │       │   ├── LearningPathCard
-│   │               │   │       │   ├── BadgesDisplay
-│   │               │   │       │   ├── StreakIndicator
-│   │               │   │       │   └── BadgeUnlockedToast
+│   │               │   │       ├── LearningPathCard
+│   │               │   │       ├── BadgesPanel
+│   │               │   │       └── BadgeUnlockedToast
 │   │               │   └── Content Tabs (dynamic)
 │   │               │       ├── ContentRenderer
 │   │               │       ├── LiveSession components
