@@ -45,68 +45,36 @@ const AUTHORING_CONTEXT = {
   version: CURRENT_SCHEMA_VERSION,
   product:
     'Grafana Pathfinder is a Grafana plugin that runs interactive, contextual guides as a sidebar in Grafana. A guide is a tree of "blocks" — markdown, interactive UI actions, sections, conditionals, multistep, quizzes, and challenges — stored as JSON.',
-  // Routing reaffirmation surface. The same constants seed the server-level
-  // `instructions` string in `lib/server-instructions.ts`, so an agent that
-  // reached this tool via the initialize hint sees consistent vocabulary,
-  // and clients that don't render `initialize.instructions` still get the
-  // routing signal here.
-  triggers: [...PATHFINDER_TRIGGER_PHRASES],
-  notFor: [...PATHFINDER_NOT_FOR],
-  domains: [...PATHFINDER_DOMAINS],
   workflow: [
-    '1. Resolve the guide author before creating: use who the user or conversation names as the writer; if that is unclear, ask the user who wrote the guide (and their team, if any). Call pathfinder_help({ command: "create" }), then pathfinder_create_package with those parameters in `opts`, passing `authorName` (and `authorTeam`). If the user does not answer, create without them — the author defaults to "pathfinder-mcp" and nothing is blocked. The response carries BOTH a sessionToken (use this for subsequent calls) AND a seed artifact (ignore unless you are running in stateless fallback mode).',
-    '2. Decide what kind of guide is being built per `guideShape.decideFirst`. Build the block tree with pathfinder_manage_block per criteria in the `guideShape` block and `interactiveRules` block if using interactive content. Use operation "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice" | "add-hint" (CLI command names). Every operation is scoped to ONE block, addressed by id. All adds append under the parent, so author in display order. Steps, choices, and hints are not individually editable or removable; cascade-remove their parent block and rebuild it instead. Pass {sessionToken}; each mutation response is an ACK — {sessionToken, generation, summary, outcome} — not the full artifact.',
-    '3. Navigate by id using the `summary` tree returned on every ack. For deeper reads, call pathfinder_read_session with operation "list-blocks" | "get-block" | "get-manifest" and {sessionToken}; get-block also takes top-level blockId. Cheap; use freely instead of re-reading the full artifact.',
-    '4. Set guide-level metadata with pathfinder_manage_guide, operation "set-manifest" — description, category, language, targeting, and anything else describing the package as a whole. This is a different tool from pathfinder_manage_block on purpose: guide metadata is not a block operation, and this is usually the last authoring step before validate.',
-    '5. When you need the full artifact body in your context (rare — e.g. for a wholesale review before finalize), call pathfinder_inspect with {sessionToken, opts:{}}. This is the explicit "pull the artifact" escape hatch.',
-    '6. Call pathfinder_validate with {sessionToken} before finalize.',
-    '7. Call pathfinder_finalize_for_app_platform with {sessionToken} to receive the publish handoff (path templates, viewer link, localExport fallback). The full artifact returns here. The server deletes the session on success — the sessionToken is single-use through finalize.',
+    '1. Use the writer the user or conversation names (ask if unclear; defaults to pathfinder-mcp). Call pathfinder_create_package with `title` and `authorName` (`authorTeam` if known). Use its sessionToken; ignore the seed artifact.',
+    '2. Decide what kind of guide is being built per `guideShape.decideFirst`.',
+    '3. Plan with pathfinder_find_steps: send the independent sub-tasks in one call (up to 8 queries), each Grafana-specific sub-task its own 2-5 word procedure-level query ("create alert rule"), naming third-party products by the Grafana process ("configure contact point"). Gaps and weak matches: see `interactiveRules`.',
+    '4. Build with pathfinder_manage_block per `guideShape` and `interactiveRules`: "add-block" | "edit-block" | "remove-block" | "add-step" | "add-choice" | "add-hint". One block per call, addressed by id. Adds append under the parent, so author in display order. Steps, choices and hints are not editable or removable alone: cascade-remove the parent and rebuild.',
+    '5. Navigate with the `summary` tree on each ack; read deeper with pathfinder_read_session ("list-blocks" | "get-block" | "get-manifest", {sessionToken}).',
+    '6. Last, set guide metadata with pathfinder_manage_guide "set-manifest".',
+    '7. Rarely, pathfinder_inspect {sessionToken, opts:{}} pulls the full artifact.',
+    '8. Call pathfinder_validate with {sessionToken} before finalize.',
+    '9. Call pathfinder_finalize_for_app_platform with {sessionToken}: it returns the artifact and publish handoff, and spends the session.',
   ],
-  sessionMode: {
-    summary:
-      'Primary contract. Mint a sessionToken on first mutation, echo it back on every subsequent call. Mutation responses are acks (no artifact body). Reads are explicit. Finalize returns the artifact and deletes the session.',
-    ackShape: {
-      status: 'ok | error',
-      sessionToken: 'string — echo verbatim on the next call',
-      generation:
-        'number — monotonic; optional `expectedGeneration` on the next call surfaces a CONCURRENT_MODIFICATION error if the session moved underneath you',
-      summary: 'compact tree of {path, id, type, hint?, children?} for navigation',
-      outcome: 'CommandOutcome shape (status + any code/message/data on error)',
-    },
-    rules: [
-      'Echo `sessionToken` on every subsequent call. Do NOT echo back the artifact body — it is not in the ack and the server already has it.',
-      'Use `summary` for navigation. Do not call pathfinder_inspect after every mutation; the summary already tells you what changed.',
-      '`expectedGeneration` is optional. Omit it for the common single-agent case (the server retries once on 412 internally). Pass it only if you specifically want to fail-fast on a concurrent edit.',
-      'A failed mutation does NOT bump the generation — the session state is unchanged. Re-read with the same generation if you need to recover.',
-      'On SESSION_NOT_FOUND (expired or finalized session), start over: call pathfinder_create_package for a fresh token.',
-    ],
-  },
-  statelessModeFallback: {
-    appliesWhen:
-      'You are running against an MCP server where server-side sessions are unavailable or not durable — stdio transport, OSS / self-hosted deployments, or any host not pinned to a single instance. Every mutation tool also accepts `{artifact}` in place of `{sessionToken}` and returns the full artifact for you to thread to the next call.',
-    rules: [
-      'Pass {content, manifest} in. Use the {content, manifest} returned in the response for the next call.',
-      'Never mix modes — pass EITHER `artifact` OR `sessionToken`, never both. Mixing returns INPUT_MODE_AMBIGUOUS.',
-    ],
-  },
-  interfaceContract: {
-    parameters: [
-      "JSON in, always. pathfinder_help({ command }) returns the parameter interface for that tool's `opts`. It is the command's own schema rendered as JSON.",
-      'Parameter names are camelCase (e.g., `ifAbsent`, `showMe`, `includeVersion`). Values are JSON: booleans are `true`/`false`, repeatables are arrays, enums are strings.',
-      'Positional CLI arguments are republished as ordinary named parameters, so positional order never matters to you.',
-      'When help returns `subcommands`, pass your chosen value in `opts` and call help again with that value as `subcommand` to get the full per-subcommand surface.',
-      'Parameters a tool owns itself, or cannot honor, are withheld from help and rejected as UNSUPPORTED_PARAMETER. The `exposed` list on that error is authoritative — read it rather than guessing.',
-    ],
-    responses: [
-      "CLI spec out, always. Every tool returns the CLI runner's structured outcome verbatim: `status`, plus `code` and `message` on error, plus `summary` / `details` / `warnings` / `data` on success.",
-      'The CLI runners are the sole validator. A `SCHEMA_VALIDATION` error lists every issue at once — fix all of them before retrying.',
-      '`warnings` are advisory and non-blocking (composition nudges, unverified selectors, normalized input). They do not fail the call, but they are the CLI telling you the guide will be worse if you ignore them.',
-      '`data` is the stable machine payload and `details` is display text — read ids and paths from `data`.',
-      'Mutation acks add a `summary` tree ({path, id, type, hint?, children?}). Navigate and address blocks from it instead of re-reading the artifact.',
-      'Error messages may reference CLI flag names like `--parent` or `--show-me` for human readers. Map these to camelCase parameter names (`parent`, `showMe`) when reading the message. Ignore any suggestion to run a command — you call tools, not a shell. When a message mentions a withheld parameter, the `exposed` list from UNSUPPORTED_PARAMETER is authoritative.',
-    ],
-  },
+  // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
+  // Curate ruthlessly — every connected client pays this length on every
+  // `_start` call. If this list grows past ~20 rules, ship a separate
+  // best-practices tool instead of expanding here.
+  interactiveRules: [
+    'Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must run in order AND are tightly coupled.',
+    'Never write a step with `action: noop` as filler. If there is nothing concrete for the user to do, write a `markdown` block describing what they would do instead.',
+    "Never invent a `reftarget`: use only selectors from `pathfinder_find_steps` results or the user. For a known step without one, use `[data-testid=\"TODO-<target>\"]`, start the enclosing block's `content` with `**⚠️ TODO: add the selector for <target>**` (for `multistep`/`guided`, the parent block's), and list each placeholder by section and step at hand-off. A result's selectors exist only on the pages its own steps reach: start from its first navigation step or `navigate` to its `startsOn`, keep each step on the page the procedure has reached there with an `on-page:` requirement for it, adapt names and values but never move a step to another page, and chain sub-tasks by passing `endsOn` as `pageUrl`.",
+    "When a result lacks a step you searched for, check its `nextProcedure`/`previousProcedure` and fetch the one that covers it with `procedureId` before using a placeholder. If a group is weak or about another product, search once more in Grafana's UI words; then use placeholders for steps you know, or ask the user about a procedure you do not. Wire in every verified step; keep gaps as placeholders, never plain text for a whole procedure.",
+    'If a `multistep` would end up with only one step, replace it with an `interactive` block. Single-step multisteps add overhead with no benefit.',
+    "Anchor the user on the first interactive step: add `on-page:/path` to its `requirements`, or use a `navigate` action — the guide can't assume it starts on the right page.",
+    "Add contextual `requirements` to every interactive step that touches the DOM. At minimum `on-page:/path`; also `navmenu-open` for nav clicks and `is-admin` (or a role) for admin-only features. Search results omit `on-page:<page>` and `exists-reftarget` from a step's `requirements`, so add them from each step's page (a step without `page` is on the previous step's page; a `navigate` step's `page` is where it goes, so it takes the previous step's page or none).",
+    "Use `verify` on actions that change state (save, create, navigate) so the next step can't run against a half-completed action.",
+    'Prefer a `grafana:` selector path, then a `data-testid`, over any text-based target: visible text, `aria-label`, `placeholder` and `title` are translated, so a guide anchored to them breaks for users in other locales (the engine flags these `i18n-sensitive`). A `button` step is fine when its label comes from a verified result.',
+    'If the target lives in a virtualized list, paginated table, or dashboard row below the fold, use a `guided` block with `lazyRender: true` on the step — a plain `interactive` will fail because `exists-reftarget` waits but cannot scroll.',
+    "To type code into a Grafana query or code editor for the reader, use a `code-block`. Its `reftarget` is that editor's selector and follows the `reftarget` rule above. Code the reader only reads or copies is a fenced code block in `markdown` (see `guideShape.formatting`), never a `code-block`.",
+  ],
   rules: [
+    'Before validating, check the guide against the request: everything the user asked to demonstrate or teach is covered, and nothing extra was copied in.',
     `Block ids: pass an explicit \`id\` whenever \`type\` is a container (${CONTAINER_TYPES_TEXT}) — they are rejected without one. Every other type auto-ids as <type>-<n> when you omit it.`,
     'Append-only: pathfinder_manage_block operation "add-block" always appends to the end of the parent. Author in display order. To reorder, remove-block and add-block in the desired order (there is no move/insert-index on this tool). Removing a populated container requires `cascade: true` and deletes its entire subtree with no undo — read the children first (pathfinder_read_session operation "get-block") if you plan to rebuild them.',
     'Tool scope: pathfinder_manage_block changes one block at a time inside the tree. pathfinder_manage_guide changes the guide as a whole (the manifest). Guide-level fields never go through pathfinder_manage_block, and block fields never go through pathfinder_manage_guide.',
@@ -137,34 +105,71 @@ const AUTHORING_CONTEXT = {
       reference:
         'Latches: "how does", "what is", "overview". Comprehensive information the reader reads and reuses (process, definitions, documentation). No interactive blocks. A procedure in it (a process, a prep checklist) is a section whose steps are each their own `markdown` block of plain sentences; a markdown-only section shows a "Mark section as complete" button, which is its completion path.',
       teach:
-        'Latches: "teach me about", "learn", "how do I" about general Grafana ("build a dashboard"). Reusable material the reader should retain. Shape it like reference, adding hands-on interactive steps per `interactiveRules` where doing teaches better than reading, then end each `##` topic (or the guide, with a closing "Check your knowledge" topic) with a `quiz` that tests only facts the guide itself states.',
+        'Latches: "teach me about", "learn", "basics of", "intro to", "getting started with", "how do I" about general Grafana ("build a dashboard"). Reusable material the reader should retain. It explains, with hands-on interactive steps per `interactiveRules` where verified steps exist, then end each `##` topic (or the guide, with a closing "Check your knowledge" topic) with a `quiz` that tests only facts the guide itself states.',
       walkthrough:
-        'Latches: "how to" for one specific task that cannot be applied in generic fashion, "our", a named tool or resource ("integrate with IdP X"). An ordered procedure done start to finish. Steps in the Grafana UI are interactive blocks per `interactiveRules`; steps in other tools are numbered markdown. When a target cannot be addressed with a verified selector, use the placeholder in the `reftarget` rule rather than dropping the step, and when you hand off the guide, list every placeholder step (finalize lists them in validation.warnings) and tell the user they must add selectors before it will run.',
+        'Latches: "how to" for one specific task that cannot be applied in generic fashion, "our", a named tool or resource ("integrate with IdP X"). An ordered procedure done start to finish. Steps in the Grafana UI are interactive blocks per `interactiveRules`; steps in other tools are numbered markdown. Use the `reftarget` placeholder for any target without a verified selector rather than dropping the step.',
     },
   },
-  // Distilled from grafana/interactive-tutorials `.cursor/authoring-guide.mdc`.
-  // Curate ruthlessly — every connected client pays this length on every
-  // `_start` call. If this list grows past ~20 rules, ship a separate
-  // best-practices tool instead of expanding here.
-  interactiveRules: [
-    'Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must run in order AND are tightly coupled.',
-    'Never write a step with `action: noop` as filler. If there is nothing concrete for the user to do, write a `markdown` block describing what they would do instead.',
-    'If you do not have a verified Grafana DOM selector for a `reftarget` field, never invent or guess one. Use `action: button` with the visible button text, or ask the user. If neither resolves the target, keep the step with a placeholder `reftarget` of `[data-testid="TODO-<what-to-target>"]`, and you may note it in `authorNote` on the block that holds it (steps have no `authorNote`) for your own tracking; finalize strips notes, so the hand-off to the user is what flags it.',
-    'If a `multistep` would end up with only one step, replace it with an `interactive` block. Single-step multisteps add overhead with no benefit.',
-    "Anchor the user on the first interactive step: add `on-page:/path` to its `requirements`, or use a `navigate` action — the guide can't assume it starts on the right page.",
-    'Add contextual `requirements` to every interactive step that touches the DOM. At minimum `on-page:/path`; also `navmenu-open` for nav clicks and `is-admin` (or a role) for admin-only features.',
-    "Use `verify` on actions that change state (save, create, navigate) so the next step can't run against a half-completed action.",
-    'Prefer a `grafana:` selector path, then a `data-testid`, over any text-based target. Visible text, `aria-label`, `placeholder` and `title` are all translated, so a guide anchored to them breaks for every user not running the locale you authored in — the engine flags these `i18n-sensitive` for exactly this reason. `action: button` with visible text remains the right fallback when you have no verified stable selector (never invent one), but treat it as a fallback, not a preference.',
-    'If the target lives in a virtualized list, paginated table, or dashboard row below the fold, use a `guided` block with `lazyRender: true` on the step — a plain `interactive` will fail because `exists-reftarget` waits but cannot scroll.',
-    "To type code into a Grafana query or code editor for the reader, use a `code-block`. Its `reftarget` is that editor's selector and follows the `reftarget` rule above. Code the reader only reads or copies is a fenced code block in `markdown` (see `guideShape.formatting`), never a `code-block`.",
-  ],
+  sessionMode: {
+    summary:
+      'Primary contract. Mint a sessionToken on first mutation, echo it back on every subsequent call. Mutation responses are acks (no artifact body). Reads are explicit. Finalize returns the artifact and deletes the session.',
+    ackShape: {
+      status: 'ok | error',
+      sessionToken: 'string — echo verbatim on the next call',
+      generation:
+        'number — monotonic; optional `expectedGeneration` on the next call surfaces a CONCURRENT_MODIFICATION error if the session moved underneath you',
+      summary: 'compact tree of {path, id, type, hint?, children?} for navigation',
+      outcome: 'CommandOutcome shape (status + any code/message/data on error)',
+    },
+    rules: [
+      'Echo `sessionToken` on every subsequent call. Do NOT echo back the artifact body — it is not in the ack and the server already has it.',
+      'Use `summary` for navigation. Do not call pathfinder_inspect after every mutation; the summary already tells you what changed.',
+      '`expectedGeneration` is optional. Omit it for the common single-agent case (the server retries once on 412 internally). Pass it only if you specifically want to fail-fast on a concurrent edit.',
+      'A failed mutation does NOT bump the generation — the session state is unchanged. Re-read with the same generation if you need to recover.',
+      'On SESSION_NOT_FOUND (expired or finalized session), start over: call pathfinder_create_package for a fresh token.',
+    ],
+  },
+  statelessModeFallback: {
+    appliesWhen:
+      'You are running against an MCP server where server-side sessions are unavailable or not durable — stdio transport, OSS / self-hosted deployments, or any host not pinned to a single instance. Every mutation tool also accepts `{artifact}` in place of `{sessionToken}` and returns the full artifact for you to thread to the next call.',
+    rules: [
+      'Pass {content, manifest} in. Use the {content, manifest} returned in the response for the next call.',
+      'Never mix modes — pass EITHER `artifact` OR `sessionToken`, never both. Mixing returns INPUT_MODE_AMBIGUOUS.',
+    ],
+  },
+  interfaceContract: {
+    parameters: [
+      "JSON in, always. pathfinder_help({ command }) returns the parameter interface for that tool's `opts`. It is the command's own schema rendered as JSON.",
+      'Parameter names are camelCase (e.g., `ifAbsent`, `showMe`, `includeVersion`). Values are JSON: booleans are `true`/`false`, repeatables are arrays (one marked `acceptsSingle` also takes a single string), enums are strings.',
+      'Positional CLI arguments are republished as ordinary named parameters, so positional order never matters to you.',
+      'When help returns `subcommands`, pass your chosen value in `opts` and call help again with that value as `subcommand` to get the full per-subcommand surface.',
+      'Parameters a tool owns itself, or cannot honor, are withheld from help and rejected as UNSUPPORTED_PARAMETER. The `exposed` list on that error is authoritative — read it rather than guessing.',
+    ],
+    responses: [
+      "CLI spec out, always. Every tool returns the CLI runner's structured outcome verbatim: `status`, plus `code` and `message` on error, plus `summary` / `details` / `warnings` / `data` on success.",
+      'The CLI runners are the sole validator. A `SCHEMA_VALIDATION` error lists every issue at once — fix all of them before retrying.',
+      '`warnings` are advisory and non-blocking (composition nudges, unverified selectors, normalized input). They do not fail the call, but they are the CLI telling you the guide will be worse if you ignore them.',
+      '`data` is the stable machine payload and `details` is display text — read ids and paths from `data`.',
+      'Mutation acks add a `summary` tree ({path, id, type, hint?, children?}). Navigate and address blocks from it instead of re-reading the artifact.',
+      'Error messages may reference CLI flag names like `--parent` or `--show-me` for human readers. Map these to camelCase parameter names (`parent`, `showMe`) when reading the message. Ignore any suggestion to run a command — you call tools, not a shell. When a message mentions a withheld parameter, the `exposed` list from UNSUPPORTED_PARAMETER is authoritative.',
+    ],
+  },
   discovery: [
     "pathfinder_help — the parameter interface for any CLI-backed tool's `opts`; read it per `interfaceContract.parameters`. For pathfinder_manage_block and pathfinder_manage_guide, pass `command` equal to that call's `operation`. Remember the addressing parameters help returns (`parent` for add-step / add-choice / add-hint).",
     'pathfinder_read_session — MCP-native explicit schema. Given a sessionToken and operation list-blocks | get-block | get-manifest (plus blockId for get-block), returns a cheap facet of the session artifact. Use freely.',
     'pathfinder_inspect — escape hatch. Given a sessionToken (or artifact) plus help-derived `opts`, returns the full artifact plus a tree summary.',
     'pathfinder_read_repository — MCP-native explicit schema. Given operation list-packages | get-package | get-manifest plus its documented top-level filters/id, discovers or inspects published CDN packages. Sibling of pathfinder_read_session for published (not session) content.',
     'pathfinder_find_guides — CLI-routed search of the public guide catalog; pass `opts` per pathfinder_help({ command: "find-guides" }). Use it to check whether a guide already exists before authoring a new one, or to answer "is there a guide for this?".',
+    'pathfinder_find_steps — CLI-routed search of verified procedures from guides that pass live e2e tests; pass `opts` per pathfinder_help({ command: "find-steps" }). Use it for every Grafana-specific sub-task to find its verified steps and selectors.',
   ],
+  // Routing reaffirmation surface. The same constants seed the server-level
+  // `instructions` string in `lib/server-instructions.ts`, so an agent that
+  // reached this tool via the initialize hint sees consistent vocabulary,
+  // and clients that don't render `initialize.instructions` still get the
+  // routing signal here.
+  triggers: [...PATHFINDER_TRIGGER_PHRASES],
+  notFor: [...PATHFINDER_NOT_FOR],
+  domains: [...PATHFINDER_DOMAINS],
 };
 
 export function registerAuthoringStart(server: McpServer): void {

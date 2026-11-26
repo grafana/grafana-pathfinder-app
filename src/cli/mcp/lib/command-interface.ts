@@ -294,8 +294,9 @@ function matchesValueType(flag: HelpJsonFlag, value: unknown): boolean {
       return typeof value === 'number' && Number.isFinite(value);
     case 'array':
       return (
-        Array.isArray(value) &&
-        value.every((item) => typeof item === 'string' && (flag.enum === undefined || flag.enum.includes(item)))
+        (flag.acceptsSingle === true && typeof value === 'string') ||
+        (Array.isArray(value) &&
+          value.every((item) => typeof item === 'string' && (flag.enum === undefined || flag.enum.includes(item))))
       );
     case 'enum':
       return typeof value === 'string' && (flag.enum?.includes(value) ?? false);
@@ -316,7 +317,10 @@ function expectedTypeLabel(flag: HelpJsonFlag): string {
   if (flag.valueType === 'union') {
     return flag.unionOf?.join('|') ?? 'union';
   }
-  return flag.valueType === 'array' ? 'string[]' : flag.valueType;
+  if (flag.valueType === 'array') {
+    return flag.acceptsSingle ? 'string|string[]' : 'string[]';
+  }
+  return flag.valueType;
 }
 
 function receivedTypeLabel(value: unknown): string {

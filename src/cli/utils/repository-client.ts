@@ -26,7 +26,7 @@
  *     to a Node process.
  */
 
-import type { z } from 'zod';
+import { z } from 'zod';
 
 import { ContentJsonSchema, RepositoryEntrySchema } from '../../types/package.schema';
 import { RuntimeManifestJsonObjectSchema } from '../../lib/runtime-manifest';
@@ -37,6 +37,27 @@ const REPOSITORY_INDEX_TTL_MS = 60_000;
 const FETCH_TIMEOUT_MS = 10_000;
 
 export const REPOSITORY_URL_ENV_VAR = 'PATHFINDER_REPOSITORY_URL';
+export const PACKAGE_HEALTH_URL_ENV_VAR = 'PATHFINDER_PACKAGE_HEALTH_URL';
+const DEFAULT_PACKAGE_HEALTH_URL =
+  'https://storage.googleapis.com/pathfinder-e2e-package-health-prod/package-health/v1.json';
+
+const PackageHealthSchema = z.object({
+  schemaVersion: z
+    .union([z.string(), z.number()])
+    .refine((version) => String(version).split('.')[0] === '1', 'Unsupported package health schema major version'),
+  revision: z.number().int(),
+  generatedAt: z.string().optional(),
+  packages: z.record(z.string(), z.object({ health: z.string(), blockedBy: z.array(z.unknown()) })),
+});
+
+export type PackageHealthResult =
+  | {
+      ok: true;
+      revision: number;
+      generatedAt?: string;
+      packages: Record<string, { health: string; blockedBy: unknown[] }>;
+    }
+  | RepositoryClientError;
 
 export interface RepositoryPackage extends RepositoryEntry {
   id: string;
@@ -211,6 +232,28 @@ export async function findRepositoryEntry(
 }
 
 /**
+ * Fetch the e2e suite's public package-health report. Unlike the catalog, an invalid report is an
+ * error: callers filter on it, so a half-read file must not look like "no guide is blocked".
+ */
+export async function fetchPackageHealth(): Promise<PackageHealthResult> {
+  const url = process.env[PACKAGE_HEALTH_URL_ENV_VAR]?.trim() || DEFAULT_PACKAGE_HEALTH_URL;
+  const fetched = await fetchJson(url);
+  if (!fetched.ok) {
+    return fetched;
+  }
+  const parsed = PackageHealthSchema.safeParse(fetched.value);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      code: 'PARSE_ERROR',
+      message: `Package health report is invalid: ${parsed.error.issues[0]?.message}`,
+    };
+  }
+  const { revision, generatedAt, packages } = parsed.data;
+  return { ok: true, revision, ...(generatedAt ? { generatedAt } : {}), packages };
+}
+
+/**
  * Fetch a package's `content.json`. Validation is non-fatal.
  */
 export async function fetchPackageContent(id: string): Promise<PackageJsonResult<Record<string, unknown>>> {
@@ -289,9 +332,10 @@ async function fetchJson(url: string): Promise<{ ok: true; value: unknown; versi
   try {
     value = await response.json();
   } catch (err) {
+    // A body read that times out or drops mid-stream is transient; only a JSON syntax error is a bad document.
     return {
       ok: false,
-      code: 'PARSE_ERROR',
+      code: err instanceof Error && err.name === 'SyntaxError' ? 'PARSE_ERROR' : 'NETWORK_ERROR',
       message: err instanceof Error ? err.message : String(err),
     };
   }

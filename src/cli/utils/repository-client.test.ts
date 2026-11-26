@@ -271,6 +271,35 @@ describe('fetchRepositoryIndex', () => {
     expect(result.code).toBe('PARSE_ERROR');
   });
 
+  it.each([
+    ['a body read that times out', 'TimeoutError'],
+    ['a body read that is aborted', 'AbortError'],
+    ['a connection reset mid-body', 'TypeError'],
+  ])('reports NETWORK_ERROR for %s', async (_label, name) => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => {
+        throw Object.assign(new Error('body read failed'), { name });
+      },
+    });
+    const result = await fetchRepositoryIndex();
+    expect(result).toEqual({ ok: false, code: 'NETWORK_ERROR', message: 'body read failed' });
+  });
+
+  it('reports PARSE_ERROR when the body is not valid JSON', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => JSON.parse('{"truncated": '),
+    });
+    const result = await fetchRepositoryIndex();
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.code).toBe('PARSE_ERROR');
+  });
+
   it('keeps the map key as the package id when an entry body carries a conflicting id', async () => {
     mockFetchJsonOnce({
       'guide-a': { path: 'guide-a/', type: 'guide', id: 'guide-b' },

@@ -1,0 +1,1144 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "grafana-quickpizza-working-filters",
+  "title": "Build a dashboard with dependent filters",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Build a dashboard where the environment filter controls the available services, and the service filter controls the panel. You will deliberately break the panel query, use **Query inspector** to find the cause, then repair and save it.\n\nThis demo currently shows only production, so it cannot demonstrate switching between multiple environments. Dashboard variables do not apply to alert rules."
+    },
+    {
+      "type": "markdown",
+      "content": "Install QuickPizza to get the demo metrics, or skip this section if its data source already exists."
+    },
+    {
+      "type": "section",
+      "id": "install",
+      "title": "Install QuickPizza",
+      "blocks": [
+        {
+          "id": "step-01",
+          "action": "navigate",
+          "reftarget": "/a/grafana-demodashboards-app",
+          "requirements": [],
+          "type": "interactive",
+          "content": "Open Demo Data Dashboards",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Open Demo Data Dashboards."
+        },
+        {
+          "id": "step-02",
+          "action": "highlight",
+          "reftarget": "[data-testid=\"install-quickpizza\"], [data-testid=\"view-quickpizza\"]",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/a/grafana-demodashboards-app",
+            "min-version:13.3.0"
+          ],
+          "type": "interactive",
+          "content": "Click **Install Dashboards**, or **Go to dashboards** if it is already installed; installation reloads Grafana.",
+          "doIt": true,
+          "showMe": true,
+          "verify": "has-datasource:grafanacloud-play-prom",
+          "tooltip": "Install the demo data sources and dashboards; Grafana reloads when installation finishes.",
+          "completeEarly": true
+        }
+      ],
+      "requirements": [],
+      "objectives": [
+        "has-datasource:grafanacloud-play-prom"
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "QuickPizza provides real HTTP traffic for the dashboard you will build."
+    },
+    {
+      "type": "markdown",
+      "content": "Create an environment filter from the metric labels so the service filter can use your selection."
+    },
+    {
+      "type": "section",
+      "id": "environment",
+      "title": "Create environment filter",
+      "blocks": [
+        {
+          "id": "step-03",
+          "action": "navigate",
+          "reftarget": "/dashboard/new?from=now-1h&to=now",
+          "requirements": [],
+          "type": "interactive",
+          "content": "Create a separate dashboard",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Create a separate dashboard."
+        },
+        {
+          "type": "interactive",
+          "id": "open-add-for-environment",
+          "action": "highlight",
+          "reftarget": "{grafana:pages.Dashboard.Sidebar.addButton}",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "content": "Click **Add** to open the pane for creating a variable.",
+          "tooltip": "Open the controls for adding dashboard elements.",
+          "targetstate": "aria-expanded:true"
+        },
+        {
+          "id": "step-04",
+          "action": "highlight",
+          "reftarget": "{grafana:components.Sidebar.addNewVariableButton}",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "tooltip": "Create the first dashboard filter.",
+          "type": "interactive",
+          "content": "Click **Variable** to create the environment filter."
+        },
+        {
+          "id": "step-05",
+          "action": "highlight",
+          "reftarget": "{grafana:components.PanelEditor.ElementEditPane.variableType:query} button",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "tooltip": "Populate filter options from a data source.",
+          "type": "interactive",
+          "content": "Choose **Query** to fetch environment options from metrics."
+        },
+        {
+          "id": "step-06",
+          "action": "formfill",
+          "reftarget": "{grafana:components.PanelEditor.ElementEditPane.variableNameInput}",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "targetvalue": "environment",
+          "tooltip": "Give the filter a name that other queries can reference.",
+          "type": "interactive",
+          "content": "Set **Name** to `environment`; the service query will reference this name."
+        },
+        {
+          "type": "multistep",
+          "id": "query-environment",
+          "content": "Fetch environment names from the metric labels, preview the options, then apply the query.",
+          "steps": [
+            {
+              "id": "step-07",
+              "action": "highlight",
+              "reftarget": "{grafana:pages.Dashboard.Settings.Variables.Edit.QueryVariable.queryOptionsOpenButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Open the query editor",
+              "tooltip": "Open the query editor."
+            },
+            {
+              "id": "step-08",
+              "action": "formfill",
+              "reftarget": "{grafana:components.DataSourcePicker.inputV2}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Select grafanacloud-play-prom",
+              "targetvalue": "grafanacloud-play-prom",
+              "tooltip": "Select grafanacloud-play-prom."
+            },
+            {
+              "id": "step-09",
+              "action": "formfill",
+              "reftarget": "{grafana:components.DataSource.Prometheus.variableQueryEditor.queryType} input",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Select Classic query",
+              "targetvalue": "Classic query",
+              "tooltip": "Select Classic query."
+            },
+            {
+              "id": "step-10",
+              "action": "formfill",
+              "reftarget": "{grafana:components.DataSource.Prometheus.variableQueryEditor.classicQuery}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Fetch environment values",
+              "targetvalue": "label_values(quickpizza_server_http_requests_total{service_namespace=\"quickpizza\"}, deployment_environment)",
+              "tooltip": "Fetch environment values."
+            },
+            {
+              "id": "step-11",
+              "action": "highlight",
+              "reftarget": "{grafana:pages.Dashboard.Settings.Variables.Edit.QueryVariable.previewButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Preview actual query values",
+              "tooltip": "Preview actual query values."
+            },
+            {
+              "id": "step-12",
+              "action": "highlight",
+              "reftarget": "{grafana:pages.Dashboard.Settings.Variables.Edit.QueryVariable.applyButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Apply the variable query",
+              "tooltip": "Apply the variable query."
+            }
+          ]
+        },
+        {
+          "type": "multistep",
+          "id": "refresh-environment",
+          "content": "Refresh environment options on time range change.",
+          "steps": [
+            {
+              "id": "step-13",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldLabel:variable-type Refresh} [role=\"combobox\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Open Refresh",
+              "tooltip": "Open Refresh."
+            },
+            {
+              "id": "step-14",
+              "action": "highlight",
+              "reftarget": "body:has({grafana:components.PanelEditor.OptionsPane.fieldLabel:variable-type Refresh}) [role=\"option\"]:text(\"On time range change\")",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Choose On time range change",
+              "tooltip": "Choose On time range change."
+            }
+          ]
+        },
+        {
+          "type": "multistep",
+          "id": "selection-environment",
+          "content": "Enable **Multi-value** and **Include All value** so the filter can select several options; leave **Custom all value** empty to include the available options and disable **Allow custom values** to prevent unknown labels.",
+          "steps": [
+            {
+              "id": "step-15",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldLabel:selection-options-category Multi-value} input[role=\"switch\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Enable Multi-value",
+              "targetstate": "true",
+              "tooltip": "Enable Multi-value."
+            },
+            {
+              "id": "step-16",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldLabel:selection-options-category Include All value} input[role=\"switch\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Enable Include All value",
+              "targetstate": "true",
+              "tooltip": "Enable Include All value."
+            },
+            {
+              "id": "step-18",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldLabel:selection-options-category Allow custom values} input[role=\"switch\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Disable Allow custom values",
+              "targetstate": "false",
+              "tooltip": "Disable Allow custom values."
+            },
+            {
+              "id": "step-17",
+              "action": "formfill",
+              "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldLabel:selection-options-category Custom all value} input",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Keep Custom all value empty",
+              "targetvalue": "",
+              "tooltip": "Keep Custom all value empty."
+            }
+          ]
+        }
+      ],
+      "requirements": [
+        "section-completed:install",
+        "has-datasource:grafanacloud-play-prom"
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "The environment filter now gets its options from metric labels and refreshes them when the time range changes."
+    },
+    {
+      "type": "markdown",
+      "content": "Create a service filter that queries only the services in the selected environment."
+    },
+    {
+      "type": "section",
+      "id": "service",
+      "title": "Create dependent service filter",
+      "blocks": [
+        {
+          "id": "step-19",
+          "action": "highlight",
+          "reftarget": "{grafana:pages.Dashboard.Sidebar.addButton}",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "tooltip": "Add a second filter to the dashboard.",
+          "type": "interactive",
+          "content": "Click **Add** to create the dependent service filter.",
+          "targetstate": "aria-expanded:true"
+        },
+        {
+          "id": "step-20",
+          "action": "highlight",
+          "reftarget": "{grafana:components.Sidebar.addNewVariableButton}",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "tooltip": "Create the filter for service names.",
+          "type": "interactive",
+          "content": "Click **Variable**."
+        },
+        {
+          "id": "step-21",
+          "action": "highlight",
+          "reftarget": "{grafana:components.PanelEditor.ElementEditPane.variableType:query} button",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "tooltip": "Fetch available services from the selected environment.",
+          "type": "interactive",
+          "content": "Choose **Query** to fetch service names from metrics."
+        },
+        {
+          "id": "step-22",
+          "action": "formfill",
+          "reftarget": "{grafana:components.PanelEditor.ElementEditPane.variableNameInput}",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "targetvalue": "service",
+          "tooltip": "Name the filter used by the panel query.",
+          "type": "interactive",
+          "content": "Set **Name** to `service`; the panel query will reference this name."
+        },
+        {
+          "type": "multistep",
+          "id": "query-service",
+          "content": "Fetch service names using ${environment:regex} to match the selected environments, preview the options, then apply the query.",
+          "steps": [
+            {
+              "id": "step-23",
+              "action": "highlight",
+              "reftarget": "{grafana:pages.Dashboard.Settings.Variables.Edit.QueryVariable.queryOptionsOpenButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Open the query editor",
+              "tooltip": "Open the query editor."
+            },
+            {
+              "id": "step-24",
+              "action": "formfill",
+              "reftarget": "{grafana:components.DataSourcePicker.inputV2}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Select grafanacloud-play-prom",
+              "targetvalue": "grafanacloud-play-prom",
+              "tooltip": "Select grafanacloud-play-prom."
+            },
+            {
+              "id": "step-25",
+              "action": "formfill",
+              "reftarget": "{grafana:components.DataSource.Prometheus.variableQueryEditor.queryType} input",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Select Classic query",
+              "targetvalue": "Classic query",
+              "tooltip": "Select Classic query."
+            },
+            {
+              "id": "step-26",
+              "action": "formfill",
+              "reftarget": "{grafana:components.DataSource.Prometheus.variableQueryEditor.classicQuery}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Fetch service values",
+              "targetvalue": "label_values(quickpizza_server_http_requests_total{service_namespace=\"quickpizza\", deployment_environment=~\"${environment:regex}\"}, service_name)",
+              "tooltip": "Fetch service values."
+            },
+            {
+              "id": "step-27",
+              "action": "highlight",
+              "reftarget": "{grafana:pages.Dashboard.Settings.Variables.Edit.QueryVariable.previewButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Preview actual query values",
+              "tooltip": "Preview actual query values."
+            },
+            {
+              "id": "step-28",
+              "action": "highlight",
+              "reftarget": "{grafana:pages.Dashboard.Settings.Variables.Edit.QueryVariable.applyButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Apply the variable query",
+              "tooltip": "Apply the variable query."
+            }
+          ]
+        },
+        {
+          "type": "multistep",
+          "id": "refresh-service",
+          "content": "Refresh service options on time range change.",
+          "steps": [
+            {
+              "id": "step-29",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldLabel:variable-type Refresh} [role=\"combobox\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Open Refresh",
+              "tooltip": "Open Refresh."
+            },
+            {
+              "id": "step-30",
+              "action": "highlight",
+              "reftarget": "body:has({grafana:components.PanelEditor.OptionsPane.fieldLabel:variable-type Refresh}) [role=\"option\"]:text(\"On time range change\")",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Choose On time range change",
+              "tooltip": "Choose On time range change."
+            }
+          ]
+        },
+        {
+          "type": "multistep",
+          "id": "selection-service",
+          "content": "Enable **Multi-value** and **Include All value** so the filter can select several options; leave **Custom all value** empty to include the available options and disable **Allow custom values** to prevent unknown labels.",
+          "steps": [
+            {
+              "id": "step-31",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldLabel:selection-options-category Multi-value} input[role=\"switch\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Enable Multi-value",
+              "targetstate": "true",
+              "tooltip": "Enable Multi-value."
+            },
+            {
+              "id": "step-32",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldLabel:selection-options-category Include All value} input[role=\"switch\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Enable Include All value",
+              "targetstate": "true",
+              "tooltip": "Enable Include All value."
+            },
+            {
+              "id": "step-34",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldLabel:selection-options-category Allow custom values} input[role=\"switch\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Disable Allow custom values",
+              "targetstate": "false",
+              "tooltip": "Disable Allow custom values."
+            },
+            {
+              "id": "step-33",
+              "action": "formfill",
+              "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldLabel:selection-options-category Custom all value} input",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Keep Custom all value empty",
+              "targetvalue": "",
+              "tooltip": "Keep Custom all value empty."
+            }
+          ]
+        }
+      ],
+      "requirements": [
+        "section-completed:environment"
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "The service query references the environment variable, so its available services depend on your environment selection."
+    },
+    {
+      "type": "markdown",
+      "content": "Build a panel that uses both variables to show the request rate for the selected services."
+    },
+    {
+      "type": "section",
+      "id": "traffic",
+      "title": "Build the traffic panel",
+      "blocks": [
+        {
+          "type": "multistep",
+          "id": "create-panel",
+          "content": "Add a panel, select the demo data source, and use Code mode.",
+          "steps": [
+            {
+              "id": "step-35",
+              "action": "highlight",
+              "reftarget": "{grafana:pages.Dashboard.Sidebar.addButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Open Add",
+              "tooltip": "Open Add."
+            },
+            {
+              "id": "step-36",
+              "action": "highlight",
+              "reftarget": "{grafana:components.Sidebar.newPanelButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Add a panel",
+              "tooltip": "Add a panel."
+            },
+            {
+              "id": "step-37",
+              "action": "highlight",
+              "reftarget": "{grafana:components.Sidebar.configurePanelButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Edit visualization",
+              "tooltip": "Edit visualization."
+            },
+            {
+              "id": "step-38",
+              "action": "formfill",
+              "reftarget": "{grafana:components.DataSourcePicker.inputV2}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Select grafanacloud-play-prom",
+              "targetvalue": "grafanacloud-play-prom",
+              "tooltip": "Select grafanacloud-play-prom."
+            }
+          ]
+        },
+        {
+          "id": "step-39",
+          "action": "highlight",
+          "reftarget": "{grafana:components.PanelEditor.General.content} {grafana:components.RadioButton.option:code} + label",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "targetstate": "true",
+          "tooltip": "Use PromQL Code mode.",
+          "type": "interactive",
+          "content": "Use PromQL Code mode",
+          "doIt": true
+        },
+        {
+          "type": "interactive",
+          "id": "step-40",
+          "reftarget": "{grafana:components.PanelEditor.General.content} [role=\"textbox\"][aria-label^=\"Editor content\"]",
+          "content": "Plot request rate for the selected environment and services",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "action": "formfill",
+          "targetvalue": "sum by (deployment_environment, service_name) (rate(quickpizza_server_http_requests_total{service_namespace=\"quickpizza\", deployment_environment=~\"${environment:regex}\", service_name=~\"${service:regex}\"}[$__rate_interval]))",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Plot request rate for the selected environment and services."
+        },
+        {
+          "type": "multistep",
+          "id": "visualization",
+          "content": "Choose the Time series visualization.",
+          "steps": [
+            {
+              "id": "step-42",
+              "action": "highlight",
+              "reftarget": "{grafana:components.Tab.title:Visualizations}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Open All visualizations",
+              "tooltip": "Open All visualizations."
+            },
+            {
+              "id": "step-43",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PluginVisualization.item:Time series}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Choose Time series",
+              "tooltip": "Choose Time series."
+            }
+          ]
+        },
+        {
+          "id": "step-44",
+          "action": "formfill",
+          "reftarget": "{grafana:components.PanelEditor.OptionsPane.fieldInput:Title}",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "targetvalue": "QuickPizza request traffic",
+          "type": "interactive",
+          "content": "Name the panel",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Name the panel."
+        },
+        {
+          "id": "step-41",
+          "action": "highlight",
+          "reftarget": "{grafana:components.PanelEditor.General.content} button:text(\"Run queries\")",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "tooltip": "Run the query.",
+          "type": "interactive",
+          "content": "Run the query by clicking Run queries."
+        },
+        {
+          "type": "markdown",
+          "id": "step-45",
+          "content": "Check that the only service series is quickpizza-catalog; compare labels, since request rates change."
+        }
+      ],
+      "requirements": [
+        "section-completed:service"
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "Your panel query uses regex matching to accept single, multiple, or All filter selections."
+    },
+    {
+      "type": "markdown",
+      "content": "Replace the service variable with a fixed service name, then use the inspector to find why the filter no longer controls the panel."
+    },
+    {
+      "type": "section",
+      "id": "repair",
+      "title": "Inspect and repair a broken filter",
+      "blocks": [
+        {
+          "type": "interactive",
+          "id": "step-46",
+          "reftarget": "{grafana:components.PanelEditor.General.content} [role=\"textbox\"][aria-label^=\"Editor content\"]",
+          "content": "Introduce a hardcoded public-api filter",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "action": "formfill",
+          "targetvalue": "sum by (deployment_environment, service_name) (rate(quickpizza_server_http_requests_total{service_namespace=\"quickpizza\", deployment_environment=~\"${environment:regex}\", service_name=\"quickpizza-public-api\"}[$__rate_interval]))",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Introduce a hardcoded public-api filter."
+        },
+        {
+          "type": "guided",
+          "id": "inspect-broken",
+          "content": "Run the deliberately wrong query, open and refresh Query inspector, read the hardcoded matcher, then close the drawer.",
+          "steps": [
+            {
+              "id": "step-47",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.General.content} button:text(\"Run queries\")",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "tooltip": "Run the deliberately wrong query.",
+              "description": "Run the deliberately wrong query by clicking Run queries."
+            },
+            {
+              "id": "step-48",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.General.content} button[aria-label=\"Query inspector\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Open Query inspector",
+              "tooltip": "Open Query inspector."
+            },
+            {
+              "id": "step-49",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelInspector.Query.refreshButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Refresh the inspector request",
+              "tooltip": "Refresh the inspector request."
+            },
+            {
+              "id": "step-50",
+              "action": "highlight",
+              "reftarget": "[role=\"dialog\"]:has({grafana:components.PanelInspector.Query.content})",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Read the expanded query: service_name=\"quickpizza-public-api\" ignores the current catalog selection; click the query text to continue, then close the inspector.",
+              "tooltip": "Read the expanded query: service_name=\"quickpizza-public-api\" ignores the current catalog selection; click the query text to continue, then close the inspector."
+            },
+            {
+              "id": "step-51",
+              "action": "highlight",
+              "reftarget": "[role=\"dialog\"]:has({grafana:components.PanelInspector.Query.content}) button[aria-label=\"Close\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Close the inspector",
+              "tooltip": "Close the inspector."
+            }
+          ]
+        },
+        {
+          "type": "interactive",
+          "id": "step-52",
+          "reftarget": "{grafana:components.PanelEditor.General.content} [role=\"textbox\"][aria-label^=\"Editor content\"]",
+          "content": "Restore the dynamic regex service matcher",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "action": "formfill",
+          "targetvalue": "sum by (deployment_environment, service_name) (rate(quickpizza_server_http_requests_total{service_namespace=\"quickpizza\", deployment_environment=~\"${environment:regex}\", service_name=~\"${service:regex}\"}[$__rate_interval]))",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Restore the dynamic regex service matcher."
+        },
+        {
+          "id": "step-53",
+          "action": "highlight",
+          "reftarget": "{grafana:components.PanelEditor.General.content} button:text(\"Run queries\")",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "tooltip": "Run the repaired query.",
+          "type": "interactive",
+          "content": "Run the repaired query by clicking Run queries."
+        },
+        {
+          "type": "markdown",
+          "id": "step-54",
+          "content": "Check that quickpizza-catalog is restored as the only service series."
+        }
+      ],
+      "requirements": [
+        "section-completed:traffic"
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "The inspector reveals the request Grafana sends, so you can spot a hardcoded label that ignores the selected service."
+    },
+    {
+      "type": "markdown",
+      "content": "Compare single, multiple, and All selections to check that the panel follows the filters."
+    },
+    {
+      "type": "section",
+      "id": "verify",
+      "title": "Verify single, multiple, and All",
+      "blocks": [
+        {
+          "id": "step-55",
+          "action": "formfill",
+          "reftarget": "{grafana:pages.Dashboard.SubMenu.submenuItem}:has({grafana:pages.Dashboard.SubMenu.submenuItemLabels:service}) input[role=\"combobox\"]",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "targetvalue": "quickpizza-copy",
+          "type": "interactive",
+          "content": "Add quickpizza-copy to the current catalog selection",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Add quickpizza-copy to the current catalog selection."
+        },
+        {
+          "type": "markdown",
+          "id": "step-56",
+          "content": "Check that the series labels contain exactly quickpizza-catalog and quickpizza-copy."
+        },
+        {
+          "id": "step-57",
+          "action": "formfill",
+          "reftarget": "{grafana:pages.Dashboard.SubMenu.submenuItem}:has({grafana:pages.Dashboard.SubMenu.submenuItemLabels:service}) input[role=\"combobox\"]",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "targetvalue": "All",
+          "type": "interactive",
+          "content": "Select All services",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Select All services."
+        },
+        {
+          "type": "markdown",
+          "id": "step-58",
+          "content": "Check for quickpizza-catalog, quickpizza-config, quickpizza-copy, quickpizza-public-api, and quickpizza-recommendations; database and websocket targets do not expose this HTTP metric."
+        },
+        {
+          "id": "step-59",
+          "action": "formfill",
+          "reftarget": "{grafana:pages.Dashboard.SubMenu.submenuItem}:has({grafana:pages.Dashboard.SubMenu.submenuItemLabels:environment}) input[role=\"combobox\"]",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "targetvalue": "All",
+          "type": "interactive",
+          "content": "Select All environments",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Select All environments."
+        },
+        {
+          "type": "markdown",
+          "id": "step-60",
+          "content": "Compare service labels: production and All should show the same set because only production was observed."
+        },
+        {
+          "type": "guided",
+          "id": "inspect-all",
+          "content": "Open and refresh the inspector, read the All expansion, then close it.",
+          "steps": [
+            {
+              "id": "step-61",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelEditor.General.content} button[aria-label=\"Query inspector\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Inspect the All expansion",
+              "tooltip": "Inspect the All expansion."
+            },
+            {
+              "id": "step-62",
+              "action": "highlight",
+              "reftarget": "{grafana:components.PanelInspector.Query.refreshButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Refresh the expanded query",
+              "tooltip": "Refresh the expanded query."
+            },
+            {
+              "id": "step-63",
+              "action": "highlight",
+              "reftarget": "[role=\"dialog\"]:has({grafana:components.PanelInspector.Query.content})",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Read the service matcher: it should contain regex alternation for the five HTTP services, not the literal word All; click the query text to continue, then close the inspector.",
+              "tooltip": "Read the service matcher: it should contain regex alternation for the five HTTP services, not the literal word All; click the query text to continue, then close the inspector."
+            },
+            {
+              "id": "step-64",
+              "action": "highlight",
+              "reftarget": "[role=\"dialog\"]:has({grafana:components.PanelInspector.Query.content}) button[aria-label=\"Close\"]",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Close Query inspector",
+              "tooltip": "Close Query inspector."
+            }
+          ]
+        },
+        {
+          "type": "multistep",
+          "id": "refresh-time-range",
+          "content": "Change the time range to **Last 30 minutes**; both variable option queries refresh, and all five service series should remain.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "{grafana:components.TimePicker.openButton}",
+              "description": "Open the time range picker.",
+              "tooltip": "Choose a new time window to exercise variable refresh.",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ]
+            },
+            {
+              "action": "highlight",
+              "reftarget": "{grafana:components.TimePicker.overlayContent} label:text(\"Last 30 minutes\")",
+              "description": "Choose **Last 30 minutes**.",
+              "tooltip": "Refresh the variable options and panel for the shorter time window.",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ]
+            }
+          ]
+        },
+        {
+          "type": "markdown",
+          "id": "verify-refresh",
+          "content": "Confirm the five HTTP services still appear after the time-range change."
+        }
+      ],
+      "requirements": [
+        "section-completed:repair"
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "Only production was observed in this demo, so environment **All** has the same service set; this does not demonstrate multiple environments."
+    },
+    {
+      "type": "markdown",
+      "content": "Save and reopen the dashboard to check that its queries and filter selections persist."
+    },
+    {
+      "type": "section",
+      "id": "save",
+      "title": "Save and reopen",
+      "blocks": [
+        {
+          "id": "step-65",
+          "action": "highlight",
+          "reftarget": "{grafana:components.NavToolbar.editDashboard.backToDashboardButton}",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboard/new",
+            "min-version:13.3.0"
+          ],
+          "type": "interactive",
+          "content": "Return to the dashboard",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Return to the dashboard."
+        },
+        {
+          "type": "multistep",
+          "id": "save-dashboard",
+          "content": "Save as QuickPizza service filters; this sequence completes while the save drawer covers Pathfinder.",
+          "steps": [
+            {
+              "id": "step-66",
+              "action": "highlight",
+              "reftarget": "{grafana:components.NavToolbar.editDashboard.saveButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Open Save dashboard",
+              "tooltip": "Open Save dashboard."
+            },
+            {
+              "id": "step-67",
+              "action": "formfill",
+              "reftarget": "{grafana:components.Drawer.DashboardSaveDrawer.saveAsTitleInput}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Set the dashboard title",
+              "targetvalue": "QuickPizza service filters",
+              "tooltip": "Set the dashboard title."
+            },
+            {
+              "id": "step-68",
+              "action": "highlight",
+              "reftarget": "{grafana:components.Drawer.DashboardSaveDrawer.saveButton}",
+              "requirements": [
+                "exists-reftarget",
+                "on-page:/dashboard/new",
+                "min-version:13.3.0"
+              ],
+              "description": "Save the dashboard",
+              "tooltip": "Save the dashboard."
+            }
+          ]
+        },
+        {
+          "id": "step-69",
+          "action": "navigate",
+          "reftarget": "/dashboards?query=QuickPizza%20service%20filters",
+          "requirements": [],
+          "type": "interactive",
+          "content": "Find the saved dashboard",
+          "doIt": true,
+          "showMe": true,
+          "tooltip": "Find the saved dashboard."
+        },
+        {
+          "id": "reopen-saved-dashboard",
+          "action": "highlight",
+          "reftarget": "{grafana:pages.Search.table.row:QuickPizza service filters} a[title=\"QuickPizza service filters\"]",
+          "requirements": [
+            "exists-reftarget",
+            "on-page:/dashboards",
+            "min-version:13.3.0"
+          ],
+          "tooltip": "Reopen QuickPizza service filters.",
+          "lazyRender": true,
+          "type": "interactive",
+          "content": "Reopen **QuickPizza service filters** from the search results.",
+          "scrollContainer": "#pageContent",
+          "objectives": [
+            "on-page:/d/"
+          ]
+        },
+        {
+          "type": "markdown",
+          "id": "step-71",
+          "content": "Check that environment and service selectors retain All and the live panel still displays the HTTP services after reopening."
+        }
+      ],
+      "requirements": [
+        "section-completed:verify"
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "Your saved dashboard combines dependent variables with a panel query that follows their selections."
+    }
+  ]
+}

@@ -160,6 +160,7 @@
     "idb": "^8.0.3",
     "js-yaml": "^5.4.2",
     "jsonc-parser": "^3.3.1",
+    "minisearch": "^7.2.0",
     "peerjs": "^1.5.5",
     "prismjs": "^1.30.0",
     "qrcode": "^1.5.4",
