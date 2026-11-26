@@ -14,7 +14,14 @@ import { JsonStepSchema } from '../../types/json-guide.schema';
 import { defineCommand, pickContent, shapeKeys, withPolicy } from '../contracts';
 import type { JsonStep } from '../../types/json-guide.types';
 import { assertCliStepFields, CliValidationError } from '../utils/cli-validators';
-import { appendStep, mutateAndValidate, PackageIOError } from '../utils/package-io';
+import {
+  appendStep,
+  findBlockById,
+  mutateAndValidate,
+  PackageIOError,
+  readPackageSidecars,
+  stampIdsInPlace,
+} from '../utils/package-io';
 import {
   issueToOutcome,
   manyIssuesOutcome,
@@ -59,11 +66,25 @@ export async function runAddStep(args: AddStepInput): Promise<CommandOutcome> {
 
   let position = '';
   let legacyIdsMinted = 0;
+  // A guide that ships a translation gets its ids by the stamp-ids rule, guide-wide (#2393).
+  const shipsSidecar = readPackageSidecars(args.dir).length > 0;
+  let stepId: string | undefined;
+  let stampedElsewhere = 0;
   try {
-    const result = await mutateAndValidate(args.dir, ({ content }) => {
-      const r = appendStep(content, candidate.data as JsonStep, parentId);
-      position = r.position;
-    });
+    const result = await mutateAndValidate(
+      args.dir,
+      (state) => {
+        const r = appendStep(state.content, candidate.data as JsonStep, parentId);
+        position = r.position;
+        if (shipsSidecar) {
+          const { stamped } = stampIdsInPlace(state);
+          const parent = findBlockById(state.content, parentId) as { steps?: Array<{ id?: string }> } | undefined;
+          stepId = parent?.steps?.at(-1)?.id;
+          stampedElsewhere = stamped.filter((stamp) => stamp.id !== stepId).length;
+        }
+      },
+      shipsSidecar ? { mintIds: false } : {}
+    );
     if (!result.validation.ok) {
       const first = result.validation.issues[0];
       return first
@@ -91,12 +112,14 @@ export async function runAddStep(args: AddStepInput): Promise<CommandOutcome> {
 
   return {
     status: 'ok',
-    summary: `Added step (action: ${String(candidate.data.action)}) to "${parentId}" at ${position}`,
+    summary: `Added step (action: ${String(candidate.data.action)}${stepId ? `, id: ${stepId}` : ''}) to "${parentId}" at ${position}`,
     details: {
       action: String(candidate.data.action),
+      ...(stepId ? { id: stepId } : {}),
       position,
       'package valid': true,
       ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
+      ...(stampedElsewhere > 0 ? { 'ids stamped on other translatable units': stampedElsewhere } : {}),
     },
     ...(warnings.length > 0 ? { warnings } : {}),
     hints: [
@@ -106,7 +129,9 @@ export async function runAddStep(args: AddStepInput): Promise<CommandOutcome> {
     data: {
       position,
       parent: parentId,
+      ...(stepId ? { id: stepId } : {}),
       ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
+      ...(stampedElsewhere > 0 ? { idsStamped: stampedElsewhere } : {}),
     },
   };
 }

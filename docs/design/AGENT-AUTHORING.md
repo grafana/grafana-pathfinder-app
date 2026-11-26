@@ -421,6 +421,8 @@ Added markdown block (id: markdown-1) to section "intro" in my-guide/
   Package valid: yes
 ```
 
+In a guide that ships a translation sidecar (`i18n/*.json`), `add-block` and `add-step` use the `stamp-ids` rule instead ([CLI_TOOLS.md](../developer/CLI_TOOLS.md#stamp-ids-command)): a new block whose type is in the projection table gets the smallest free `<type>-<n>`, a new step gets `<block-id>-step-<k>`, and every other id-less translatable block and step in the guide is stamped in the same write. The output reports the new id. Stamping an untouched step resets its saved progress once.
+
 Auto-assigned IDs are durable — they survive across CLI sessions, MCP reconnects, and conversation restarts. Any future `edit-block` or `remove-block` call can use them without re-inspection. The guide file is the source of truth; there is no separate ID mapping to maintain or lose.
 
 Leaf blocks in guides authored before this feature have no IDs and are not addressable by `edit-block` or `remove-block`. This is intentional — the change is additive and backward-compatible. Existing guides are unaffected. IDs can be added to specific blocks in those guides on demand if needed.

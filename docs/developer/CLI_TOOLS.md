@@ -522,6 +522,8 @@ Blocks are visited depth-first in document order, including the children of `sec
 - A step of a `multistep` or `guided` block without an `id` gets `<block-id>-step-<k>`, where `k` is the smallest positive integer that makes the id unused.
 - Block types outside the table (`quiz`, `callout`, and the rest) are not touched.
 
+In a package that ships a sidecar, `add-block` and `add-step` apply the same rule to the whole guide after their edit, so a new translatable block or step never lands without an id.
+
 Ids are not random and not time-based, so the same input always gives the same output, and a second run on the output stamps nothing and does not write. Unlike the ids `readPackage` mints for the other commands (highest number plus one, blocks of every type), these fill the smallest free number. Stamped ids replace the step keys the runtime derives today, so stamping a guide that readers already started resets their saved step progress once.
 
 ### Examples

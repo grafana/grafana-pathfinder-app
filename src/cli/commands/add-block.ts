@@ -29,7 +29,10 @@ import {
   appendBlock,
   findBlockById,
   mutateAndValidate,
+  nextAutoBlockId,
   PackageIOError,
+  readPackageSidecars,
+  stampIdsInPlace,
   type AppendBlockOptions,
 } from '../utils/package-io';
 import {
@@ -309,16 +312,34 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   let assignedId = block.id as string | undefined;
   let parentType: string | undefined;
   let legacyIdsMinted = 0;
+  // A guide that ships a translation gets its ids by the stamp-ids rule, guide-wide (#2393).
+  const shipsSidecar = readPackageSidecars(args.dir).length > 0;
+  let stampedElsewhere = 0;
 
   try {
-    const result = await mutateAndValidate(args.dir, ({ content }) => {
-      const out = appendBlockHelper(content, block, appendOptions);
-      summary = out.summary;
-      position = out.position;
-      appended = out.appended;
-      assignedId = out.id;
-      parentType = args.parent ? findBlockById(content, args.parent)?.type : undefined;
-    });
+    const result = await mutateAndValidate(
+      args.dir,
+      (state) => {
+        const out = appendBlockHelper(state.content, block, { ...appendOptions, mintId: !shipsSidecar });
+        summary = out.summary;
+        position = out.position;
+        appended = out.appended;
+        assignedId = out.id;
+        parentType = args.parent ? findBlockById(state.content, args.parent)?.type : undefined;
+        if (shipsSidecar && out.appended) {
+          const { stamped, counterpart } = stampIdsInPlace(state);
+          const added = counterpart(block as unknown as JsonBlock);
+          if (added && !added.id) {
+            // A type outside the projection table keeps the usual leaf id.
+            added.id = nextAutoBlockId(state.content, added.type);
+          }
+          assignedId = added?.id;
+          stampedElsewhere = stamped.filter((stamp) => stamp.id !== assignedId).length;
+          summary = `Added ${args.type} (id: ${assignedId}) at ${position}`;
+        }
+      },
+      shipsSidecar ? { mintIds: false } : {}
+    );
     if (!result.validation.ok) {
       const issues = result.validation.issues;
       if (issues.length === 0) {
@@ -376,6 +397,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       'package valid': true,
       ...(appended ? {} : { 'idempotent no-op': true }),
       ...(legacyIdsMinted > 0 ? { 'ids minted on legacy blocks': legacyIdsMinted } : {}),
+      ...(stampedElsewhere > 0 ? { 'ids stamped on other translatable units': stampedElsewhere } : {}),
     },
     ...(warnings.length > 0 ? { warnings } : {}),
     hints: appended ? hintsFor(args.type, args.parent, assignedId) : undefined,
@@ -385,6 +407,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       position,
       appended,
       ...(legacyIdsMinted > 0 ? { idsAssignedOnRead: legacyIdsMinted } : {}),
+      ...(stampedElsewhere > 0 ? { idsStamped: stampedElsewhere } : {}),
     },
   };
 }
