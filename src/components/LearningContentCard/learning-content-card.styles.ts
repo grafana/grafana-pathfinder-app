@@ -1,10 +1,8 @@
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
-import { getLearningTopicVisual } from './learning-topic-visual';
 import { getLearningCardInteractionStyles } from './learning-card-interaction.styles';
 
 export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
-  const warm = getLearningTopicVisual('getting-started', theme);
   return {
     card: css({
       minWidth: 0,
@@ -181,10 +179,8 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       gap: theme.spacing(1.5),
       padding: theme.spacing(2.5),
       borderRadius: theme.shape.radius.lg,
-      borderColor: theme.colors.accent?.border ?? theme.colors.primary.border,
-      background: theme.flags.visualDesignRefresh
-        ? theme.colors.background.primary
-        : `linear-gradient(120deg, ${theme.colors.accent?.background ?? theme.colors.primary.transparent}, ${theme.colors.background.secondary})`,
+      borderColor: theme.colors.border.medium,
+      background: theme.colors.background.secondary,
       '@container (max-width: 340px)': { padding: theme.spacing(2) },
     }),
     featuredHeader: css({ display: 'flex', alignItems: 'flex-start', gap: theme.spacing(1.75), minWidth: 0 }),
@@ -203,7 +199,7 @@ export const getLearningContentCardStyles = (theme: GrafanaTheme2) => {
       '@container (max-width: 340px)': { '& h3': { fontSize: 20 } },
     }),
     eyebrow: css({
-      color: warm.color,
+      color: theme.colors.text.secondary,
       fontSize: 10,
       lineHeight: 1.5,
       letterSpacing: '0.8px',

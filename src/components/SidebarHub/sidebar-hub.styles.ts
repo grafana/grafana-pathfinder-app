@@ -1,10 +1,8 @@
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
-import { getLearningTopicVisual } from '../LearningContentCard/learning-topic-visual';
 
 export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
   const accent = theme.colors.warning;
-  const spotlight = getLearningTopicVisual('getting-started', theme);
   const focusRing = {
     '&:focus-visible': { outline: `2px solid ${theme.colors.primary.main}`, outlineOffset: 2 },
   };
@@ -12,8 +10,8 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
   return {
     spotlightGroup: css({
       padding: theme.spacing(2),
-      background: `radial-gradient(ellipse at 100% 0, ${spotlight.background}, transparent 70%), ${theme.colors.background.primary}`,
-      border: `1px solid ${spotlight.border}`,
+      background: theme.colors.background.secondary,
+      border: `1px solid ${theme.colors.border.medium}`,
       borderRadius: theme.shape.radius.lg,
       '& h3': { margin: 0, fontSize: 22, fontWeight: theme.typography.fontWeightMedium, letterSpacing: '-0.3px' },
     }),
@@ -53,8 +51,8 @@ export const getSidebarHubStyles = (theme: GrafanaTheme2) => {
         background: theme.colors.border.weak,
       },
       '& progress::-webkit-progress-bar': { background: theme.colors.border.weak },
-      '& progress::-webkit-progress-value': { background: spotlight.color },
-      '& progress::-moz-progress-bar': { background: spotlight.color },
+      '& progress::-webkit-progress-value': { background: theme.colors.primary.main },
+      '& progress::-moz-progress-bar': { background: theme.colors.primary.main },
     }),
     groupControl: css({
       display: 'flex',

@@ -39,13 +39,13 @@ jest.mock('@grafana/i18n', () => ({
     fallback.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(values?.[key] ?? '')),
 }));
 
-describe.each([getLearningContentCardStyles, getCompletionPanelStyles])('featured surfaces', (getStyles) => {
+describe('completion panel featured surfaces', () => {
   it.each(['dark', 'light'] as const)('uses semantic container and accent tokens for %s cards', (mode) => {
     const theme = createTheme({ colors: { mode } });
     theme.shape.radius.lg = '11px';
     theme.colors.accent.border = '#f59e4b';
     theme.colors.accent.background = '#714015';
-    const styles = getStyles(theme);
+    const styles = getCompletionPanelStyles(theme);
     expect(cache.registered[styles.featured]).toContain('border-radius:11px');
     expect(cache.registered[styles.featured]).toContain('#f59e4b');
     expect(cache.registered[styles.featured]).toContain(
@@ -63,7 +63,7 @@ describe.each([getLearningContentCardStyles, getCompletionPanelStyles])('feature
     theme.flags.visualDesignRefresh = enabled;
     theme.colors.background.primary = '#123456';
     theme.colors.background.secondary = '#654321';
-    const styles = getStyles(theme);
+    const styles = getCompletionPanelStyles(theme);
     if (enabled) {
       expect(cache.registered[styles.featured]).toContain('background:#123456');
       expect(cache.registered[styles.featured]).not.toContain('linear-gradient');
@@ -79,13 +79,21 @@ describe.each([getLearningContentCardStyles, getCompletionPanelStyles])('feature
     const theme = createTheme({ colors: { mode } });
     Reflect.deleteProperty(theme.colors, 'accent');
     Reflect.deleteProperty(theme.colors.primary, 'background');
-    const styles = getStyles(theme);
+    const styles = getCompletionPanelStyles(theme);
     expect(cache.registered[styles.featured]).toContain(theme.colors.primary.border);
     expect(cache.registered[styles.featured]).toContain(
       `background:linear-gradient(120deg, ${theme.colors.primary.transparent}, ${theme.colors.background.secondary})`
     );
     expect(cache.registered[styles.featured]).not.toContain('undefined');
   });
+});
+
+it.each(['light', 'dark'] as const)('uses a neutral themed surface for the %s spotlight', (mode) => {
+  const theme = createTheme({ colors: { mode } });
+  const styles = getLearningContentCardStyles(theme);
+  expect(cache.registered[styles.featured]).toContain(`background:${theme.colors.background.secondary};`);
+  expect(cache.registered[styles.featured]).toContain(`border-color:${theme.colors.border.medium};`);
+  expect(cache.registered[styles.eyebrow]).toContain(`color:${theme.colors.text.secondary};`);
 });
 
 it('uses the primary host surface and large radius for ordinary cards', () => {
