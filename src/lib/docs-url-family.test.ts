@@ -101,14 +101,33 @@ describe('classifyDocsUrl', () => {
         kind: 'step',
         journeyBaseUrl: `${HUB}/j`,
         sectionUrl: `${HUB}/j/s`,
+        journeySlug: 'j',
+        relativePath: 'j/s/step',
       });
       expect(classifyDocsUrl(`${HUB}/j/s/`).learn).toEqual({
         kind: 'section',
         journeyBaseUrl: `${HUB}/j`,
         sectionUrl: `${HUB}/j/s`,
+        journeySlug: 'j',
+        relativePath: 'j/s',
       });
-      expect(classifyDocsUrl(`${HUB}/j/`).learn).toEqual({ kind: 'journey', journeyBaseUrl: `${HUB}/j` });
+      expect(classifyDocsUrl(`${HUB}/j/`).learn).toEqual({
+        kind: 'journey',
+        journeyBaseUrl: `${HUB}/j`,
+        journeySlug: 'j',
+        relativePath: 'j',
+      });
       expect(classifyDocsUrl(`${HUB}/`).learn).toEqual({ kind: 'home' });
+    });
+
+    it.each([
+      `${HUB}/j/s/step`,
+      `${HUB}/j/s/step/`,
+      `${HUB}/j/s/step/unstyled.html`,
+      `${HUB}/j/s/step/?utm=1#top`,
+      'https://GRAFANA.com/docs/learning-hub/j/s/step/',
+    ])('reports one relative path and journey slug for every spelling of a step: %s', (url) => {
+      expect(classifyDocsUrl(url).learn).toMatchObject({ journeySlug: 'j', relativePath: 'j/s/step' });
     });
 
     it.each([

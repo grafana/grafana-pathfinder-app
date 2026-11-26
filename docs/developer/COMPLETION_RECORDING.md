@@ -85,6 +85,8 @@ Only the surface rendering a guide holds the manifest that turns a key into an i
 
 `resolveSurfaceGuideIdentity` returns `null` — no attempt — for milestones, path and journey manifests, and guides with no manifest identity. Milestones and journeys are not attempt-eligible.
 
+A milestone's durable identity comes from `resolveMilestoneCompletionIdentity` (`src/completion-records/completion-identity.ts`): its own slug, under the resolved repository or `bundled`. A Grafana Learn step is the exception, because its slug repeats across journeys. Its record is `guideSource: 'grafana-learn'`, with `guideId` set to its path below `/docs/learning-hub/` and `pathId` set to the journey slug, all read from `classifyDocsUrl`. A Learn journey records `('grafana-learn', <journey slug>)` once every step of a fully resolved tree is complete. `markMilestoneDone` hands a Learn URL to `completeLearnMilestone`, which never calls `markGuideCompleted`, reads no slug-keyed legacy milestone storage, and awards no curated-path badge. A Learn page above step depth records nothing durable. A renamed Learn step starts fresh, because the permalink is the only identifier the website offers; see decision 11 of `docs/design/COMPLETION-MODEL.md`.
+
 ### 4. Observation — attempts
 
 `src/completion-records/progress-observer.ts`, installed by `armCompletionWriteHook`, acts only on a `kind: 'guide'` event with origin `'change'`, a percentage in 1..99, a non-preview key, a registered identity, and a guide not already recorded complete. Under the origin-wide Web Lock (`withAttemptLock`) it:
@@ -130,7 +132,7 @@ The Go side (`pkg/services/completion_attempt.go`) upserts one record per `(user
 
 ### 8. Reset
 
-`resetGuideProgress` (`src/components/docs-panel/hooks/resetGuideProgress.ts`) clears step, percentage and mark storage, evicts the store cache, derives the identity the writer would have used, and calls `invalidateEmittedCompletion`. That lifts both guards and calls `clearAttempt`, which also discards the queue's partials for that attempt. "Reset all" goes through `invalidateAllEmittedCompletions` → `clearAllAttempts` and `discardQueuedCompletionWrites`. The next `'change'` mints a fresh attempt.
+`resetGuideProgress` (`src/components/docs-panel/hooks/resetGuideProgress.ts`) clears step, percentage and mark storage, evicts the store cache, derives the identity the writer would have used (from the milestone URL for a milestone, so a Learn step resets its path identity), and calls `invalidateEmittedCompletion`. That lifts both guards and calls `clearAttempt`, which also discards the queue's partials for that attempt. "Reset all" goes through `invalidateAllEmittedCompletions` → `clearAllAttempts` and `discardQueuedCompletionWrites`. The next `'change'` mints a fresh attempt.
 
 ## Invariants
 
@@ -181,7 +183,7 @@ The Go side (`pkg/services/completion_attempt.go`) upserts one record per `(user
 | Evidence and percentage  | `src/global-state/completion-store.test.tsx`, `src/components/interactive-tutorial/completion-origin.parity.test.tsx`, `src/lib/guide-stats/progress.parity.test.ts`, `completion-affordance.parity.test.ts`  |
 | Identity registration    | `src/completion-records/guide-identity-registry.test.ts`, `src/components/content-renderer/useGuideIdentityRegistration.test.tsx`, `surface-conformance.test.tsx`, `src/validation/completion-wiring.test.ts` |
 | Observation and attempts | `progress-observer.test.ts`, `guide-attempts.test.ts`, `guide-attempt-coordination.test.ts`, `progress-records.test.ts`                                                                                       |
-| Terminal routing         | `src/docs-retrieval/learning-journey-helpers.completion-boundary.test.ts`, `completion-recorder.test.ts`                                                                                                      |
+| Terminal routing         | `src/docs-retrieval/learning-journey-helpers.completion-boundary.test.ts`, `learning-journey-helpers.learn-completion.test.ts`, `completion-recorder.test.ts`                                                 |
 | Queue and write          | `completion-write-queue.test.ts`, `completion-write-queue.attempts.test.ts`, `completion-write-hook.test.ts`                                                                                                  |
 | Backend                  | `pkg/provider/completion_write_test.go`, `pkg/services/completions_test.go`, `pkg/provider/assignment_source_parity_test.go`                                                                                  |
 | Reset                    | `src/components/docs-panel/hooks/resetGuideProgress.test.ts`                                                                                                                                                  |
