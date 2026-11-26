@@ -271,7 +271,7 @@ async function finalizeImpl(args: {
       '  - clientGuidance.grafanaAppPlatform: you are running inside Grafana with App Platform available. Prefer the named tools in clientGuidance.grafanaAppPlatform.preferredTools (pathfinder_manage_guide_drafts, pathfinder_publish_guide) when they are registered; otherwise follow the generic-write fallback step.',
       '  - clientGuidance.grafanaOss: you are running inside Grafana without App Platform (OSS, or aggregator off).',
       '  - clientGuidance.nonGrafanaClient: you have no Grafana session (Cursor, Claude Desktop, CI).',
-      'If validation.warnings lists PLACEHOLDER_SELECTOR entries, still save the draft, then list each of those steps for the user and say they need verified selectors before the guide will run.',
+      "If validation.warnings lists PLACEHOLDER_SELECTOR entries, still save the draft, then list each of those steps for the user and say they need verified selectors before the guide will run. When the user replaces a placeholder selector, they must also delete that step's `**⚠️ TODO: add the selector for <target>**` lead from the block content.",
       'If unsure, try grafanaAppPlatform first; on a 404 from the collection POST, fall through to grafanaOss. The localExport block at the end of this response is the fallback used by both grafanaOss and nonGrafanaClient.',
     ],
     artifact: {

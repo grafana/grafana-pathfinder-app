@@ -18,7 +18,7 @@ Shared CD normally leaves the main-branch version unsuffixed, uses a commit suff
 
 ## Release process steps
 
-1. Prepare the version/changelog PR from current main and run required source CI. Review compatibility with the Go resource proxy, persisted settings, APIs and external content.
+1. Prepare the version/changelog PR from current main and run required source CI. Review compatibility with the SDK backend routes, persisted settings, APIs and external content.
 2. Dispatch **Plugins - CD** with the release branch as input **branch**, **environment=dev**, **docs-only=false**. Record the exact build SHA/version and validate the affected user journey in dev under the operational guide.
 3. Merge the reviewed source PR. Check the resulting main commit and repeat relevant checks if it differs from what was tested.
 4. Follow the operational guide to dispatch main to **prod**, verify each wave and approve the production gates. The current workflow disables Playwright in CD; its success does not replace browser validation.

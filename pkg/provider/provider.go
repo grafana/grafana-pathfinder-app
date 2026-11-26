@@ -29,29 +29,37 @@ func New(online services.PathGuideSource, insightsOnline func() services.PathGui
 }
 
 func newApp(cfg app.Config, online services.PathGuideSource, insightsOnline func() services.PathGuideSource, recommendations services.RecommendationsReader, definitions ...AchievementDefinitions) (app.App, error) {
-	store, err := resourceaccess.NewSettingsStore(sdkplugin.BuildClientGenerator(resourceaccess.SettingsConfig(cfg.KubeConfig)))
+	config, err := appConfig(cfg, online, insightsOnline, recommendations, definitions...)
 	if err != nil {
 		return nil, err
+	}
+	return simple.NewApp(config)
+}
+
+func appConfig(cfg app.Config, online services.PathGuideSource, insightsOnline func() services.PathGuideSource, recommendations services.RecommendationsReader, definitions ...AchievementDefinitions) (simple.AppConfig, error) {
+	store, err := resourceaccess.NewSettingsStore(sdkplugin.BuildClientGenerator(resourceaccess.SettingsConfig(cfg.KubeConfig)))
+	if err != nil {
+		return simple.AppConfig{}, err
 	}
 	guides, err := resourceaccess.NewGuideStore(sdkplugin.BuildClientGenerator(resourceaccess.BoundedConfig(cfg.KubeConfig, resourceaccess.GuidePageMaxBytes)))
 	if err != nil {
-		return nil, err
+		return simple.AppConfig{}, err
 	}
 	completions, err := resourceaccess.NewCompletionStore(sdkplugin.BuildClientGenerator(resourceaccess.BoundedConfig(cfg.KubeConfig, 8*1024*1024)))
 	if err != nil {
-		return nil, err
+		return simple.AppConfig{}, err
 	}
 	assignments, err := resourceaccess.NewAssignmentStore(sdkplugin.BuildClientGenerator(resourceaccess.BoundedConfig(cfg.KubeConfig, 8*1024*1024)))
 	if err != nil {
-		return nil, err
+		return simple.AppConfig{}, err
 	}
 	writer, err := resourceaccess.NewCompletionWriter(sdkplugin.BuildClientGenerator(resourceaccess.BoundedConfig(cfg.KubeConfig, resourceaccess.CompletionWriteMaxBytes)))
 	if err != nil {
-		return nil, err
+		return simple.AppConfig{}, err
 	}
 	achievementClients, err := resourceaccess.NewAchievementClients(sdkplugin.BuildClientGenerator(resourceaccess.AchievementConfig(cfg.KubeConfig)))
 	if err != nil {
-		return nil, err
+		return simple.AppConfig{}, err
 	}
 	var achievementDefinitions AchievementDefinitions
 	if len(definitions) > 0 {
@@ -102,7 +110,7 @@ func newApp(cfg app.Config, online services.PathGuideSource, insightsOnline func
 			}
 		}
 	}
-	return simple.NewApp(config)
+	return config, nil
 }
 
 func unavailableTenantRoute(_ context.Context, w app.CustomRouteResponseWriter, req *app.CustomRouteRequest) error {

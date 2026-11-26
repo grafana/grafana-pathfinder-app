@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "1.1.0",
+  "id": "create-availability-slo-create-availability-slo",
+  "title": "Create an availability SLO",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Grafana SLO provides a wizard-based interface for creating SLOs. The wizard guides you through defining your SLI first by selecting a time window, data source, and query type. For availability SLOs using a ratio query, you specify success and total metrics."
+    },
+    {
+      "type": "markdown",
+      "content": "To create an availability SLO, complete the following steps:"
+    },
+    {
+      "type": "section",
+      "blocks": [
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[data-testid=\"data-testid Nav menu item\"][href=\"/alerts-and-incidents\"]",
+          "requirements": ["navmenu-open"],
+          "content": "On the left navigation menu, click **Alerts & IRM**."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[href=\"/a/grafana-slo-app/home/insights\"]",
+          "requirements": ["navmenu-open"],
+          "content": "Click **SLO**."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "a[href=\"/a/grafana-slo-app/wizard/new\"]",
+          "content": "Click **New SLO**."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[name=\"timeWindow\"]",
+          "targetvalue": "28d",
+          "content": "In the **Time window** field, enter `28d` for a 28-day rolling window.\n\nA 28-day rolling window is commonly used for availability SLOs. It smooths out short spikes and aligns with how error budgets are often consumed."
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "input[aria-label=\"Select a data source\"]",
+          "content": "From the **Data source** dropdown, select the data source that contains your metrics.",
+          "doIt": false
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "[data-testid='query-type-ratio']",
+          "targetstate": "true",
+          "content": "Select **Ratio** to compare successful requests with all requests.",
+          "requirements": [
+            "on-page:/a/grafana-slo-app/wizard/new",
+            "exists-reftarget"
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "[data-testid='success-metric-field'] textarea[role='textbox']",
+          "targetvalue": "http_server_request_duration_seconds_count{http_response_status_code=~\"[1-4]..\"}",
+          "content": "Set **Success metric** to this OpenTelemetry HTTP request counter, excluding server errors. This example measures HTTP traffic across the selected data source.",
+          "requirements": [
+            "on-page:/a/grafana-slo-app/wizard/new",
+            "exists-reftarget"
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "[data-testid='total-metric-field'] textarea[role='textbox']",
+          "targetvalue": "http_server_request_duration_seconds_count{http_response_status_code=~\"[1-5]..\"}",
+          "content": "Set **Total metric** to the same counter, including server errors. To monitor one service, add the same service filter to both expressions.",
+          "requirements": [
+            "on-page:/a/grafana-slo-app/wizard/new",
+            "exists-reftarget"
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "highlight",
+          "reftarget": "button[data-testid='run-queries-btn']",
+          "content": "Click **Run queries** to display a preview of your SLI ratio based on the metrics you configured.",
+          "requirements": [
+            "exists-reftarget"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "If your source uses different HTTP counter names or status labels, replace both expressions with the matching counters for your service. Keep the same service filters in both queries. See [SLI examples](/docs/grafana-cloud/observe-and-act/alert-and-measure-reliability/slo/sli-examples/) for other patterns."
+    },
+    {
+      "type": "interactive",
+      "action": "highlight",
+      "reftarget": "a[data-testid='walk-next-button']",
+      "content": "Click **Set target and error budget** to save your progress and move to the next step.",
+      "requirements": [
+        "exists-reftarget"
+      ]
+    },
+    {
+      "type": "markdown",
+      "content": "In the next milestone, you'll set a target, name your SLO, and save it."
+    },
+    {
+      "type": "markdown",
+      "content": "---\n\n### More to explore (optional)\n\nAt this point in your journey, you can explore the following paths:\n\n- [SLO creation documentation](/docs/grafana-cloud/alerting-and-irm/slo/)\n- [SLO best practices](/docs/grafana-cloud/observe-and-act/alert-and-measure-reliability/slo/best-practices/)"
+    }
+  ]
+}

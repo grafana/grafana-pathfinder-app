@@ -31,6 +31,10 @@ export interface LearnLocation {
   journeyBaseUrl?: string;
   /** Section or module URL without a trailing slash; present for a section and its steps. */
   sectionUrl?: string;
+  /** First segment below `/docs/learning-hub/`; absent for the home. */
+  journeySlug?: string;
+  /** Path below `/docs/learning-hub/` without leading or trailing slash, such as `<journey>/<section>/<step>`; absent for the home. */
+  relativePath?: string;
 }
 
 export type LegacySegmentName = 'learning-journeys' | 'learning-paths' | 'tutorials';
@@ -151,7 +155,11 @@ function classifyLearn(url: URL, path: string): DocsUrlClassification | undefine
     family: 'learn',
     learn: {
       kind,
-      ...(segments.length >= 1 && { journeyBaseUrl: at(1) }),
+      ...(segments.length >= 1 && {
+        journeyBaseUrl: at(1),
+        journeySlug: segments[0],
+        relativePath: segments.join('/'),
+      }),
       ...(segments.length >= 2 && { sectionUrl: at(2) }),
     },
   };

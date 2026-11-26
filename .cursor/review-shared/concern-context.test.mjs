@@ -9,6 +9,7 @@ import {
   generalWorkerLimit,
   validateConcernRegistry,
 } from './concern-context.mjs';
+import { routeCandidates } from '../skills/review-lite/scripts/review-lite.mjs';
 
 const concernsPath = fileURLToPath(new URL('../../docs/design/CONCERNS.md', import.meta.url));
 const concernDetailsPath = fileURLToPath(new URL('../../docs/design/CONCERN_DETAILS.md', import.meta.url));
@@ -287,6 +288,53 @@ test('emits every completion-records doc as one loadable path', () => {
   for (const doc of context.load_docs) {
     assert.doesNotMatch(doc, /`/);
     assert.ok(existsSync(fileURLToPath(new URL(`../../${doc.split(' ')[0]}`, import.meta.url))), doc);
+  }
+});
+
+const sdkRoutePatternDoc = 'docs/design/BACKEND_PROXY_PATTERN.md';
+
+const goBackendCandidate = (path, line) =>
+  routeCandidates(
+    { routingMarkdown: concerns, detailMarkdown: concernDetails },
+    [{ path }],
+    new Map([[path, [line]]])
+  ).candidates.find(({ id }) => id === 'go-backend');
+
+test('a diff touching only one SDK route recipe step routes to go-backend and loads the pattern', () => {
+  for (const [path, line, evidence] of [
+    ['kinds/manifest.cue', '\t\t"/backend/new-route": "GET": {name: "getNewRoute"}', 'path'],
+    ['src/lib/backend-routes.ts', "  'new-route',", 'path'],
+    ['pkg/provider/provider.go', '\t\t\t\tnewRouteHandler(store),', 'path'],
+    ['src/lib/assignments-client.ts', "  const url = backendRoute('assignments/my');", 'keyword'],
+  ]) {
+    assert.equal(
+      goBackendCandidate(path, line)?.lexical_evidence,
+      evidence,
+      `${path} must route to go-backend by ${evidence}`
+    );
+  }
+  assert.equal(
+    goBackendCandidate('src/lib/assignments-client.ts', "  const url = '/api/other';"),
+    undefined,
+    'an unrelated frontend change must not route to go-backend'
+  );
+  const context = extractConcernContext({
+    routingMarkdown: concerns,
+    detailMarkdown: concernDetails,
+    concern: 'go-backend',
+  });
+  assert.ok(context.load_docs.includes(sdkRoutePatternDoc), `go-backend must load ${sdkRoutePatternDoc}`);
+});
+
+test('route concerns that share handlers send reviewers to the pattern invariants', () => {
+  for (const concern of ['go-backend', 'completion-records', 'tenant-settings']) {
+    const context = extractConcernContext({ routingMarkdown: concerns, detailMarkdown: concernDetails, concern });
+    assert.ok(context.load_docs.includes(sdkRoutePatternDoc), `${concern} must load the pattern doc`);
+    assert.match(
+      context.review_questions.join(' '),
+      /BACKEND_PROXY_PATTERN\.md#route-invariants/,
+      `${concern} review questions must name the route invariants`
+    );
   }
 });
 

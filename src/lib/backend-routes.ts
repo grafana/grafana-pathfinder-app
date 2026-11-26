@@ -8,7 +8,7 @@ export function usesSdkBackend(): boolean {
   return healthyNamespace !== undefined && config.namespace === healthyNamespace;
 }
 
-const backendPaths = [
+export const backendPaths = [
   'pathfinder-settings',
   'custom-guide',
   'custom-guide-repository',

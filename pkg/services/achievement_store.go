@@ -10,6 +10,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/grafana/grafana-plugin-sdk-go/backend/log"
+
 	"github.com/grafana/grafana-pathfinder-app/pkg/achievements"
 )
 
@@ -23,15 +25,21 @@ const (
 	achievementKindAward    = "AchievementAward"
 
 	AchievementStoreMaxBytes = 256 * 1024
+
+	// The award kind's schema is fixed on the backend, so the earning unit and event ride as annotations.
+	achievementAwardUnitAnnotation    = "pathfinderbackend.ext.grafana.app/unit"
+	achievementAwardEventIDAnnotation = "pathfinderbackend.ext.grafana.app/event-id"
 )
 
 // Field names track kinds/achievementprogress.cue and kinds/achievementaward.cue
-// in pathfinder-backend. The CRD requires tierIds and units, so they must encode
-// as [], not null.
+// in pathfinder-backend. The CRD requires tierIds, units and points, so the
+// lists must encode as [], not null.
 type achievementProgressSpec struct {
 	AchievementID  string   `json:"achievementId"`
 	TierIDs        []string `json:"tierIds"`
 	Units          []string `json:"units"`
+	EventIDs       []string `json:"eventIds,omitempty"`
+	Points         *int64   `json:"points"`
 	UpdatedAt      string   `json:"updatedAt"`
 	UserID         string   `json:"userId"`
 	OrgID          int64    `json:"orgId"`
@@ -53,9 +61,10 @@ type achievementAwardSpec struct {
 }
 
 type achievementObjectMeta struct {
-	Name            string `json:"name"`
-	Namespace       string `json:"namespace"`
-	ResourceVersion string `json:"resourceVersion,omitempty"`
+	Name            string            `json:"name"`
+	Namespace       string            `json:"namespace"`
+	ResourceVersion string            `json:"resourceVersion,omitempty"`
+	Annotations     map[string]string `json:"annotations,omitempty"`
 }
 
 type achievementObject[S any] struct {
@@ -65,7 +74,10 @@ type achievementObject[S any] struct {
 	Spec       S                     `json:"spec"`
 }
 
-var ErrAchievementRowMismatch = errors.New("achievement store: stored row belongs to another user or achievement")
+var (
+	ErrAchievementRowMismatch    = errors.New("achievement store: stored row belongs to another user or achievement")
+	ErrAchievementPointsUnserved = achievements.ErrFieldUnserved
+)
 
 // AchievementWriter is stamped from the verified request context, never an event body.
 type AchievementWriter struct {
@@ -79,12 +91,13 @@ type AchievementStore struct {
 	client AchievementResourceClient
 	writer AchievementWriter
 	now    func() time.Time
+	logger log.Logger
 }
 
 var _ achievements.Store = (*AchievementStore)(nil)
 
-func NewAchievementStore(client AchievementResourceClient, writer AchievementWriter, now func() time.Time) *AchievementStore {
-	return &AchievementStore{client: client, writer: writer, now: now}
+func NewAchievementStore(client AchievementResourceClient, writer AchievementWriter, now func() time.Time, logger log.Logger) *AchievementStore {
+	return &AchievementStore{client: client, writer: writer, now: now, logger: logger}
 }
 
 func achievementName(parts ...string) string {
@@ -116,7 +129,7 @@ func (s *AchievementStore) LoadProgress(ctx context.Context, person achievements
 		if err != nil {
 			return nil, err
 		}
-		obj, err := decodeAchievementProgress(body)
+		obj, err := s.decodeProgress(body)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +151,8 @@ func (s *AchievementStore) CreateProgress(ctx context.Context, person achievemen
 	if s.client.IsConflict(err) {
 		return achievements.Progress{}, achievements.ErrExists
 	}
-	return writtenProgress(body, err)
+	s.warnIfRejected(p.AchievementID, err)
+	return s.writtenProgress(body, err)
 }
 
 func (s *AchievementStore) SaveProgress(ctx context.Context, person achievements.Person, p achievements.Progress) (achievements.Progress, error) {
@@ -156,15 +170,19 @@ func (s *AchievementStore) SaveProgress(ctx context.Context, person achievements
 		return achievements.Progress{}, achievements.ErrConflict
 	}
 	if err != nil {
+		s.warnIfRejected(p.AchievementID, err)
 		return achievements.Progress{}, err
 	}
-	stored, err := decodeAchievementProgress(body)
+	stored, err := s.decodeProgress(body)
 	if err != nil {
 		// The 2xx means the save is durable. Without its Version, a later save gets ErrConflict and reloads.
 		obj.Metadata.ResourceVersion = ""
 		return progressOf(obj), nil
 	}
-	return progressOf(stored), nil
+	if len(obj.Spec.EventIDs) > 0 && len(stored.Spec.EventIDs) == 0 {
+		s.logger.Warn("achievement progress rows come back without eventIds; the AchievementProgress kind on this backend does not serve them, so a re-sent event can count again toward a tier that counts it by another unit", "achievementId", p.AchievementID)
+	}
+	return s.acknowledged(stored)
 }
 
 func (s *AchievementStore) CreateAward(ctx context.Context, person achievements.Person, a achievements.Award) error {
@@ -185,6 +203,16 @@ func (s *AchievementStore) CreateAward(ctx context.Context, person achievements.
 			SchemaVersion:   achievements.SchemaVersion,
 		},
 	}
+	annotations := map[string]string{}
+	if a.Unit != "" {
+		annotations[achievementAwardUnitAnnotation] = a.Unit
+	}
+	if a.EventID != "" {
+		annotations[achievementAwardEventIDAnnotation] = a.EventID
+	}
+	if len(annotations) > 0 {
+		obj.Metadata.Annotations = annotations
+	}
 	payload, err := json.Marshal(obj)
 	if err != nil {
 		return fmt.Errorf("achievement store: encode award: %w", err)
@@ -197,6 +225,7 @@ func (s *AchievementStore) CreateAward(ctx context.Context, person achievements.
 }
 
 func (s *AchievementStore) progressObject(person achievements.Person, p achievements.Progress) achievementObject[achievementProgressSpec] {
+	points := int64(p.Points)
 	return achievementObject[achievementProgressSpec]{
 		APIVersion: achievementGroupVersion,
 		Kind:       achievementKindProgress,
@@ -205,6 +234,8 @@ func (s *AchievementStore) progressObject(person achievements.Person, p achievem
 			AchievementID:  p.AchievementID,
 			TierIDs:        sortedDistinct(p.TierIDs),
 			Units:          sortedDistinct(p.Units),
+			EventIDs:       sortedDistinct(p.EventIDs),
+			Points:         &points,
 			UpdatedAt:      s.now().UTC().Format(time.RFC3339),
 			UserID:         person.ID,
 			OrgID:          s.writer.OrgID,
@@ -214,18 +245,36 @@ func (s *AchievementStore) progressObject(person achievements.Person, p achievem
 	}
 }
 
-func writtenProgress(body []byte, err error) (achievements.Progress, error) {
+func (s *AchievementStore) writtenProgress(body []byte, err error) (achievements.Progress, error) {
 	if err != nil {
 		return achievements.Progress{}, err
 	}
-	obj, err := decodeAchievementProgress(body)
+	obj, err := s.decodeProgress(body)
 	if err != nil {
 		return achievements.Progress{}, err
 	}
-	return progressOf(obj), nil
+	return s.acknowledged(obj)
 }
 
-func decodeAchievementProgress(body []byte) (achievementObject[achievementProgressSpec], error) {
+// acknowledged checks a row this store just wrote in full: one that comes back
+// without a required field proves the deployed kind does not serve it.
+func (s *AchievementStore) acknowledged(obj achievementObject[achievementProgressSpec]) (achievements.Progress, error) {
+	row := progressOf(obj)
+	if len(row.MissingFields) > 0 {
+		s.logger.Warn("achievement progress rows come back without a required field; the AchievementProgress kind on this backend does not serve it", "achievementId", row.AchievementID, "fields", row.MissingFields)
+		return achievements.Progress{}, fmt.Errorf("%w: %v", ErrAchievementPointsUnserved, row.MissingFields)
+	}
+	return row, nil
+}
+
+// A host that rejects a field it does not declare never acknowledges the write, so acknowledged cannot report it.
+func (s *AchievementStore) warnIfRejected(achievementID string, err error) {
+	if cause, ok := s.client.Rejection(err); ok {
+		s.logger.Warn("the AchievementProgress kind on this backend rejected a progress write", "achievementId", achievementID, "cause", cause)
+	}
+}
+
+func (s *AchievementStore) decodeProgress(body []byte) (achievementObject[achievementProgressSpec], error) {
 	var obj achievementObject[achievementProgressSpec]
 	if err := json.Unmarshal(body, &obj); err != nil {
 		return obj, fmt.Errorf("achievement store: decode progress: %w", err)
@@ -237,13 +286,32 @@ func decodeAchievementProgress(body []byte) (achievementObject[achievementProgre
 }
 
 func progressOf(obj achievementObject[achievementProgressSpec]) achievements.Progress {
-	return achievements.Progress{
+	p := achievements.Progress{
 		AchievementID: obj.Spec.AchievementID,
 		TierIDs:       sortedDistinct(obj.Spec.TierIDs),
 		Units:         sortedDistinct(obj.Spec.Units),
+		EventIDs:      sortedDistinct(obj.Spec.EventIDs),
+		Points:        pointsOf(obj.Spec),
 		SchemaVersion: int(obj.Spec.SchemaVersion),
 		Version:       obj.Metadata.ResourceVersion,
 	}
+	if p.SchemaVersion == achievements.ProgressSchemaVersion {
+		p.MissingFields = achievements.MissingFields(presentFields(obj.Spec))
+	}
+	return p
+}
+
+// presentFields has an entry for every required field of the current version.
+func presentFields(spec achievementProgressSpec) map[string]bool {
+	return map[string]bool{achievements.FieldPoints: spec.Points != nil}
+}
+
+// A version 1 row predates points and starts at 0.
+func pointsOf(spec achievementProgressSpec) int {
+	if spec.Points == nil {
+		return 0
+	}
+	return int(*spec.Points)
 }
 
 // The CRD cannot require order or uniqueness, so a row written directly under /apis may have neither.
@@ -262,6 +330,8 @@ type AchievementResourceClient interface {
 	Replace(context.Context, string, string, string, string, []byte, int64) ([]byte, error)
 	IsConflict(error) bool
 	IsAbsent(error, string) bool
+	// Rejection returns the apiserver's cause when it refused a write as invalid.
+	Rejection(error) (string, bool)
 }
 
 func (s *AchievementStore) LoadAward(ctx context.Context, person achievements.Person, achievementID, tierID string) (achievements.Award, bool, error) {
@@ -288,6 +358,8 @@ func (s *AchievementStore) LoadAward(ctx context.Context, person achievements.Pe
 		AchievementID: obj.Spec.AchievementID,
 		TierID:        obj.Spec.TierID,
 		Entity:        obj.Spec.Entity,
+		Unit:          obj.Metadata.Annotations[achievementAwardUnitAnnotation],
+		EventID:       obj.Metadata.Annotations[achievementAwardEventIDAnnotation],
 		EarnedAt:      earnedAt,
 	}, true, nil
 }

@@ -17,6 +17,7 @@ import { registerArtifactTools } from './artifact-tools';
 import { registerAuthoringStart } from './authoring-start';
 import { registerFinalizeTool } from './finalize';
 import { registerFindGuides } from './find-guides';
+import { registerFindSteps } from './find-steps';
 import { registerHelpTool } from './help';
 import { registerInspectTool } from './inspect';
 import { registerMutationTools } from './mutation-tools';
@@ -51,6 +52,7 @@ export function registerAuthoringTools(server: McpServer, options: RegisterAutho
   registerFinalizeTool(server, options);
   registerRepositoryTools(server);
   registerFindGuides(server);
+  registerFindSteps(server);
 
   // cli-routed — thin wrap of CLI runX
   registerSchemaTools(server);

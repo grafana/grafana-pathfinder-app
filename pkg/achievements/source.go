@@ -296,7 +296,7 @@ func (s *Snapshot) DisplayFor(stack Stack) []Display {
 			continue
 		}
 		d := s.Catalog.definition(out[i].ID)
-		out[i].Earnable = d != nil && d.anyPair(func(p Pair) bool { return s.Registry.emittable(p, stack) })
+		out[i].Earnable = d != nil && d.firstTierHasPair(func(p Pair) bool { return s.Registry.emittable(p, stack) })
 	}
 	return out
 }

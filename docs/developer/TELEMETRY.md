@@ -192,8 +192,8 @@ RudderStack properties are otherwise sent unredacted (only the Faro mirror redac
 
 ### Mapping to warehouse concepts
 
-- **Milestone completion** is `guide_completed` with `guide_category = 'learning_journey'`. `guide_id` is the bare milestone slug, not qualified by its path, so two journeys that share a slug under one source report it once; `path_id` tells them apart when the path is public.
-- **Path completion** is `journey_completed`; "journey" in code means a learning path. `journey_id` is the manifest id, else the curated path id. It fires when every milestone of a milestone-based path is complete, and is skipped when neither id exists, as for a docs-site journey that is not a curated path.
+- **Milestone completion** is `guide_completed` with `guide_category = 'learning_journey'`. `guide_id` is the bare milestone slug, not qualified by its path, so two journeys that share a slug under one source report it once; `path_id` tells them apart when the path is public. A Grafana Learn step is the exception: `guide_id` is its path below `/docs/learning-hub/`, reported with `guide_source = 'other'` and `guide_visibility = 'private'` (decision 11 of `docs/design/COMPLETION-MODEL.md`).
+- **Path completion** is `journey_completed`; "journey" in code means a learning path. `journey_id` is the manifest id, else the curated path id. It fires when every milestone of a milestone-based path is complete, and is skipped when neither id exists, as for a docs-site journey that is not a curated path. A Grafana Learn journey is the exception: it fires once every step of a fully resolved tree is complete, with `journey_id` set to the journey slug and `guide_source = 'other'`.
 - **Guide-list curated paths and Path Tracks** have no `journey_completed` trigger yet. Every curated guide-list path has a badge, and its completion shows up only as `badge_unlocked` with `trigger_type = 'path_completed'` (`src/learning-paths/badges.ts` maps `badge_id` to its path). Path completions are the union of `journey_completed` and those badge events. A milestone-based curated path can report both, so count each path once per reader.
 - **Titles** on milestone and journey completions come from the completing surface: the tab's open-time title in the sidebar and floating panel, the content title in the guide reader. That is usually the journey's own title, so key them on the id.
 
@@ -222,7 +222,7 @@ Track-only members with an active milestone sequence now report `mark_complete_c
 
 Next-module clicks use `open_resource_click` with `interaction_location: content_completion_panel` and `completion_action: next_module`. Their completion identity describes the finished guide, not the destination. Catalog suggestion clicks retain the selected public content attribution. Existing guide-load render outcomes and progress events measure subsequent engagement; a prepared launch or a click alone does not prove that the next guide opened. Consent and environment gates still apply.
 
-`guide_source` is the repository that resolved the guide, not its URL scheme: a `backend-guide:` guide reports `app_platform`, and a CDN package reports whatever its resolver returned. Learning journeys served from the Grafana docs site resolve no repository, so their milestones fall back to `bundled` and the journey to `interactive_tutorials`; a standalone guide whose manifest names no repository also falls back to `interactive_tutorials`. Those fallbacks are used for the durable key, but analytics reports them as `unresolved` unless the journey is a curated path. The guard is per `(kind, guide_source, guide_id)`, so a guide reached through two repositories reports once under each.
+`guide_source` is the repository that resolved the guide, not its URL scheme: a `backend-guide:` guide reports `app_platform`, and a CDN package reports whatever its resolver returned. Learning journeys served from the Grafana docs site, other than Grafana Learn, resolve no repository, so their milestones fall back to `bundled` and the journey to `interactive_tutorials`; a standalone guide whose manifest names no repository also falls back to `interactive_tutorials`. Those fallbacks are used for the durable key, but analytics reports them as `unresolved` unless the journey is a curated path. The guard is per `(kind, guide_source, guide_id)`, so a guide reached through two repositories reports once under each.
 
 ### Delivery
 
@@ -297,7 +297,7 @@ Inspect CDN index degradation independently of guide-not-found outcomes:
 {app_id="77"} | logfmt | event_name="pathfinder_package_index" | event_data_outcome=~"error|degraded|suppressed"
 ```
 
-Private guide content and settings reads use the plugin backend OBO proxy. The plugin backend also owns the private catalogue, completion and public CDN index proxies. Adding instrumentation to the local Go handlers in `grafana-pathfinder-backend` does not add production reporting: that repository currently deploys the CRD manifest only.
+Private guide content, settings, catalogue, and completion requests go through the SDK backend routes (`backendRoute()`), which delegate the signed-in caller. The public routes do not: the anonymous CDN recommendations feed and health read no tenant data, and achievement definitions come from a process-wide snapshot. Adding instrumentation to the local Go handlers in `grafana-pathfinder-backend` does not add production reporting: that repository currently deploys the CRD manifest only.
 
 ### App Platform proxy failures
 

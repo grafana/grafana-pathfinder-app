@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const achievementsTestBundleJSON = `{"grammar":"1.0","registry":{"entities":{
+const achievementsTestBundleJSON = `{"grammar":"2.0","registry":{"entities":{
   "dashboards":{"actions":{"created":{
     "context":{"resourceId":{"type":"string"},"numPanels":{"type":"number"}},
     "resources":[{"unit":"dashboard","id":["resourceId"]}],
@@ -28,10 +28,12 @@ const achievementsTestBundleJSON = `{"grammar":"1.0","registry":{"entities":{
   "search":{"actions":{"performed":{"context":{}}}}
 }},"catalog":{"achievements":[
   {"id":"dash-builder","title":"Dashboard builder","description":"Create dashboards.",
-   "counter":{"unit":"dashboard","evidence":[{"entity":"dashboards","action":"created","countBy":"resource"}]},
-   "tiers":[{"id":"bronze","at":1},{"id":"silver","at":3},{"id":"gold","at":5}]},
+   "tiers":[
+     {"id":"bronze","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]},
+     {"id":"silver","goal":2,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]},
+     {"id":"gold","goal":2,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]}]},
   {"id":"guide-routes","title":"Guide routes","description":"Finish the named guide.",
-   "tiers":[{"id":"intro","or":[{"entity":"guides","action":"completed","where":[{"field":"guideId","op":"eq","value":"intro"}]}]}]}
+   "tiers":[{"id":"intro","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource","where":[{"field":"guideId","op":"eq","value":"intro"}]}]}]}
 ]}}`
 
 const achievementsTestUser = "user:1"
@@ -102,6 +104,16 @@ func (m *memAchievements) CreateAward(_ context.Context, p achievements.Person, 
 	return nil
 }
 
+func (m *memAchievements) LoadAward(_ context.Context, p achievements.Person, achievementID, tierID string) (achievements.Award, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.loadErr != nil {
+		return achievements.Award{}, false, m.loadErr
+	}
+	a, ok := m.awards[p.ID+"/"+achievementID+"/"+tierID]
+	return a, ok, nil
+}
+
 func (m *memAchievements) ListMine(_ context.Context, p achievements.Person) (achievements.Rows, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -165,7 +177,7 @@ func captureAchievementEventsTierUp(t *testing.T) *httptest.ResponseRecorder {
 	return captureAchievementValue(t, response)
 }
 func captureAchievementEventsMilestoneAward(t *testing.T) *httptest.ResponseRecorder {
-	return captureAchievementValue(t, fixtureAchievementEvent(t, newMemAchievements(), "event-m", "guides", "completed", map[string]any{"guideId": "intro"}))
+	return captureAchievementValue(t, fixtureAchievementEvent(t, newMemAchievements(), "event-m", "guides", "completed", map[string]any{"guideSource": "bundled", "guideId": "intro"}))
 }
 func captureAchievementEventsNoSelection(t *testing.T) *httptest.ResponseRecorder {
 	return captureAchievementValue(t, fixtureAchievementEvent(t, newMemAchievements(), "event-s", "search", "performed", nil))
@@ -186,10 +198,10 @@ func fixtureMyAchievements(t *testing.T, mem *memAchievements, user string) *htt
 }
 func captureMyAchievementsDefault(t *testing.T) *httptest.ResponseRecorder {
 	mem := newMemAchievements()
-	for i := range 3 {
+	for i := range 4 {
 		fixtureDashboardEvent(t, mem, i)
 	}
-	fixtureAchievementEvent(t, mem, "event-m", "guides", "completed", map[string]any{"guideId": "intro"})
+	fixtureAchievementEvent(t, mem, "event-m", "guides", "completed", map[string]any{"guideSource": "bundled", "guideId": "intro"})
 	return fixtureMyAchievements(t, mem, achievementsTestUser)
 }
 func captureMyAchievementsEmpty(t *testing.T) *httptest.ResponseRecorder {
@@ -205,7 +217,7 @@ func captureMyAchievementsUnavailable(t *testing.T) *httptest.ResponseRecorder {
 	return captureAchievementValue(t, services.MyAchievementsResponse{Capability: services.AchievementCapability{Reason: "backend-unavailable"}, Awards: []services.AchievementAward{}, Progress: []services.AchievementProgress{}, Legacy: []services.LegacyBadge{}})
 }
 
-const achievementsTestBundleWithSkipJSON = `{"grammar":"1.0","registry":{"entities":{
+const achievementsTestBundleWithSkipJSON = `{"grammar":"2.0","registry":{"entities":{
   "guides":{"actions":{"completed":{"context":{"guideId":{"type":"string"}},
     "resources":[{"unit":"guide","id":["guideId"]}]}}},
   "dashboards":{"actions":{"created":{"context":{"resourceId":{"type":"string"}},
@@ -215,8 +227,9 @@ const achievementsTestBundleWithSkipJSON = `{"grammar":"1.0","registry":{"entiti
       "context":{"resourceId":"uid"},"owner":"@grafana/dashboards-squad"}]}}}}},
  "catalog":{"achievements":[
   {"id":"guides-finished","title":"Guide finisher","description":"Finish guides.",
-   "counter":{"unit":"guide","evidence":[{"entity":"guides","action":"completed","countBy":"resource"}]},
-   "tiers":[{"id":"bronze","at":1,"art":"guides-finished-1"},{"id":"silver","at":5}]},
+   "tiers":[
+     {"id":"bronze","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}],"art":"guides-finished-1"},
+     {"id":"silver","goal":4,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]}]},
   {"id":"guide-streak","title":"Guide streak","description":"Finish a guide every day.",
    "streak":{"days":3},"tiers":[{"id":"bronze","art":"guide-streak-1"}]}
  ]},
@@ -225,4 +238,52 @@ const achievementsTestBundleWithSkipJSON = `{"grammar":"1.0","registry":{"entiti
 func captureAchievementDefinitionsDefault(t *testing.T) *httptest.ResponseRecorder {
 	defs := loadAchievementsTestBundle(t, achievementsTestBundleWithSkipJSON)
 	return achievementRequest(t, "definitions", "user:1", "default", "default", "", testAchievementDefinitions{defs})
+}
+
+func TestMyAchievementsShowsPointsTowardTheLowestUnheldTier(t *testing.T) {
+	progressOf := func(t *testing.T, mem *memAchievements) (services.MyAchievementsResponse, services.AchievementProgress) {
+		t.Helper()
+		rows, err := mem.ListMine(context.Background(), achievements.Person{ID: achievementsTestUser})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := services.ShapeMyAchievements(rows, loadAchievementsTestBundle(t, achievementsTestBundleJSON))
+		for _, p := range body.Progress {
+			if p.AchievementID == "dash-builder" {
+				return body, p
+			}
+		}
+		t.Fatalf("progress = %+v, want a dash-builder row", body.Progress)
+		return body, services.AchievementProgress{}
+	}
+
+	t.Run("a point toward silver", func(t *testing.T) {
+		mem := newMemAchievements()
+		for i := range 2 {
+			fixtureDashboardEvent(t, mem, i)
+		}
+		if _, p := progressOf(t, mem); p.Units != 1 || p.Next == nil || *p.Next != 2 {
+			t.Fatalf("progress = %+v, want 1 of silver's 2", p)
+		}
+	})
+	t.Run("every tier held", func(t *testing.T) {
+		mem := newMemAchievements()
+		for i := range 5 {
+			fixtureDashboardEvent(t, mem, i)
+		}
+		body, p := progressOf(t, mem)
+		if p.Units != 0 || p.Next != nil || len(body.Awards) != 3 {
+			t.Fatalf("progress = %+v awards = %+v, want all three tiers and no next", p, body.Awards)
+		}
+	})
+	t.Run("a tier awarded before the row recorded it", func(t *testing.T) {
+		mem := newMemAchievements()
+		mem.put(achievements.Person{ID: achievementsTestUser}, achievements.Progress{AchievementID: "dash-builder", TierIDs: []string{"bronze"}, Units: []string{"u1", "u2"}, Points: 1, SchemaVersion: achievements.ProgressSchemaVersion})
+		for _, tier := range []string{"bronze", "silver"} {
+			mem.awards[achievementsTestUser+"/dash-builder/"+tier] = achievements.Award{AchievementID: "dash-builder", TierID: tier, Entity: "dashboards", EarnedAt: achievementContractNow()}
+		}
+		if _, p := progressOf(t, mem); p.Next == nil || *p.Next != 2 || p.Units != 0 {
+			t.Fatalf("progress = %+v, want gold's goal of 2 and none of the point the row holds toward silver", p)
+		}
+	})
 }

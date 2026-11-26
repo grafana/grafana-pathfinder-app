@@ -15,8 +15,8 @@ import (
 // cannot express, so a definition this build cannot read is a publisher bug
 // and is skipped as invalid. A file's envelope names its format as Grammar.
 const (
-	FormatVersion   = "v1"
-	Grammar         = "1.0"
+	FormatVersion   = "v2"
+	Grammar         = "2.0"
 	DefinitionsPath = "achievements/" + FormatVersion + "/definitions.json"
 
 	MaxBundleBytes = 1 << 20
@@ -50,6 +50,8 @@ type Display struct {
 	Earnable    bool          `json:"earnable"`
 }
 
+// DisplayTier serves a tier's goal as At, the name the definitions route
+// served before tiers had goals of their own.
 type DisplayTier struct {
 	ID  string `json:"id"`
 	At  *int   `json:"at,omitempty"`
@@ -226,19 +228,26 @@ func (s *Snapshot) skip(what, id string, reason SkipReason, err error) {
 }
 
 func decodeDisplay(raw json.RawMessage) (Display, bool) {
-	var d Display
-	if json.Unmarshal(raw, &d) != nil || !validID(d.ID, maxIDLen) ||
-		checkText(d.Title, maxTitleRunes) != nil || checkText(d.Description, maxDescRunes) != nil {
+	var src struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Tiers       []struct {
+			ID   string `json:"id"`
+			Goal *int   `json:"goal"`
+			Art  string `json:"art"`
+		} `json:"tiers"`
+	}
+	if json.Unmarshal(raw, &src) != nil || !validID(src.ID, maxIDLen) ||
+		checkText(src.Title, maxTitleRunes) != nil || checkText(src.Description, maxDescRunes) != nil {
 		return Display{}, false
 	}
-	for _, t := range d.Tiers {
+	d := Display{ID: src.ID, Title: src.Title, Description: src.Description, Tiers: make([]DisplayTier, 0, len(src.Tiers))}
+	for _, t := range src.Tiers {
 		if !validID(t.ID, maxTierIDLen) || (t.Art != "" && !validID(t.Art, maxIDLen)) {
 			return Display{}, false
 		}
-	}
-	d.Earnable = false
-	if d.Tiers == nil {
-		d.Tiers = []DisplayTier{}
+		d.Tiers = append(d.Tiers, DisplayTier{ID: t.ID, At: t.Goal, Art: t.Art})
 	}
 	return d, true
 }

@@ -54,6 +54,17 @@ achievementprogressv1alpha1: achievementProgressKind & {
 			// 1,040-byte unit-key limit, but maxLength counts characters, so it
 			// admits every unit within that byte limit and some longer in bytes.
 			units: list.MaxItems(200) & [...string & strings.MaxRunes(520)]
+			// eventIds is the set of ids of the events counted: one per units entry,
+			// and at most one per held tier, for an event that earned the tier
+			// after another event had counted its unit. A posted event whose id is
+			// listed counts nothing more. Event ids are 1 to 64 bytes, so 64
+			// characters admits every one. The writer keeps the set sorted and
+			// distinct. Rows stored before this field existed have none.
+			eventIds?: list.MaxItems(210) & [...string & strings.MinRunes(1) & strings.MaxRunes(64)]
+			// points is earned toward the lowest catalog tier tierIds does not hold.
+			// It resets to 0 when that tier is earned, so it stays below the tier's
+			// goal, which is at most 200.
+			points: int & >=0 & <=199 | *0
 
 			// ---------------------------------------------------------------
 			// Writer-stamped fields (required).
