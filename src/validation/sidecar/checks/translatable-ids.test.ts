@@ -101,10 +101,17 @@ describe('translatable-ids check', () => {
       run([
         { type: 'divider', id: 'line' },
         { type: 'divider', id: 'line' },
-        { type: 'image', id: 'pic', src: 'https://example.com/a.png' },
-        md({ id: 'pic' }),
       ])
     ).toEqual([]);
+  });
+
+  it('reports an id a translatable block shares with one a sidecar cannot address', () => {
+    expect(codes([{ type: 'image', id: 'pic', src: 'https://example.com/a.png' }, md({ id: 'pic' })])).toEqual([
+      'duplicate_block_id',
+    ]);
+    expect(codes([md({ id: 'pic' }), { type: 'image', id: 'pic', src: 'https://example.com/a.png' }])).toEqual([
+      'duplicate_block_id',
+    ]);
   });
 
   it('reports a step id used twice in one block, but allows the same step id in two blocks', () => {

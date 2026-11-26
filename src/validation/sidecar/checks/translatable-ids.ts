@@ -41,7 +41,7 @@ function hasTranslatableText(block: JsonBlock): boolean {
   return row !== undefined && row.fields.some((field) => readProjectedField(block, field) !== undefined);
 }
 
-/** Errors on a translatable block or step with no id, or with an id another one uses, in a package that ships a sidecar. */
+/** Errors on a translatable block or step with no id, or with an id another block uses, in a package that ships a sidecar. */
 export const translatableIdsCheck: SidecarCheck = {
   id: 'translatable-ids',
   codes: TRANSLATABLE_IDS_CODES,
@@ -50,19 +50,20 @@ export const translatableIdsCheck: SidecarCheck = {
     const located: Located[] = [];
     locate(content.blocks, ['blocks'], located);
 
-    const firstPathById = new Map<string, string[]>();
+    const firstById = new Map<string, { path: string[]; translatable: boolean }>();
     for (const { block, path } of located) {
       const where = [CONTENT_FILE, ...path];
       const translatable = hasTranslatableText(block);
-      if (translatable && hasId(block)) {
-        const first = firstPathById.get(block.id);
+      if (hasId(block)) {
+        const first = firstById.get(block.id);
         if (first === undefined) {
-          firstPathById.set(block.id, where);
-        } else {
+          firstById.set(block.id, { path: where, translatable });
+        } else if (translatable || first.translatable) {
+          // Translation tooling indexes every block by id, first one wins.
           findings.push({
             severity: 'error',
             code: 'duplicate_block_id',
-            message: `${CONTENT_FILE}: block id "${block.id}" is used at ${show(first)} and at ${show(where)}; a sidecar keys blocks by id, so rename one of them in content.json`,
+            message: `${CONTENT_FILE}: block id "${block.id}" is used at ${show(first.path)} and at ${show(where)}; a sidecar keys blocks by id, so rename one of them in content.json`,
             path: where,
           });
         }
