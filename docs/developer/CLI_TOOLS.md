@@ -78,6 +78,7 @@ node dist/cli/cli/index.js validate [options] [files...]
 - `--bundled`: Validate all bundled guides located in `src/bundled-interactives/`. Discovery works in two modes: subdirectories containing `content.json` are validated as package guides (e.g. `first-dashboard/content.json`); flat JSON files at the root level are also loaded as legacy guides (excluding `index.json` and `repository.json`). The `static-links/` subdirectory is always skipped. The path is resolved relative to the current working directory, so when run in another repository it will look for `src/bundled-interactives/` in that repository's directory structure.
 - `--stdin`: Read a single JSON guide from stdin instead of files. Mutually exclusive with `--bundled`, `--package`, `--packages`, and file arguments.
 - `--strict`: Treat warnings as errors. The command will exit with a non-zero status code if any warnings are found.
+- `--allow-stale-translations`: Report stale translations in package sidecars (`sidecar_stale_translation`) as non-blocking warnings instead of errors. It changes no other finding, and `--strict` does not turn these warnings back into errors. Only `--package` and `--packages` read sidecars, so the option has no effect in other modes.
 - `--format <format>`: Output format. Options are `text` (default) or `json`.
 - `--package <dir>`: Validate a single package directory (expects `content.json` and optionally `manifest.json`).
 - `--packages <dir>`: Validate a tree of package directories recursively.
@@ -208,7 +209,7 @@ A package that ships `i18n/*.json` translation sidecars ([`docs/design/I18N.md`]
 Findings are routed by severity:
 
 - **Error** findings go to `errors`, with their `remediation` line when the check sets one, and fail validation.
-- **Warning** findings go to `messages` with `severity: 'warn'` and a `remediation` line, never to `warnings`. `--strict` promotes `warnings` to errors, and stale or orphaned translations must never fail a build.
+- **Warning** findings go to `messages` with `severity: 'warn'` and a `remediation` line, never to `warnings`. `--strict` promotes `warnings` to errors, and orphaned translations must never fail a build. A stale translation is an error by default and becomes a warning here with `--allow-stale-translations`.
 
 | Check                     | Codes                                                                                                                                                             | Severity          | Status                                                                          |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------- |
@@ -216,7 +217,7 @@ Findings are routed by severity:
 | `manifest-block-fields`   | `sidecar_manifest_block_field`                                                                                                                                    | error             | shipped                                                                         |
 | `projection-conformance`  | `sidecar_structural_field`, `sidecar_field_not_translatable`, `sidecar_block_type_not_translatable`, `sidecar_steps_not_allowed`, `sidecar_reserved_field`        | error             | pending, [#2389](https://github.com/grafana/grafana-pathfinder-app/issues/2389) |
 | `orphan-key`              | `sidecar_orphan_key`, `sidecar_orphan_step`                                                                                                                       | warning           | shipped                                                                         |
-| `source-hash`             | `sidecar_missing_source_hash`, `sidecar_stale_translation`                                                                                                        | error and warning | pending, [#2388](https://github.com/grafana/grafana-pathfinder-app/issues/2388) |
+| `source-hash`             | `sidecar_missing_source_hash`, `sidecar_stale_translation`                                                                                                        | error and warning | shipped                                                                         |
 | `translatable-ids`        | `translatable_block_missing_id`, `translatable_step_missing_id`, `duplicate_block_id`, `duplicate_step_id`                                                        | error             | pending, [#2391](https://github.com/grafana/grafana-pathfinder-app/issues/2391) |
 | `text-dependent-selector` | `text_dependent_selector`                                                                                                                                         | error             | pending, [#2390](https://github.com/grafana/grafana-pathfinder-app/issues/2390) |
 
