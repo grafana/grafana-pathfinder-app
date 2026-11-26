@@ -41,7 +41,7 @@ function hasTranslatableText(block: JsonBlock): boolean {
   return row !== undefined && row.fields.some((field) => readProjectedField(block, field) !== undefined);
 }
 
-/** Errors on a translatable block or step with no id, and on duplicate ids, in a package that ships a sidecar. */
+/** Errors on a translatable block or step with no id, or with an id another one uses, in a package that ships a sidecar. */
 export const translatableIdsCheck: SidecarCheck = {
   id: 'translatable-ids',
   codes: TRANSLATABLE_IDS_CODES,
@@ -53,7 +53,8 @@ export const translatableIdsCheck: SidecarCheck = {
     const firstPathById = new Map<string, string[]>();
     for (const { block, path } of located) {
       const where = [CONTENT_FILE, ...path];
-      if (hasId(block)) {
+      const translatable = hasTranslatableText(block);
+      if (translatable && hasId(block)) {
         const first = firstPathById.get(block.id);
         if (first === undefined) {
           firstPathById.set(block.id, where);
@@ -65,7 +66,7 @@ export const translatableIdsCheck: SidecarCheck = {
             path: where,
           });
         }
-      } else if (hasTranslatableText(block)) {
+      } else if (translatable) {
         findings.push({
           severity: 'error',
           code: 'translatable_block_missing_id',

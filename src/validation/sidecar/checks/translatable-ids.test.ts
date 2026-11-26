@@ -96,6 +96,17 @@ describe('translatable-ids check', () => {
     ]);
   });
 
+  it('allows a shared id on blocks a sidecar cannot address', () => {
+    expect(
+      run([
+        { type: 'divider', id: 'line' },
+        { type: 'divider', id: 'line' },
+        { type: 'image', id: 'pic', src: 'https://example.com/a.png' },
+        md({ id: 'pic' }),
+      ])
+    ).toEqual([]);
+  });
+
   it('reports a step id used twice in one block, but allows the same step id in two blocks', () => {
     expect(
       run([
