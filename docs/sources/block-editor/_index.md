@@ -35,7 +35,7 @@ The block editor is available to users with the Editor or Admin role in Grafana.
 
 Saving and publishing use guide storage, the Interactive learning App Platform backend. Guide storage keeps each guide as an `InteractiveGuide` resource in the current Grafana organization. Grafana Cloud needs no setup. Self-managed Grafana, both open source and Enterprise, needs an administrator to turn it on. Refer to [Set up guide storage](../administrators-reference/#set-up-guide-storage).
 
-The **Save** and **Publish** controls show when guide storage is available. Saving also needs permission to write guides, which the Editor role includes, so a user with the Viewer role sees the controls but gets a permission error. Other authors with the required access can load saved guides from the library. When guide storage is unavailable, you can still author guides in this browser and transfer their JSON.
+The **Save** and **Publish** controls show when guide storage is available. Saving and publishing also need permission to write guides, which the Editor and Admin roles include. If custom role-based access control removes that permission, a save reports a permission error. Other authors with the required access can load saved guides from the library. When guide storage is unavailable, you can still author guides in this browser and transfer their JSON.
 
 ## Open the block editor
 
@@ -258,7 +258,7 @@ These controls need guide storage, the Interactive learning App Platform backend
 
 Until guide storage is available, the editor saves your working copy in this browser. Use **More actions** > **Download JSON** to keep a separate copy. To bring it into another editor, use **More actions** > **Import**.
 
-If a save reports a permission error, you might not have permission to write guides. The Editor role has it and the Viewer role doesn't. If a save reports another error, retry after connectivity is restored. A browser auto-save does not mean that the draft or published guide was updated in guide storage.
+If a save reports a permission error, you might not have permission to write guides. The Editor and Admin roles include it, but custom role-based access control can remove it. Ask your Grafana administrator to check your role. If a save reports another error, retry after connectivity is restored. A browser auto-save does not mean that the draft or published guide was updated in guide storage.
 
 ### My guide doesn't appear in the Interactive learning sidebar after publishing
 
