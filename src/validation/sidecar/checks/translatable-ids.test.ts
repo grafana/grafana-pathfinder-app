@@ -64,6 +64,35 @@ describe('translatable-ids check', () => {
     expect(findings[0]).toMatchObject({ remediation: 'pathfinder-cli stamp-ids <dir>' });
   });
 
+  it('reports the children of a title-less section but not the section, like add-metric-dashboard', () => {
+    // Block shape of interactive-tutorials drilldown-metrics-lj/add-metric-dashboard/content.json.
+    const section = {
+      type: 'section',
+      autoCollapse: true,
+      blocks: [
+        {
+          type: 'multistep',
+          content: 'Open the panel menu.',
+          steps: [
+            { action: 'button', reftarget: 'Add' },
+            { action: 'button', reftarget: 'Visualization' },
+            { action: 'button', reftarget: 'Save' },
+          ],
+        },
+        md(),
+        { type: 'interactive', action: 'highlight', reftarget: 'button[data-testid="save"]', content: 'Click Save.' },
+        md(),
+      ],
+    };
+    const findings = run([md(), section]);
+    const count = (code: string) => findings.filter((finding) => finding.code === code).length;
+
+    expect(count('translatable_block_missing_id')).toBe(5);
+    expect(count('translatable_step_missing_id')).toBe(3);
+    expect(findings).toHaveLength(8);
+    expect(findings.map((finding) => finding.path)).not.toContainEqual(['content.json', 'blocks', '1']);
+  });
+
   it('checks the steps of a guided block too', () => {
     expect(codes([{ type: 'guided', id: 'g', content: 'x', steps: [step()] }])).toEqual([
       'translatable_step_missing_id',
