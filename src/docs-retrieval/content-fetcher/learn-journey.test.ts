@@ -142,6 +142,8 @@ describe('resolveLearnJourney trust and shape', () => {
         kind: 'step',
         journeyBaseUrl: DATA_SOURCES,
         sectionUrl: milestone.section!.url,
+        journeySlug: 'intro-to-data-sources',
+        relativePath: milestone.url.slice(ROOT.length + 1).replace(/\/$/, ''),
       });
     }
   });
