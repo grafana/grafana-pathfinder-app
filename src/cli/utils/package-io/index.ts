@@ -40,7 +40,7 @@ export type { TreeNode } from './summary';
 
 export { nextAutoBlockId, assignMissingIds } from './auto-id';
 
-export { stampIds } from './stamp-ids';
+export { stampIds, stampIdsInPlace } from './stamp-ids';
 export type { StampedId, StampIdsResult } from './stamp-ids';
 
 export { validatePackageState } from './state-validation';

@@ -8,7 +8,7 @@
  * any other path.
  */
 
-import { readPackage, writePackage, type PackageState } from './disk';
+import { readPackage, writePackage, type PackageState, type ReadPackageOptions } from './disk';
 import { validatePackageState, type ValidationOutcome } from './state-validation';
 
 export interface MutationContext extends PackageState {}
@@ -26,8 +26,12 @@ export interface MutationResult {
  * issues are returned for the caller to surface; the caller decides whether
  * to throw, render structured JSON, or print human-readable text.
  */
-export async function mutateAndValidate(packageDir: string, mutator: Mutator): Promise<MutationResult> {
-  const state = readPackage(packageDir);
+export async function mutateAndValidate(
+  packageDir: string,
+  mutator: Mutator,
+  readOptions: ReadPackageOptions = {}
+): Promise<MutationResult> {
+  const state = readPackage(packageDir, readOptions);
   await mutator(state);
 
   const validation = validatePackageState(state.content, state.manifest, {

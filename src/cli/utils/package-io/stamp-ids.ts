@@ -13,6 +13,7 @@
  */
 
 import { getProjectionRow } from '../../../lib/guide-translation/projection-table';
+import type { JsonBlock } from '../../../types/json-guide.types';
 import type { ContentJson } from '../../../types/package.types';
 import { walkBlocks } from './tree';
 
@@ -119,4 +120,16 @@ export function stampIds(content: ContentJson): StampIdsResult {
   }
 
   return { content: out, stamped };
+}
+
+/** `stampIds` over `state.content`, replacing it. `counterpart` finds a block of the old tree in the new one. */
+export function stampIdsInPlace(state: { content: ContentJson }): {
+  stamped: StampedId[];
+  counterpart: (block: JsonBlock) => JsonBlock | undefined;
+} {
+  const before = [...walkBlocks(state.content)].map(({ block }) => block);
+  const { content, stamped } = stampIds(state.content);
+  const after = [...walkBlocks(content)].map(({ block }) => block);
+  state.content = content;
+  return { stamped, counterpart: (block) => after[before.indexOf(block)] };
 }
