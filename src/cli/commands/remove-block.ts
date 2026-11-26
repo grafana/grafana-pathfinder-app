@@ -154,18 +154,21 @@ export async function runRemoveBlock(args: RemoveBlockInput): Promise<CommandOut
       }
     } catch (err) {
       const detail = err instanceof PackageIOError ? (err.issues[0]?.message ?? err.message) : renderError(err);
+      const remaining = found.filter((entry) => !pruned.includes(entry.tag)).flatMap((entry) => entry.lines);
       return {
         status: 'error',
         code: 'SIDECAR_WRITE_FAILED',
-        message: `Removed ${removed} "${args.id}", but could not prune translations: ${detail}\nPruned: ${pruned.length > 0 ? pruned.join(', ') : 'none'}. The block is already gone from content.json.`,
-        data: { pruned },
+        message: `Removed ${removed} "${args.id}", but could not prune translations: ${detail}\nPruned: ${pruned.length > 0 ? pruned.join(', ') : 'none'}. The block is already gone from content.json, so delete these entries by hand:\n${remaining.map((line) => `  ${line}`).join('\n')}`,
+        data: { pruned, remaining },
       };
     }
   }
   const orphanLines = found.flatMap((entry) => entry.lines);
   const hints = [
     ...(orphanLines.length > 0 && !prune
-      ? ['Delete these entries from the sidecars, or remove blocks with --prune-translations.']
+      ? [
+          'Delete these entries from the sidecars by hand. On the next removal, --prune-translations deletes them for you.',
+        ]
       : []),
     ...(unreadable.length > 0 ? [`Could not read ${unreadable.join(', ')}, so its entries were not checked.`] : []),
   ];

@@ -106,6 +106,9 @@ describe('remove-block with translation sidecars', () => {
     expect(textOf(outcome)).toContain('i18n/ja-JP.json: blocks.intro');
     expect(textOf(outcome)).not.toContain('blocks.outro');
     expect(outcome).toMatchObject({ details: { 'translation entries orphaned': 2 } });
+    expect((outcome as Loose).hints).toEqual([
+      'Delete these entries from the sidecars by hand. On the next removal, --prune-translations deletes them for you.',
+    ]);
     expect([sidecarText('ja'), sidecarText('ja-JP')]).toEqual(before);
   });
 
@@ -186,6 +189,8 @@ describe('remove-block with translation sidecars', () => {
     expect(outcome).toMatchObject({ status: 'error', code: 'SIDECAR_WRITE_FAILED' });
     expect((outcome as Loose).message).toContain('disk full');
     expect((outcome as Loose).message).toContain('Pruned: ja');
+    expect((outcome as Loose).message).toContain('delete these entries by hand:\n  i18n/ja-JP.json: blocks.intro');
+    expect((outcome as Loose).data).toEqual({ pruned: ['ja'], remaining: ['i18n/ja-JP.json: blocks.intro'] });
     expect(contentText()).not.toContain('"intro"');
     expect(sidecarKeys('ja')).not.toContain('intro');
     expect(sidecarKeys('ja-JP')).toContain('intro');
