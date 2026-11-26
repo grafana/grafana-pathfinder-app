@@ -31,16 +31,20 @@ func TestPublishedDefinitionIsGuidesFinished(t *testing.T) {
 		t.Fatalf("%d achievements, want the single guides-finished definition", len(catalog.Achievements))
 	}
 	d := catalog.Achievements[0]
-	if d.ID != "guides-finished" || d.Counter == nil || d.Counter.Unit != "guide" || len(d.Tiers) < 3 {
+	if d.ID != "guides-finished" || len(d.Tiers) < 3 {
 		t.Fatalf("definition = %+v", d)
 	}
-	m := d.Counter.Evidence[0]
-	if m.Entity != "guides" || m.Action != "completed" || len(m.Where) != 0 {
-		t.Errorf("evidence = %+v, want every guides.completed counted by guide", m)
-	}
 	for i, want := range []string{"guides-finished-1", "guides-finished-2", "guides-finished-3"} {
-		if d.Tiers[i].Art != want {
-			t.Errorf("tier %s art = %q, want %q", d.Tiers[i].ID, d.Tiers[i].Art, want)
+		tier := d.Tiers[i]
+		if tier.Art != want {
+			t.Errorf("tier %s art = %q, want %q", tier.ID, tier.Art, want)
+		}
+		if len(tier.Rules) != 1 {
+			t.Fatalf("tier %s rules = %+v, want one", tier.ID, tier.Rules)
+		}
+		r := tier.Rules[0]
+		if r.Entity != "guides" || r.Action != "completed" || len(r.Where) != 0 || r.unit != "guide" || r.worth() != 1 {
+			t.Errorf("tier %s rule = %+v, want every guides.completed counted by guide, worth 1", tier.ID, r)
 		}
 	}
 	if _, ok := registry.action("guides", "completed"); !ok {
@@ -73,7 +77,7 @@ func TestPublishedDefinitionCountsDistinctGuides(t *testing.T) {
 	if d := finish("bundled", "first-dashboard"); d.Reason != ReasonDuplicate {
 		t.Errorf("same guide again = %+v", d)
 	}
-	if d := finish("interactive-tutorials", "first-dashboard"); d.Decision != KindIncrement || d.Units != 2 {
+	if d := finish("interactive-tutorials", "first-dashboard"); d.Decision != KindIncrement || d.Units != 1 {
 		t.Errorf("same id from another source = %+v, want a distinct guide", d)
 	}
 }
@@ -104,14 +108,12 @@ func TestPublishedDefinitionReachesEveryShippedTier(t *testing.T) {
 		final   bool
 		next    *int
 	}{
-		{1, KindAward, "", []string{"bronze"}, 1, false, intp(5)},
-		{4, KindIncrement, "", []string{}, 4, false, intp(5)},
-		{5, KindTierUp, "", []string{"silver"}, 5, false, intp(15)},
-		{14, KindIncrement, "", []string{}, 14, false, intp(15)},
-		{15, KindAward, "", []string{"gold"}, 15, true, nil},
-		{16, KindIncrement, "", []string{}, 16, true, nil},
-		{maxThreshold, KindIncrement, "", []string{}, maxThreshold, true, nil},
-		{maxThreshold + 1, KindIgnored, ReasonComplete, []string{}, maxThreshold, true, nil},
+		{1, KindAward, "", []string{"bronze"}, 0, false, intp(4)},
+		{4, KindIncrement, "", []string{}, 3, false, intp(4)},
+		{5, KindTierUp, "", []string{"silver"}, 0, false, intp(10)},
+		{14, KindIncrement, "", []string{}, 9, false, intp(10)},
+		{15, KindAward, "", []string{"gold"}, 0, true, nil},
+		{16, KindIgnored, ReasonComplete, []string{}, 0, true, nil},
 	}
 	n := 0
 	for _, step := range steps {
@@ -144,7 +146,7 @@ func TestPublishedDefinitionCountsTheRecordersLongestGuideID(t *testing.T) {
 		ID: "long", Entity: "guides", Action: "completed",
 		Context: map[string]any{"guideSource": string(repeatByte('s', 256)), "guideId": string(repeatByte('i', 256)), "guideCategory": "interactive"},
 	})
-	if err != nil || len(decisions) != 1 || decisions[0].Decision != KindAward || decisions[0].Units != 1 {
+	if err != nil || len(decisions) != 1 || decisions[0].Decision != KindAward {
 		t.Errorf("decisions = %+v err = %v, want one counted guide", decisions, err)
 	}
 }

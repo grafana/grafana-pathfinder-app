@@ -43,6 +43,7 @@ const NOT_PRODUCERS: Record<string, string> = {
   e2e: 'read-only',
   schema: 'read-only',
   'find-guides': 'read-only',
+  'find-steps': 'read-only',
   requirements: 'read-only',
   'build-repository': 'builds a catalog from existing packages; out of scope',
   'build-stats': 'reports on existing packages; out of scope',
@@ -53,6 +54,7 @@ const NOT_PRODUCERS: Record<string, string> = {
   // tools
   pathfinder_authoring_start: 'static guidance',
   pathfinder_find_guides: 'read-only',
+  pathfinder_find_steps: 'read-only',
   pathfinder_get_schema: 'read-only',
   pathfinder_help: 'read-only',
   pathfinder_inspect: 'read-only',

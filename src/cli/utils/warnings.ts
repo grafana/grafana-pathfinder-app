@@ -16,8 +16,8 @@
  *   `runEditBlock` whenever a non-empty `reftarget` is written. The CLI
  *   cannot verify selectors against the live Grafana DOM, so this is a
  *   floor-raising signal, not a validation pass (hardening doc issue #3).
- * - `PLACEHOLDER_SELECTOR` — emitted by `pathfinder_finalize_for_app_platform`
- *   for every `reftarget` still holding a `TODO-` placeholder selector.
+ * - `PLACEHOLDER_SELECTOR` — emitted by `pathfinder_validate` and
+ *   `pathfinder_finalize_for_app_platform` for every `reftarget` still holding a `TODO-` placeholder selector.
  * - `SECTION_STEP_LIST` — emitted by `runAddBlock` / `runEditBlock` when a
  *   `markdown` block directly inside a `section` starts with a list marker;
  *   the section numbers its children, so the list renders double-numbered.

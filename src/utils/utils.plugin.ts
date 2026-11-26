@@ -1,7 +1,6 @@
 import React from 'react';
 import { AppRootProps, PluginMeta } from '@grafana/data';
-import { getBackendSrv } from '@grafana/runtime';
-import { lastValueFrom } from 'rxjs';
+import { getPluginSettings, updateAppPluginSettings } from '@grafana/plugin-compat/apps';
 import { PathfinderPluginConfig } from '../constants';
 
 // This is used to be able to retrieve the root plugin props anywhere inside the app.
@@ -25,15 +24,11 @@ export interface PluginSettingsSnapshot {
  * false, `pinned` only when explicitly true.
  */
 export async function fetchPluginSettings(pluginId: string): Promise<PluginSettingsSnapshot> {
-  const response = getBackendSrv().fetch<{ jsonData?: PathfinderPluginConfig; enabled?: boolean; pinned?: boolean }>({
-    url: `/api/plugins/${encodeURIComponent(pluginId)}/settings`,
-    method: 'GET',
-  });
-  const result = await lastValueFrom(response);
+  const settings: Partial<PluginMeta<PathfinderPluginConfig>> | undefined = await getPluginSettings(pluginId);
   return {
-    jsonData: result.data?.jsonData || {},
-    enabled: result.data?.enabled !== false,
-    pinned: result.data?.pinned === true,
+    jsonData: settings?.jsonData || {},
+    enabled: settings?.enabled !== false,
+    pinned: settings?.pinned === true,
   };
 }
 
@@ -41,14 +36,5 @@ export async function fetchPluginJsonData(pluginId: string): Promise<PathfinderP
   return (await fetchPluginSettings(pluginId)).jsonData;
 }
 
-export const updatePluginSettings = async (pluginId: string, data: Partial<PluginMeta>) => {
-  // Simple plugin update following working plugin patterns - no reload needed
-  const response = getBackendSrv().fetch({
-    url: `/api/plugins/${pluginId}/settings`,
-    method: 'POST',
-    data,
-  });
-
-  const dataResponse = await lastValueFrom(response);
-  return dataResponse.data;
-};
+export const updatePluginSettings = (pluginId: string, data: Partial<PluginMeta>): Promise<unknown> =>
+  updateAppPluginSettings(pluginId, data);

@@ -55,6 +55,13 @@ describe('describeField', () => {
     });
   });
 
+  it('marks a string-or-array union as accepting a single string', () => {
+    expect(describeField(z.union([z.string(), z.array(z.string())]).optional())).toMatchObject({
+      kind: 'array-string',
+      acceptsSingle: true,
+    });
+  });
+
   it('detects literal as literal', () => {
     expect(describeField(z.literal('markdown'))).toMatchObject({ kind: 'literal', optional: false });
   });

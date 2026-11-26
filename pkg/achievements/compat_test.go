@@ -7,19 +7,20 @@ import (
 
 func TestCatalogBreaks(t *testing.T) {
 	const released = `{"achievements":[
-	  {"id":"guides","counter":{"unit":"guide"},"tiers":[{"id":"bronze"},{"id":"gold"}]},
+	  {"id":"guides","tiers":[{"id":"bronze","goal":1},{"id":"gold","goal":10}]},
 	  {"id":"routes","tiers":[{"id":"bronze"}]}]}`
 	cases := []struct{ name, current, want string }{
 		{"unchanged", released, ""},
-		{"a tier added in the middle, an achievement added, thresholds and art changed", `{"achievements":[
+		{"a tier appended, an achievement added, goals, rules and art changed", `{"achievements":[
 		  {"id":"new","tiers":[{"id":"bronze"}]},
-		  {"id":"guides","counter":{"unit":"guide"},"tiers":[{"id":"bronze","at":3},{"id":"silver"},{"id":"gold","art":"x"}]},
-		  {"id":"routes","tiers":[{"id":"starter"},{"id":"bronze"}]}]}`, ""},
-		{"achievement removed", `{"achievements":[{"id":"guides","counter":{"unit":"guide"},"tiers":[{"id":"bronze"},{"id":"gold"}]}]}`, `achievement "routes" was removed or renamed`},
-		{"tier removed", `{"achievements":[{"id":"guides","counter":{"unit":"guide"},"tiers":[{"id":"bronze"}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" tier "gold" was removed or renamed`},
-		{"tiers reordered", `{"achievements":[{"id":"guides","counter":{"unit":"guide"},"tiers":[{"id":"gold"},{"id":"bronze"}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" tiers were reordered from [bronze gold] to [gold bronze]`},
-		{"counter unit changed", `{"achievements":[{"id":"guides","counter":{"unit":"guide-category"},"tiers":[{"id":"bronze"},{"id":"gold"}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" counter unit changed from "guide" to "guide-category"`},
-		{"milestone became counted", `{"achievements":[{"id":"guides","counter":{"unit":"guide"},"tiers":[{"id":"bronze"},{"id":"gold"}]},{"id":"routes","counter":{"unit":"guide"},"tiers":[{"id":"bronze"}]}]}`, `achievement "routes" counter unit changed from "" to "guide"`},
+		  {"id":"guides","tiers":[{"id":"bronze","goal":3,"rules":[{"entity":"dashboards"}]},{"id":"gold","art":"x"},{"id":"platinum"}]},
+		  {"id":"routes","tiers":[{"id":"bronze"},{"id":"silver"},{"id":"gold"}]}]}`, ""},
+		{"achievement removed", `{"achievements":[{"id":"guides","tiers":[{"id":"bronze"},{"id":"gold"}]}]}`, `achievement "routes" was removed or renamed`},
+		{"tier removed", `{"achievements":[{"id":"guides","tiers":[{"id":"bronze"}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" tier "gold" was removed or renamed`},
+		{"tiers reordered", `{"achievements":[{"id":"guides","tiers":[{"id":"gold"},{"id":"bronze"}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" tiers were reordered from [bronze gold] to [gold bronze]`},
+		{"a tier inserted between published ones", `{"achievements":[{"id":"guides","tiers":[{"id":"bronze"},{"id":"silver"},{"id":"gold"}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" tier "silver" was added before published tier "gold"`},
+		{"a published goal lowered", `{"achievements":[{"id":"guides","tiers":[{"id":"bronze","goal":1},{"id":"gold","goal":9}]},{"id":"routes","tiers":[{"id":"bronze"}]}]}`, `achievement "guides" tier "gold" goal was lowered from 10 to 9`},
+		{"a tier inserted before every published one", `{"achievements":[{"id":"guides","tiers":[{"id":"bronze"},{"id":"gold"}]},{"id":"routes","tiers":[{"id":"starter"},{"id":"bronze"}]}]}`, `achievement "routes" tier "starter" was added before published tier "bronze"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -72,9 +73,9 @@ func TestRegistryBreaks(t *testing.T) {
 }
 
 func TestBundleBreaks(t *testing.T) {
-	live := `{"grammar":"1.0",
+	live := `{"grammar":"2.0",
 	  "registry":{"entities":{"guides":{"actions":{"completed":{"context":{"guideId":{"type":"string"}}}}}}},
-	  "catalog":{"achievements":[{"id":"guides","counter":{"unit":"guide"},"tiers":[{"id":"bronze"}]}]},
+	  "catalog":{"achievements":[{"id":"guides","tiers":[{"id":"bronze"}]}]},
 	  "art":["guides-1","guides-2"]}`
 	cases := []struct{ name, next, want string }{
 		{"unchanged", live, ""},
@@ -82,7 +83,7 @@ func TestBundleBreaks(t *testing.T) {
 		{"art key removed", strings.Replace(live, `,"guides-2"`, ``, 1), `art key "guides-2" was removed`},
 		{"tier removed", strings.Replace(live, `[{"id":"bronze"}]`, `[]`, 1), `achievement "guides" tier "bronze" was removed or renamed`},
 		{"field removed", strings.Replace(live, `"guideId":{"type":"string"}`, ``, 1), `guides.completed field "guideId" was removed`},
-		{"everything gone", `{"grammar":"1.0"}`, `achievement "guides" was removed or renamed; entity "guides" was removed; art key "guides-1" was removed; art key "guides-2" was removed`},
+		{"everything gone", `{"grammar":"2.0"}`, `achievement "guides" was removed or renamed; entity "guides" was removed; art key "guides-1" was removed; art key "guides-2" was removed`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -98,18 +99,18 @@ func TestBundleBreaks(t *testing.T) {
 }
 
 func TestBundleBreaksRefusesToCompareFormats(t *testing.T) {
-	for _, next := range []string{`{"grammar":"2.0"}`, `{"catalog":{}}`, `not json`} {
-		if _, err := BundleBreaks([]byte(`{"grammar":"1.0"}`), []byte(next)); err == nil {
+	for _, next := range []string{`{"grammar":"3.0"}`, `{"catalog":{}}`, `not json`} {
+		if _, err := BundleBreaks([]byte(`{"grammar":"2.0"}`), []byte(next)); err == nil {
 			t.Errorf("next %s: no error", next)
 		}
 	}
 }
 
 func TestBundleBreaksGuardsDuplicates(t *testing.T) {
-	live := `{"grammar":"1.0","catalog":{"achievements":[{"id":"a","tiers":[{"id":"bronze"}]}]}}`
+	live := `{"grammar":"2.0","catalog":{"achievements":[{"id":"a","tiers":[{"id":"bronze"}]}]}}`
 	cases := []struct{ name, next, want string }{
-		{"field order and other text free", `{"grammar":"1.0","catalog":{"achievements":[{"tiers":[{"id":"bronze"}],"title":"New","id":"a"}]}}`, ""},
-		{"duplicate hides a break", `{"grammar":"1.0","catalog":{"achievements":[{"id":"a","tiers":[]},{"id":"a","tiers":[{"id":"bronze"}]}]}}`, `achievement "a" is declared more than once`},
+		{"field order and other text free", `{"grammar":"2.0","catalog":{"achievements":[{"tiers":[{"id":"bronze"}],"title":"New","id":"a"}]}}`, ""},
+		{"duplicate hides a break", `{"grammar":"2.0","catalog":{"achievements":[{"id":"a","tiers":[]},{"id":"a","tiers":[{"id":"bronze"}]}]}}`, `achievement "a" is declared more than once`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -982,6 +982,32 @@ describe('runValidate', () => {
     }
   });
 
+  it('warns about placeholder selectors, including a conditional reftarget', () => {
+    const content = {
+      id: 'placeholder-guide',
+      schemaVersion: '1.1.0',
+      title: 'X',
+      type: 'guide',
+      blocks: [
+        { type: 'interactive', action: 'button', reftarget: '[data-testid="TODO-save"]', content: 'Save' },
+        {
+          type: 'conditional',
+          conditions: ['is-admin'],
+          whenTrue: [{ type: 'markdown', content: 'Admin' }],
+          whenFalse: [],
+          display: 'inline',
+          reftarget: '[data-testid="TODO-admin"]',
+        },
+      ],
+    } as unknown as ContentJson;
+    const result = runValidate({ content });
+    expect(result.status).toBe('ok');
+    expect(result.status === 'ok' && result.warnings?.map((w) => [w.code, w.path])).toEqual([
+      ['PLACEHOLDER_SELECTOR', 'blocks[0]/reftarget'],
+      ['PLACEHOLDER_SELECTOR', 'blocks[1]/reftarget'],
+    ]);
+  });
+
   it("reports a file's independent warnings even when the file is invalid", async () => {
     const dir = tempDir();
     const file = path.join(dir, 'guide.json');

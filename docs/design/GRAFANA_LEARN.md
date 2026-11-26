@@ -2,7 +2,7 @@
 
 Design authority for the epic [#2518](https://github.com/grafana/grafana-pathfinder-app/issues/2518). It extends the existing docs-embedding pattern (fetch trusted Grafana docs through the `content.json` to `unstyled.html` ladder, parse the semantic HTML, route learning paths through the journey reader). It is not a new design and needs no RFC. Each implementation issue updates this note when reality changes.
 
-Status: the classifier ([#2511](https://github.com/grafana/grafana-pathfinder-app/issues/2511)) is implemented. Everything else here is design intent and may not match the code yet; verify against the code before acting on it.
+Status: the classifier ([#2511](https://github.com/grafana/grafana-pathfinder-app/issues/2511)) and completion identity ([#2513](https://github.com/grafana/grafana-pathfinder-app/issues/2513)) are implemented. Everything else here is design intent and may not match the code yet; verify against the code before acting on it.
 
 ## 1. Scope
 
@@ -43,7 +43,7 @@ Rules the classifier follows:
 - It strips `unstyled.html` and a `content[.<locale>].json` file first, and keeps the slash before the file, so a page and its published files classify alike.
 - Learn is checked first. A Learn result carries no legacy facts, so a Learn slug named like a legacy family never leaks into a legacy predicate.
 - Learn depth below `/docs/learning-hub/` gives the kind: 0 home, 1 journey, 2 section or module, 3 step. `/docs/learning-hub/search/` is `other`: the home index lists a `search` entry that is a page, not content. A path deeper than a step is `docs`.
-- A Learn result carries `journeyBaseUrl` and `sectionUrl` without a trailing slash, built from the parsed origin and never from caller input.
+- A Learn result carries `journeyBaseUrl` and `sectionUrl` without a trailing slash, built from the parsed origin and never from caller input. Below the home it also carries `journeySlug` and `relativePath`, the path below `/docs/learning-hub/` without slashes at either end. Completion identity reads these, so every spelling of a step URL gets one identity.
 - For every other URL, `legacy` lists each `learning-journeys`, `learning-paths` and `tutorials` segment anywhere in the path, with whether it follows a `docs` segment, whether it is rooted (first, or right after a leading `/docs`), and whether it is bare (last, with no slash after it). It also records a `milestone-N` segment: `exact` for a whole segment, `prefix` for a segment that only starts with it. The legacy `family` is the first rooted, non-bare segment.
 - Learn is host-gated; the legacy facts are not. The predicates they replace matched on the path alone, and private-guide eligibility relies on that. Classification is structural. It is never a trust decision, and every caller keeps its trust gate. Learn stays a flat document.
 
@@ -120,14 +120,15 @@ This is the one-way door, and it lands before the flag can be turned on ([#2513]
 
 Today a milestone's progress is keyed by the last URL segment, and its durable record is written as `guideSource: 'bundled'`. Twenty-nine Learn step slugs repeat across journeys (`01-course-overview` alone appears in twelve), so classifying Learn as a journey on today's keying would credit a step in one journey as done in another and write misattributed durable records. The per-URL progress key is unique per URL, so progress rings would be right while durable records and badges would not.
 
-Decision: Learn records use a new `guideSource: 'grafana-learn'`. The completion record's `guideSource` is documented as free-form, so no schema bump is needed.
+Decision: Learn records use a new `guideSource: 'grafana-learn'`. The completion record's `guideSource` is documented as free-form, so no schema bump is needed. Implemented in `src/completion-records/completion-identity.ts` and `completeLearnMilestone` in `src/docs-retrieval/learning-journey-helpers.ts`.
 
-- A step's `guideId` is its path below `/docs/learning-hub/`: `<journey>/<section>/<step>`, with `guideCategory: 'learning-journey'` and `pathId` set to the journey slug.
-- Journey completion has its own record, with `guideId` set to the journey slug.
+- A step's `guideId` is its path below `/docs/learning-hub/`: `<journey>/<section>/<step>`, with `guideCategory: 'learning-journey'` and `pathId` set to the journey slug. Both come from the classifier's `relativePath` and `journeySlug`, never from a hand-parsed path.
+- Journey completion has its own record, with `guideId` set to the journey slug. It is written once every step of the resolved tree is complete, and never when the tree has `hasUnavailableMilestones` set.
 - Learn never writes a bare slug into the shared completed-guides list, so it stays clear of curated paths and badges until product asks for Learn badges.
+- Progress stays on the per-URL key, and a step matches its milestone by path, so two steps with one slug in the same journey stay apart.
 - A renamed or moved step loses its completion, because the permalink is the only stable identifier the index offers. That is the same as legacy docs paths.
 
-`docs/design/COMPLETION-MODEL.md` and `docs/developer/COMPLETION_RECORDING.md` describe identity sources; the completion issue updates them.
+Decision 11 of `docs/design/COMPLETION-MODEL.md` and section 3 of `docs/developer/COMPLETION_RECORDING.md` describe the identity and its trade-off.
 
 ## 8. Security boundaries
 

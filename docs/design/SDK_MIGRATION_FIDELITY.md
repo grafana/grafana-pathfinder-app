@@ -158,6 +158,7 @@ below is checked on both sides before being accounted for.
 | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Completion POST, assignment GET, and resource writes add `Cache-Control: no-store` | Explicitly prevents caching private completion and assignment responses; does not change queue classification or persisted effects | Runner requires exactly absent on legacy and `no-store` on SDK; any other value fails                                      |
 | Resource-write error Status adds empty `metadata`                                  | SDK serializes the Kubernetes Status type; status, reason, message and client failure handling are unchanged                       | Comparator permits only absent → empty metadata on these error bodies; all other fields remain compared                    |
+| Six achievement contracts follow per-tier criteria (#2463)                         | Progress reports points toward the lowest unheld tier and names the next tier; a deliberate product change, not SDK drift          | Each must differ from the frozen baseline and equal its reviewed copy in `achievement-per-tier.json`                       |
 | SDK context replaces plugin ID-token verification and OBO minting                  | Runtime owns ingress verification and caller delegation; provider binds the namespace exactly                                      | Provider identity tests, resourceaccess delegation test, local E2E; Cloud execution/key rotation verification remains open |
 | Cache is partitioned by namespace **and caller**                                   | Prevents SDK provider reuse from sharing caller-specific authorization results                                                     | Provider user isolation tests and new cache tests; changes upstream load volume                                            |
 | Legacy resource endpoints removed                                                  | Deliberate SDK-only architecture; existing browser adapters use SDK routes                                                         | Local E2E expects legacy RPC rejection; third-party callers must migrate                                                   |
@@ -352,7 +353,15 @@ background reconcilers remain outside this migration.
 
 Achievements landed after the original frozen baseline. The gate therefore uses
 the main revision that added Echo sources, `3e24d681`, for the nine achievement response
-fixtures and the original store contract tests. The original eighteen-fixture
+fixtures and the original store contract tests. Per-tier criteria (#2463) deliberately
+change six of them: definitions `default`, events `retry` and `tier-up`, and my
+`default`, `empty` and `truncated`. Progress counts toward the lowest unheld tier, so
+`units` reset when a tier is earned, `next` is that tier's goal, event decisions name
+`nextTier`, and a fully held achievement reports `next: null`. The capture catalogues
+use the per-tier grammar, which changes the definitions version and one tier goal.
+`scripts/sdk-fidelity/achievement-per-tier.json` holds the reviewed values. The runner
+requires each of the six to still differ from the frozen baseline and to equal its
+reviewed value exactly; the other three must match the frozen baseline. The original eighteen-fixture
 comparison and write/read mutation controls remain unchanged. SDK persistence
 passes the same `pkg/achievements/storetest` contract against a schema-enforcing
 HTTP server, including version conflicts, duplicate awards, evaluator recovery,

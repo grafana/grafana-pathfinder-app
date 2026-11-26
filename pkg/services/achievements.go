@@ -1,7 +1,6 @@
 package services
 
 import (
-	"slices"
 	"sort"
 	"time"
 
@@ -26,6 +25,8 @@ type AchievementAward struct {
 	EarnedAt      string `json:"earnedAt"`
 }
 
+// AchievementProgress is the points earned toward the lowest tier not held
+// (Units) and that tier's goal (Next).
 type AchievementProgress struct {
 	AchievementID string `json:"achievementId"`
 	Units         int    `json:"units"`
@@ -79,14 +80,13 @@ func ShapeMyAchievements(rows achievements.Rows, defs *achievements.Snapshot) My
 		return awardBefore(catalog, x, y)
 	})
 	for _, p := range rows.Progress {
-		// An award can exist before its progress row records the tier.
-		next, counted := catalog.NextAt(p.AchievementID, append(slices.Clone(p.TierIDs), awarded[p.AchievementID]...))
-		if !counted {
+		units, next, known := catalog.Toward(p, awarded[p.AchievementID])
+		if !known {
 			continue
 		}
 		resp.Progress = append(resp.Progress, AchievementProgress{
 			AchievementID: p.AchievementID,
-			Units:         len(p.Units),
+			Units:         units,
 			Next:          next,
 		})
 	}

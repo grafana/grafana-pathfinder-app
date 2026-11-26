@@ -54,6 +54,7 @@ export function useContentReset({ model }: UseContentResetOptions) {
             journeyBaseUrl,
           }),
           journeyBaseUrl,
+          milestoneUrl: activeTab?.currentUrl,
         });
 
         // An internal reload does not request alignment for the fresh guide.

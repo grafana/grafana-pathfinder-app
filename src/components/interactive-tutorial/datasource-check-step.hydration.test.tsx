@@ -7,6 +7,8 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { DatasourceCheckStep } from './datasource-check-step';
+import { mockDatasourceList, settleDatasourceList } from '../../test-utils/datasource-list';
+import { DATASOURCE_LIST } from '../../test-utils/data-check-stubs';
 import { GuideResponseProvider } from '../../docs-retrieval/GuideResponseContext';
 
 const mockGetForGuide = jest.fn();
@@ -14,9 +16,10 @@ const mockSetResponse = jest.fn();
 
 jest.mock('@grafana/ui', () => require('../../test-utils/data-check-stubs').grafanaUiStub);
 
-jest.mock('@grafana/runtime', () => ({
-  getDataSourceSrv: () => ({ getList: () => require('../../test-utils/data-check-stubs').DATASOURCE_LIST }),
-}));
+jest.mock(
+  '@grafana/plugin-compat/datasources',
+  () => require('../../test-utils/datasource-list').pluginCompatDatasourcesStub
+);
 
 // The step imports the barrel; the provider under test is the same module either way.
 jest.mock('../../docs-retrieval', () => ({
@@ -58,19 +61,23 @@ jest.mock('../../global-state/completion-store', () => ({
   STANDALONE_SECTION_ID: '__standalone__',
 }));
 
+beforeEach(() => mockDatasourceList(DATASOURCE_LIST));
+
 const RUN_TEST_ID = 'datasource-check-run-check-1';
 
-function renderInProvider(guideId = 'guide-1') {
-  return render(
+async function renderInProvider(guideId = 'guide-1') {
+  const view = render(
     <GuideResponseProvider guideId={guideId}>
       <DatasourceCheckStep stepId="check-1" variableName="myDs" query="up" datasourceFilter="prometheus" />
     </GuideResponseProvider>
   );
+  await settleDatasourceList();
+  return view;
 }
 
 const picker = () => screen.getByLabelText(/Select a data source/i);
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
 });
 
@@ -78,7 +85,7 @@ it('restores the pick when storage resolves after mount', async () => {
   let release: (value: Record<string, string>) => void = () => {};
   mockGetForGuide.mockReturnValue(new Promise((resolve) => (release = resolve)));
 
-  renderInProvider();
+  await renderInProvider();
   // The provider starts empty, so a mount-time read sees nothing.
   expect(picker()).toHaveValue('');
 
@@ -93,7 +100,7 @@ it('restores the pick when storage resolves after mount', async () => {
 it('drops a restored pick that is not among the offered data sources', async () => {
   mockGetForGuide.mockResolvedValue({ myDs: 'Deleted data source' });
 
-  renderInProvider();
+  await renderInProvider();
   await waitFor(() => expect(mockGetForGuide).toHaveBeenCalled());
 
   expect(picker()).toHaveValue('');
@@ -104,7 +111,7 @@ it('keeps a pick made while the load was still in flight', async () => {
   let release: (value: Record<string, string>) => void = () => {};
   mockGetForGuide.mockReturnValue(new Promise((resolve) => (release = resolve)));
 
-  renderInProvider();
+  await renderInProvider();
 
   await act(async () => {
     fireEvent.change(picker(), { target: { value: 'Prometheus' } });
@@ -123,7 +130,7 @@ it('keeps a pick made while the load was still in flight', async () => {
 // again would clear the state for free and never touch the guard.
 it("does not carry one guide's pick into the next", async () => {
   mockGetForGuide.mockResolvedValue({ myDs: 'Prometheus' });
-  const { rerender } = renderInProvider('guide-1');
+  const { rerender } = await renderInProvider('guide-1');
   await waitFor(() => expect(picker()).toHaveValue('Prometheus'));
 
   let release: (value: Record<string, string>) => void = () => {};

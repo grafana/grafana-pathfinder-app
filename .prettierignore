@@ -27,3 +27,6 @@ pkg/
 
 # Byte-for-byte copy of the guide i18n RFC; keep unformatted
 docs/design/I18N.md
+
+# Published guides copied verbatim as test fixtures
+src/cli/utils/step-index/__tests__/fixtures/

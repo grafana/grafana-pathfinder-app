@@ -18,6 +18,7 @@ import { defineCommand } from '../contracts';
 import { loadGuideFiles, loadBundledGuides, resolveCliPath, type LoadedGuide } from '../utils/file-loader';
 import { validatePackageState } from '../utils/package-io';
 import { manyIssuesOutcome, type CommandOutcome } from '../utils/output';
+import { placeholderSelectorWarnings } from '../utils/warnings';
 
 type ValidateOptions = ValidateCliInput & { snippetCatalogIds?: ReadonlySet<string> };
 
@@ -432,6 +433,7 @@ export function runValidate(args: ValidateArgs): CommandOutcome {
     return manyIssuesOutcome(outcome.issues, 'package');
   }
 
+  const warnings = placeholderSelectorWarnings(args.content.blocks);
   return {
     status: 'ok',
     summary: 'Package state is valid',
@@ -440,6 +442,7 @@ export function runValidate(args: ValidateArgs): CommandOutcome {
       schemaVersion: args.content.schemaVersion,
       blocks: Array.isArray(args.content.blocks) ? args.content.blocks.length : 0,
     },
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 

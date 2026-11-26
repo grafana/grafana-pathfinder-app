@@ -347,6 +347,8 @@ export interface HelpJsonFlag {
    */
   unionOf?: readonly string[];
   repeatable?: boolean;
+  /** A repeatable parameter that also accepts one bare string in place of a list. */
+  acceptsSingle?: boolean;
   description: string;
   default?: unknown;
   /**
