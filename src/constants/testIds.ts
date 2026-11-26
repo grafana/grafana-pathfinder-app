@@ -122,13 +122,6 @@ export const testIds = {
     terminalCopyButton: (stepId: string) => `interactive-terminal-copy-${stepId}`,
     terminalExecButton: (stepId: string) => `interactive-terminal-exec-${stepId}`,
     terminalConnectButton: (stepId: string) => `interactive-terminal-connect-button-${stepId}`,
-    gcxMintButton: (stepId: string) => `interactive-gcx-mint-${stepId}`,
-    gcxTokenInput: (stepId: string) => `interactive-gcx-token-${stepId}`,
-    gcxTokenLifetime: (stepId: string) => `interactive-gcx-token-lifetime-${stepId}`,
-    gcxInstallButton: (stepId: string) => `interactive-gcx-install-${stepId}`,
-    gcxSkipButton: (stepId: string) => `interactive-gcx-skip-${stepId}`,
-    gcxReady: (stepId: string) => `interactive-gcx-ready-${stepId}`,
-    gcxError: (stepId: string) => `interactive-gcx-error-${stepId}`,
     lazyScrollRetryButton: (stepId: string) => `interactive-lazy-retry-${stepId}`,
   },
 
@@ -373,15 +366,7 @@ export const testIds = {
     searchNext: 'coda-terminal-search-next',
     searchClose: 'coda-terminal-search-close',
     vmExpiry: 'coda-terminal-vm-expiry',
-    gcxButton: 'coda-terminal-gcx',
     openIdeButton: 'coda-open-workspace', // Preserve the existing selector across the IDE rename.
-    gcxMint: 'coda-terminal-gcx-mint',
-    gcxToken: 'coda-terminal-gcx-token',
-    gcxTokenLifetime: 'coda-terminal-gcx-token-lifetime',
-    gcxInstall: 'coda-terminal-gcx-install',
-    gcxReady: 'coda-terminal-gcx-ready',
-    gcxRedo: 'coda-terminal-gcx-redo',
-    gcxError: 'coda-terminal-gcx-error',
   },
 
   // Home Page

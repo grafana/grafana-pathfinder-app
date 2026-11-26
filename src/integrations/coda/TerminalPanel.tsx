@@ -633,9 +633,6 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
               />
             )}
 
-            {/* Needs a live session: the backend writes over the SSH channel
-                the stream already owns. */}
-
             <WorkspaceLink connected={status === 'connected'} vmId={vmId} className={styles.headerButton} />
 
             <IconButton

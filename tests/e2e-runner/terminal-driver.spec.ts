@@ -30,7 +30,7 @@ async function loadFixture(
          data-test-terminal-unavailable="false" data-test-terminal-checking="false">
       <button data-testid="${testIds.interactive.terminalConnectButton('connect')}">Custom connect label</button>
       <button hidden data-testid="${testIds.interactive.terminalSkipButton('connect')}">Continue</button>
-      <button data-testid="${testIds.interactive.gcxSkipButton('connect')}">Continue without gcx</button>
+      <button data-testid="interactive-gcx-skip-connect">Continue without gcx</button>
     </div>
     <div data-test-step-kind="terminal" data-test-step-id="command" data-test-step-state="idle"
          data-testid="${testIds.interactive.terminalStep('command')}" data-test-skippable="false"

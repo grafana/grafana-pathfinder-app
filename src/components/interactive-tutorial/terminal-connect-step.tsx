@@ -3,7 +3,6 @@
  *
  * Renders a "Try in terminal" button that opens and connects to the Coda terminal.
  * Use this as a guided entry point for users to start using the terminal feature.
- *
  */
 
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from 'react';
@@ -282,7 +281,6 @@ export const TerminalConnectStep = forwardRef<
         {...getTrackedStepRootAttributes('terminal-connect', renderedStepId)}
         data-test-step-state={stepState}
         data-test-terminal-status={terminalCtx?.status ?? 'disconnected'}
-        data-test-terminal-gcx={false}
         data-test-terminal-vm-requested={!!(vmTemplate || vmApp || vmScenario)}
         data-test-terminal-unavailable={!!sandboxUnavailable && !isTerminalConnected}
         data-test-terminal-checking={codaGate === 'checking'}

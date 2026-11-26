@@ -154,7 +154,7 @@ describe('without gcx', () => {
     renderStep({ buttonText: 'Start nginx', vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
     const root = screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID));
     expect(root).toHaveAttribute('data-test-terminal-status', 'disconnected');
-    expect(root).toHaveAttribute('data-test-terminal-gcx', 'false');
+    expect(root).not.toHaveAttribute('data-test-terminal-gcx');
     expect(root).toHaveAttribute('data-test-terminal-vm-requested', 'true');
     expect(screen.getByTestId(testIds.interactive.terminalConnectButton(STEP_ID))).toHaveTextContent('Start nginx');
   });
@@ -249,7 +249,7 @@ it('opens the terminal for a previously published GCX step without provisioning 
   fireEvent.click(screen.getByText('Try in terminal'));
   await waitFor(() => expect(onComplete).toHaveBeenCalled());
   expect(mockProvisionGcx).not.toHaveBeenCalled();
-  expect(screen.queryByTestId(testIds.interactive.gcxTokenInput(STEP_ID))).not.toBeInTheDocument();
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
 });
 
 describe('the executeStep handle', () => {
