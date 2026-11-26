@@ -5,7 +5,8 @@
  * Findings are routed by severity. An error goes to `errors`. A warning goes
  * to `messages` with `severity: 'warn'`, never to `warnings`, because
  * `validate --strict` promotes every entry in `warnings` to an error and
- * staleness and orphan keys must never fail a build (§6.8).
+ * orphan keys must never fail a build. A stale translation is an error,
+ * unless `allowStaleTranslations` makes it a warning (#2388).
  */
 
 import { PROJECTION_TABLE } from '../../lib/guide-translation/projection-table';
@@ -28,6 +29,7 @@ export interface SidecarValidationInput {
   manifest: ManifestJson | undefined;
   /** From `readPackageSidecars`; empty when the package ships no `i18n/` files. */
   sidecars: readonly SidecarReadResult[];
+  allowStaleTranslations?: boolean;
 }
 
 export interface SidecarValidationOutput {
@@ -97,6 +99,7 @@ export function validateSidecars(
     sidecars: parsed,
     projection: PROJECTION_TABLE,
     hash: SIDECAR_HASH_FUNCTIONS,
+    allowStaleTranslations: input.allowStaleTranslations ?? false,
   };
   for (const check of checks) {
     for (const finding of check.run(context)) {

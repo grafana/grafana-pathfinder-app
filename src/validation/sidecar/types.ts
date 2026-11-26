@@ -22,6 +22,8 @@ export interface SidecarHashFunctions {
   block(block: JsonBlock): string | undefined;
   manifest(manifest: { description?: unknown; category?: unknown }): string;
   guideTitle(title: string): string;
+  /** An entry's translated text, as `_reviewHash` covers it (`hashEntryText` in `review.ts`). */
+  entryText(entry: unknown): string;
 }
 
 export interface SidecarCheckContext {
@@ -32,6 +34,8 @@ export interface SidecarCheckContext {
   readonly sidecars: readonly SidecarReadSuccess[];
   readonly projection: typeof PROJECTION_TABLE;
   readonly hash: SidecarHashFunctions;
+  /** `validate --allow-stale-translations`: report stale translations as warnings, not errors. */
+  readonly allowStaleTranslations: boolean;
 }
 
 /**

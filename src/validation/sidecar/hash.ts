@@ -6,6 +6,7 @@ import {
   canonicalGuideTitleSource,
   canonicalManifestSource,
 } from '../../lib/guide-translation/source-hash';
+import { canonicalEntryText } from '../../lib/guide-translation/review';
 import type { SidecarHashFunctions } from './types';
 
 function digest(serialized: string): string {
@@ -13,7 +14,7 @@ function digest(serialized: string): string {
 }
 
 /**
- * Serialization is `source-hash.ts`'s, so "what is hashed" has one definition;
+ * Serialization is `source-hash.ts`'s and `review.ts`'s, so "what is hashed" has one definition;
  * only the digest is computed here, synchronously.
  */
 export const SIDECAR_HASH_FUNCTIONS: SidecarHashFunctions = {
@@ -23,4 +24,5 @@ export const SIDECAR_HASH_FUNCTIONS: SidecarHashFunctions = {
   },
   manifest: (manifest) => digest(canonicalManifestSource(manifest)),
   guideTitle: (title) => digest(canonicalGuideTitleSource(title)),
+  entryText: (entry) => digest(canonicalEntryText(entry)),
 };
