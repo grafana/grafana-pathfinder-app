@@ -56,6 +56,8 @@ const CONTENT = {
 
 const MANIFEST = { schemaVersion: '1.1.0', id: 'prune-demo', type: 'guide', repository: 'interactive-tutorials' };
 
+const GOLDEN = path.join(__dirname, '../../lib/guide-translation/fixtures/packages/translation-golden');
+
 const sidecar = (language: string) => ({
   schemaVersion: '1.0.0',
   language,
@@ -187,6 +189,26 @@ describe('remove-block with translation sidecars', () => {
     expect(contentText()).not.toContain('"intro"');
     expect(sidecarKeys('ja')).not.toContain('intro');
     expect(sidecarKeys('ja-JP')).toContain('intro');
+  });
+
+  it.each([
+    { id: 'add-panel', removed: ['add-panel'] },
+    { id: 'has-prometheus', removed: ['has-prometheus', 'query-tip', 'connect-tip'] },
+  ])('changes nothing but the pruned entries in the golden sidecars when removing $id', async (removal) => {
+    const dir = path.join(root, 'translation-golden');
+    fs.cpSync(GOLDEN, dir, { recursive: true });
+    const read = (tag: string) => fs.readFileSync(path.join(dir, 'i18n', `${tag}.json`), 'utf-8');
+    const before = { ja: read('ja'), 'ja-JP': read('ja-JP') };
+
+    const outcome = await runRemoveBlock({ dir, id: removal.id, cascade: true, pruneTranslations: true });
+
+    expect(outcome.status).toBe('ok');
+    for (const [tag, text] of Object.entries(before)) {
+      const original: Loose = JSON.parse(text);
+      const kept = Object.entries(original.blocks).filter(([key]) => !removal.removed.includes(key));
+      const untouched = kept.length === Object.keys(original.blocks).length;
+      expect(read(tag)).toBe(untouched ? text : json({ ...original, blocks: Object.fromEntries(kept) }));
+    }
   });
 
   it('says which sidecar it could not read', async () => {
