@@ -1,0 +1,157 @@
+{
+  "achievements-definitions.default.json": {
+    "achievements": [
+      {
+        "description": "Finish guides.",
+        "earnable": true,
+        "id": "guides-finished",
+        "tiers": [
+          {
+            "art": "guides-finished-1",
+            "at": 1,
+            "id": "bronze"
+          },
+          {
+            "at": 4,
+            "id": "silver"
+          }
+        ],
+        "title": "Guide finisher"
+      },
+      {
+        "description": "Finish a guide every day.",
+        "earnable": false,
+        "id": "guide-streak",
+        "tiers": [
+          {
+            "art": "guide-streak-1",
+            "id": "bronze"
+          }
+        ],
+        "title": "Guide streak"
+      }
+    ],
+    "artBase": "https://interactive-learning.grafana.net/achievements/art/",
+    "sources": [
+      {
+        "interaction": "grafana_dashboard_created",
+        "properties": ["result", "uid"],
+        "when": [
+          {
+            "op": "in",
+            "property": "result",
+            "value": ["success", "copied"]
+          }
+        ]
+      }
+    ],
+    "version": "568363d4eb921b63"
+  },
+  "achievements-events.retry.json": {
+    "decisions": [
+      {
+        "achievementId": "dash-builder",
+        "awarded": [],
+        "decision": "ignored",
+        "final": false,
+        "next": 1,
+        "nextTier": "bronze",
+        "reason": "store_unavailable",
+        "units": 0
+      }
+    ],
+    "eventId": "event-r",
+    "retry": true
+  },
+  "achievements-events.tier-up.json": {
+    "decisions": [
+      {
+        "achievementId": "dash-builder",
+        "awarded": ["silver"],
+        "decision": "tier_up",
+        "final": false,
+        "next": 2,
+        "nextTier": "gold",
+        "units": 0
+      }
+    ],
+    "eventId": "event-2",
+    "retry": false
+  },
+  "achievements-my.default.json": {
+    "asOf": "2026-04-01T00:00:00Z",
+    "awards": [
+      {
+        "achievementId": "dash-builder",
+        "earnedAt": "2026-04-01T00:00:00Z",
+        "entity": "dashboards",
+        "tierId": "bronze"
+      },
+      {
+        "achievementId": "dash-builder",
+        "earnedAt": "2026-04-01T00:00:00Z",
+        "entity": "dashboards",
+        "tierId": "silver"
+      },
+      {
+        "achievementId": "guide-routes",
+        "earnedAt": "2026-04-01T00:00:00Z",
+        "entity": "guides",
+        "tierId": "intro"
+      }
+    ],
+    "capability": {
+      "available": true
+    },
+    "definitionsVersion": "623841a643093b89",
+    "legacy": [],
+    "progress": [
+      {
+        "achievementId": "dash-builder",
+        "next": 2,
+        "units": 1
+      },
+      {
+        "achievementId": "guide-routes",
+        "next": null,
+        "units": 0
+      }
+    ],
+    "truncated": false
+  },
+  "achievements-my.empty.json": {
+    "asOf": "2026-04-01T00:00:00Z",
+    "awards": [],
+    "capability": {
+      "available": true
+    },
+    "definitionsVersion": "623841a643093b89",
+    "legacy": [],
+    "progress": [],
+    "truncated": false
+  },
+  "achievements-my.truncated.json": {
+    "asOf": "2026-04-01T00:00:00Z",
+    "awards": [
+      {
+        "achievementId": "dash-builder",
+        "earnedAt": "2026-04-01T00:00:00Z",
+        "entity": "dashboards",
+        "tierId": "bronze"
+      }
+    ],
+    "capability": {
+      "available": true
+    },
+    "definitionsVersion": "623841a643093b89",
+    "legacy": [],
+    "progress": [
+      {
+        "achievementId": "dash-builder",
+        "next": 2,
+        "units": 0
+      }
+    ],
+    "truncated": true
+  }
+}

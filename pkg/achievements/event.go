@@ -105,14 +105,26 @@ func printable(s string) bool {
 	return true
 }
 
-// NextAt is the threshold of the lowest tier not held. counted is false for an
-// unknown achievement or a milestone, which have no progress to show.
-func (c *Catalog) NextAt(achievementID string, tierIDs []string) (next *int, counted bool) {
-	d := c.definition(achievementID)
+// Toward is row's points toward the lowest tier neither row nor awarded holds,
+// and that tier's goal; known is false for an achievement the catalog lacks.
+// An award can exist before row records it, and row's points then belong to
+// the awarded tier, so they are not reported.
+func (c *Catalog) Toward(row Progress, awarded []string) (units int, next *int, known bool) {
+	d := c.definition(row.AchievementID)
 	if d == nil {
-		return nil, false
+		return 0, nil, false
 	}
-	return d.nextThreshold(heldSet(tierIDs)), d.Counter != nil
+	held := heldSet(row.TierIDs)
+	all := heldSet(append(slices.Clone(row.TierIDs), awarded...))
+	i := d.lowestUnheld(all)
+	if i < 0 {
+		return 0, nil, true
+	}
+	if d.lowestUnheld(held) == i {
+		units = row.Points
+	}
+	goal := d.Tiers[i].Goal
+	return units, &goal, true
 }
 
 // TierRank is a tier's position in its achievement, lowest first.

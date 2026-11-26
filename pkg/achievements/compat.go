@@ -8,7 +8,8 @@ import (
 
 // BundleBreaks lists what next drops, reorders or redefines from live. Award
 // rows and progress name achievements, tiers, counted units and art for good,
-// so a published bundle may only add to what an earlier one published.
+// so a published bundle may only add to what an earlier one published, a new
+// tier goes after every published one, and no published goal goes down.
 func BundleBreaks(live, next []byte) ([]string, error) {
 	var before, after struct {
 		Grammar  string          `json:"grammar"`
@@ -50,20 +51,11 @@ func orEmpty(raw json.RawMessage) json.RawMessage {
 }
 
 type achievementIdentity struct {
-	ID      string `json:"id"`
-	Counter *struct {
-		Unit string `json:"unit"`
-	} `json:"counter"`
+	ID    string `json:"id"`
 	Tiers []struct {
-		ID string `json:"id"`
+		ID   string `json:"id"`
+		Goal *int   `json:"goal"`
 	} `json:"tiers"`
-}
-
-func (a achievementIdentity) unit() string {
-	if a.Counter == nil {
-		return ""
-	}
-	return a.Counter.Unit
 }
 
 func (a achievementIdentity) tierIDs() []string {
@@ -99,10 +91,10 @@ func catalogBreaks(live, next []byte) ([]string, error) {
 			problems = append(problems, fmt.Sprintf("achievement %q was removed or renamed", was.ID))
 			continue
 		}
-		if was.unit() != is.unit() {
-			problems = append(problems, fmt.Sprintf("achievement %q counter unit changed from %q to %q", was.ID, was.unit(), is.unit()))
-		}
-		problems = append(problems, orderBreaks(fmt.Sprintf("achievement %q tier", was.ID), was.tierIDs(), is.tierIDs())...)
+		what := fmt.Sprintf("achievement %q tier", was.ID)
+		problems = append(problems, orderBreaks(what, was.tierIDs(), is.tierIDs())...)
+		problems = append(problems, insertedBreaks(what, was.tierIDs(), is.tierIDs())...)
+		problems = append(problems, loweredGoals(what, was, is)...)
 	}
 	return problems, nil
 }
@@ -170,6 +162,43 @@ func registryBreaks(live, next []byte) ([]string, error) {
 		}
 	}
 	return problems, nil
+}
+
+// loweredGoals reports a published tier whose goal went down. Units spent on a
+// held tier stay in the ledger, so only goals that never go down keep every
+// learner's ledger within the goals' sum, which validation caps at maxUnits.
+func loweredGoals(what string, was, is achievementIdentity) []string {
+	goals := map[string]*int{}
+	for _, t := range is.Tiers {
+		goals[t.ID] = t.Goal
+	}
+	var problems []string
+	for _, t := range was.Tiers {
+		now, ok := goals[t.ID]
+		if ok && t.Goal != nil && now != nil && *now < *t.Goal {
+			problems = append(problems, fmt.Sprintf("%s %q goal was lowered from %d to %d", what, t.ID, *t.Goal, *now))
+		}
+	}
+	return problems
+}
+
+// insertedBreaks reports ids new in now that come before one of was: a person
+// accrues toward their lowest tier not held, so a tier slid in below would take
+// the points they built toward the next one.
+func insertedBreaks(what string, was, now []string) []string {
+	last := -1
+	for i, id := range now {
+		if slices.Contains(was, id) {
+			last = i
+		}
+	}
+	var problems []string
+	for _, id := range now[:last+1] {
+		if !slices.Contains(was, id) {
+			problems = append(problems, fmt.Sprintf("%s %q was added before published tier %q", what, id, now[last]))
+		}
+	}
+	return problems
 }
 
 // orderBreaks reports ids missing from now, and earlier ids that no longer

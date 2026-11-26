@@ -716,6 +716,13 @@
       "type": "*int",
       "wire": "nullable<integer>",
       "omitempty": false
+    },
+    {
+      "field": "NextTier",
+      "json": "nextTier",
+      "type": "string",
+      "wire": "string",
+      "omitempty": true
     }
   ],
   "Display": [

@@ -122,8 +122,8 @@ func TestLoadBundleSkipsOnlyTheSourcesItCannotRead(t *testing.T) {
 	bad := strings.Replace(dashboardSavedSource, `"owner":"@grafana/dashboards-squad"`, `"owner":"nobody"`, 1)
 	clash := strings.Replace(alertCreatedSource, "grafana_alerting_rule_created", "grafana_dashboard_created", 1)
 	registry := sourcesRegistryJSON(dashboardCreatedSource+","+bad+`,{"interaction":7}`, clash)
-	data := []byte(`{"grammar":"1.0","registry":` + registry + `,"catalog":{"achievements":[
-  {"id":"dash-builder","title":"T","description":"D.","counter":{"unit":"dashboard","evidence":[{"entity":"dashboards","action":"created","countBy":"resource"}]},"tiers":[{"id":"bronze","at":1}]}]}}`)
+	data := []byte(`{"grammar":"2.0","registry":` + registry + `,"catalog":{"achievements":[
+  {"id":"dash-builder","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]}]}]}}`)
 	s, err := LoadBundle(data)
 	if err != nil {
 		t.Fatal(err)
@@ -150,15 +150,13 @@ func TestLoadBundleSkipsOnlyTheSourcesItCannotRead(t *testing.T) {
 func TestCatalogRejectsOccurrenceCountsOnAPairWithSeveralSources(t *testing.T) {
 	r := mustSourcesRegistry(t)
 	catalog := `{"achievements":[{"id":"dash-count","title":"T","description":"D.",
-  "counter":{"unit":"occurrence","evidence":[{"entity":"dashboards","action":"created","countBy":"occurrence"}]},
-  "tiers":[{"id":"bronze","at":1}]}]}`
+  "tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"occurrence"}]}]}]}`
 	_, err := loadCatalog([]byte(catalog), r)
 	if err == nil || !strings.Contains(err.Error(), "has 2 sources, so count it by resource") {
 		t.Fatalf("err = %v", err)
 	}
 	single := `{"achievements":[{"id":"alert-count","title":"T","description":"D.",
-  "counter":{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]},
-  "tiers":[{"id":"bronze","at":1}]}]}`
+  "tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}]}]}`
 	if _, err := loadCatalog([]byte(single), r); err != nil {
 		t.Fatalf("one source may count by occurrence: %v", err)
 	}
@@ -246,8 +244,7 @@ func TestNewEventDoesNotCountAVariantOutsideWhen(t *testing.T) {
 func TestTwoSourcesForOnePairCountOneUnit(t *testing.T) {
 	r := mustSourcesRegistry(t)
 	catalog, err := loadCatalog([]byte(`{"achievements":[{"id":"dash-builder","title":"T","description":"D.",
-  "counter":{"unit":"dashboard","evidence":[{"entity":"dashboards","action":"created","countBy":"resource"}]},
-  "tiers":[{"id":"bronze","at":1},{"id":"silver","at":2}]}]}`), r)
+  "tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]},{"id":"silver","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]}]}]}`), r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,8 +263,8 @@ func TestTwoSourcesForOnePairCountOneUnit(t *testing.T) {
 	}
 	first := post(sourceEvent("old-name", "grafana_dashboard_created", map[string]any{"uid": "abc", "result": "success"}))
 	second := post(sourceEvent("new-name", "grafana_dashboard_saved", map[string]any{"dashboardUid": "abc", "isNew": true}))
-	if first.Decision != KindAward || second.Decision != KindIgnored || second.Reason != ReasonDuplicate || second.Units != 1 {
-		t.Errorf("first %+v second %+v, want one unit and a duplicate", first, second)
+	if first.Decision != KindAward || second.Decision != KindIgnored || second.Reason != ReasonDuplicate || second.Units != 0 {
+		t.Errorf("first %+v second %+v, want a duplicate that adds no points", first, second)
 	}
 }
 
@@ -307,11 +304,13 @@ func TestVersionRanges(t *testing.T) {
 
 func TestSubscriptionsAndEarnabilityFollowTheStackVersion(t *testing.T) {
 	registry := sourcesRegistryJSON(dashboardCreatedSource+","+dashboardSavedSource, alertCreatedSource)
-	data := []byte(`{"grammar":"1.0","registry":` + registry + `,"catalog":{"achievements":[
-  {"id":"dash-builder","title":"T","description":"D.","counter":{"unit":"dashboard","evidence":[{"entity":"dashboards","action":"created","countBy":"resource"}]},"tiers":[{"id":"bronze","at":1}]},
-  {"id":"alert-starter","title":"T","description":"D.","counter":{"unit":"occurrence","evidence":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]},"tiers":[{"id":"bronze","at":1}]},
-  {"id":"guide-finisher","title":"T","description":"D.","counter":{"unit":"guide","evidence":[{"entity":"guides","action":"completed","countBy":"resource"}]},"tiers":[{"id":"bronze","at":1}]},
-  {"id":"mixed","title":"T","description":"D.","counter":{"unit":"dashboard","evidence":[{"entity":"dashboards","action":"created","countBy":"resource"}]},"tiers":[{"id":"bronze","at":1,"or":[{"entity":"guides","action":"completed"}]}]},
+	data := []byte(`{"grammar":"2.0","registry":` + registry + `,"catalog":{"achievements":[
+  {"id":"dash-builder","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]}]},
+  {"id":"alert-starter","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"alert-rules","action":"created","countBy":"occurrence"}]}]},
+  {"id":"guide-finisher","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]}]},
+  {"id":"mixed","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"},{"entity":"guides","action":"completed","countBy":"resource"}]}]},
+  {"id":"first-live","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]},{"id":"silver","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]}]},
+  {"id":"later-live","title":"T","description":"D.","tiers":[{"id":"bronze","goal":1,"rules":[{"entity":"dashboards","action":"created","countBy":"resource"}]},{"id":"silver","goal":1,"rules":[{"entity":"guides","action":"completed","countBy":"resource"}]}]},
   {"id":"broken","title":"T","description":"D.","streak":1,"tiers":[{"id":"bronze","at":1}]}]}}`)
 	s, err := LoadBundle(data)
 	if err != nil {
@@ -329,10 +328,10 @@ func TestSubscriptionsAndEarnabilityFollowTheStackVersion(t *testing.T) {
 		return strings.Join(names, ",") + " | " + strings.Join(earnable, ",")
 	}
 	for stack, want := range map[string]string{
-		"13.1.0":       "grafana_alerting_rule_created | dash-builder=false,alert-starter=true,guide-finisher=true,mixed=true,broken=false",
-		"13.2.0-90577": "grafana_alerting_rule_created,grafana_dashboard_created | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,broken=false",
-		"14.1.0":       "grafana_alerting_rule_created,grafana_dashboard_created,grafana_dashboard_saved | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,broken=false",
-		"":             "grafana_alerting_rule_created,grafana_dashboard_created,grafana_dashboard_saved | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,broken=false",
+		"13.1.0":       "grafana_alerting_rule_created | dash-builder=false,alert-starter=true,guide-finisher=true,mixed=true,first-live=true,later-live=false,broken=false",
+		"13.2.0-90577": "grafana_alerting_rule_created,grafana_dashboard_created | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,first-live=true,later-live=true,broken=false",
+		"14.1.0":       "grafana_alerting_rule_created,grafana_dashboard_created,grafana_dashboard_saved | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,first-live=true,later-live=true,broken=false",
+		"":             "grafana_alerting_rule_created,grafana_dashboard_created,grafana_dashboard_saved | dash-builder=true,alert-starter=true,guide-finisher=true,mixed=true,first-live=true,later-live=true,broken=false",
 	} {
 		if got := summary(Stack{GrafanaVersion: stack}); got != want {
 			t.Errorf("stack %q:\n got %s\nwant %s", stack, got, want)

@@ -245,7 +245,13 @@ The SDK also serves `backend/api/v1/achievements/events` (POST),
 
 Only authenticated user principals can submit or read achievements. SDK writes
 stamp the caller and namespace from verified authentication and use delegated
-clients. Award names remain deterministic and awards are create-only. Progress
+clients. Award names remain deterministic and awards are create-only. An award
+records the unit and the id of the event that earned it in the
+`pathfinderbackend.ext.grafana.app/unit` and `pathfinderbackend.ext.grafana.app/event-id`
+annotations, outside the spec the backend fixes, so a progress save that fails
+after the award is completed by the next event instead of stranding the tier.
+Progress records the ids of the events counted (`eventIds`), so a re-sent event
+counts nothing more even where the next tier counts its pair by another unit. Progress
 uses resource-version concurrency; a successful save with an unreadable response
 remains durable and forces the next update to reload. The events limit is 30
 requests with a refill of 0.5 per second, isolated by namespace and user.
@@ -256,11 +262,20 @@ filter the caller before shaping the result, expose truncation, and do not cache
 personal state. Public CDN definitions retain their existing shared cache and
 failure backoff; caller credentials never reach the CDN.
 
-Achievement schemas are copied from the exact backend revision used by the
-merged store tests (`84c582fdae1916910e5197a44bd0078018315135`, backend PR #146).
+Achievement schemas are copied from the backend revision used by the merged
+store tests (`84c582fdae1916910e5197a44bd0078018315135`, backend PR #146), plus
+the required `points` and optional `eventIds` fields on AchievementProgress. The in-repo kind
+(`kinds/achievementprogress.cue`) declares the same spec, and
+`TestAchievementFixturesMatchTheRegisteredKinds` keeps the two equal; the backend
+repository adds `points` in
+[grafana-pathfinder-backend#179](https://github.com/grafana/grafana-pathfinder-backend/pull/179),
+and its kind must declare `eventIds` as well.
 Their resource names, versions, schemas, and award create-only role are preserved.
 The local SDK provider registers these kinds; this is not evidence of Cloud
-registration or deployment. There is no new achievement frontend in this change.
+registration or deployment. A host that rejects an undeclared field answers a
+progress write with 422; the store logs a warning naming the apiserver's cause. A
+host that prunes `eventIds` keeps the write, and the store logs a warning that re-sent
+events are then found by their unit alone. There is no new achievement frontend in this change.
 
 ### Local achievement acceptance
 
@@ -301,8 +316,11 @@ PATHFINDER_SDK_E2E=1 PATHFINDER_ACHIEVEMENTS_FIXTURE=1 GRAFANA_URL=http://localh
 ```
 
 The fixture test checks persistence, retry deduplication, ignored body-supplied
-identity, personal reads, and cross-namespace refusal. It creates achievement
-records for the test user. The normal build and all existing data remain in place
+identity, personal reads, and cross-namespace refusal. Achievement rows cannot be
+deleted and awards are create-only, so before writing it resets the test user's
+`guides-finished` progress to the tiers it has awards for. Every run then makes a
+real write; a test user holding every tier fails the test instead of passing
+without one. The normal build and all existing data remain in place
 after restoration. Cloud testing remains deferred.
 
 The public package feed is the one plugin resource retained for hosts without SDK routes or anonymous SDK access. Both GET paths call the same anonymous CDN reader and process cache. It has no tenant store or write operation. Grafana 13.1 remains supported.
