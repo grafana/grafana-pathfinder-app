@@ -17,9 +17,9 @@ import { defineCommand } from '../contracts';
 import type { TranslationSidecar } from '../../types/translation-sidecar.schema';
 import {
   findBlockById,
+  findSidecarEntries,
   mutateAndValidate,
   PackageIOError,
-  readPackageSidecars,
   removeBlock,
   walkBlocks,
   writePackageSidecar,
@@ -87,23 +87,19 @@ function findOrphanedEntries(
 ): { found: OrphanedEntries[]; unreadable: string[] } {
   const found: OrphanedEntries[] = [];
   const unreadable: string[] = [];
-  for (const read of readPackageSidecars(dir)) {
-    if (!read.ok) {
-      unreadable.push(`i18n/${read.tag ?? '?'}.json`);
+  for (const result of findSidecarEntries(dir, removed)) {
+    if (!result.ok) {
+      unreadable.push(`i18n/${result.tag ?? '?'}.json`);
       continue;
     }
-    const blocks = read.sidecar.blocks ?? {};
-    const blockIds = Object.keys(blocks).filter((key) => removed.has(key));
-    if (blockIds.length === 0) {
-      continue;
-    }
-    const lines = blockIds.flatMap((blockId) => [
-      `i18n/${read.tag}.json: blocks.${blockId}`,
+    const blocks = result.sidecar.blocks ?? {};
+    const lines = result.blockIds.flatMap((blockId) => [
+      `i18n/${result.tag}.json: blocks.${blockId}`,
       ...Object.keys(blocks[blockId]?.steps ?? {}).map(
-        (step) => `i18n/${read.tag}.json: blocks.${blockId}.steps.${step}`
+        (step) => `i18n/${result.tag}.json: blocks.${blockId}.steps.${step}`
       ),
     ]);
-    found.push({ tag: read.tag, blockIds, lines, sidecar: read.sidecar });
+    found.push({ tag: result.tag, blockIds: result.blockIds, lines, sidecar: result.sidecar });
   }
   return { found, unreadable };
 }

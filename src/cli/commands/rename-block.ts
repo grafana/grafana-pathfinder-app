@@ -19,9 +19,9 @@ import { defineCommand } from '../contracts';
 import {
   collectAllIds,
   findBlockById,
+  findSidecarEntries,
   mutateAndValidate,
   PackageIOError,
-  readPackageSidecars,
 } from '../utils/package-io';
 import { issueToOutcome, renderError, type CommandOutcome } from '../utils/output';
 
@@ -95,16 +95,12 @@ function unsafeIdReason(id: string): string | undefined {
 
 // Sidecars key translations by block id, and the rename writes only content.json, so an entry would be orphaned.
 function sidecarEntryRefs(dir: string, id: string): string[] {
-  const refs: string[] = [];
-  for (const result of readPackageSidecars(dir)) {
+  return findSidecarEntries(dir, new Set([id])).map((result) => {
     const file = path.relative(dir, result.filePath);
-    if (!result.ok) {
-      refs.push(`${file}: cannot read it to check for entries (${result.message})`);
-    } else if (Object.prototype.hasOwnProperty.call(result.sidecar.blocks ?? {}, id)) {
-      refs.push(`${file}: blocks.${id}: move the entry to the new id by hand`);
-    }
-  }
-  return refs;
+    return result.ok
+      ? `${file}: blocks.${id}: move the entry to the new id by hand`
+      : `${file}: cannot read it to check for entries (${result.message})`;
+  });
 }
 
 function rewriteReferences(node: unknown, path: string, scan: RenameScan): void {
