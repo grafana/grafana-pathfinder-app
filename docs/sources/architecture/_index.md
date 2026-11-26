@@ -3,7 +3,7 @@ title: Interactive learning architecture
 menuTitle: Architecture
 description: Understand where Interactive learning gets guides, how actions run in Grafana, what contextual data recommendations use, and how guides and progress are stored.
 weight: 40
-review_date: 2026-11-23
+review_date: 2026-11-26
 ---
 
 # Interactive learning architecture

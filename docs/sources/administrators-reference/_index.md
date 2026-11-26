@@ -3,7 +3,7 @@ title: Administrator reference
 menuTitle: Administration
 description: Configure Interactive learning for your Grafana organization, disable Pathfinder in Grafana Cloud, manage recommendations, and choose how guides open and run.
 weight: 30
-review_date: 2026-11-23
+review_date: 2026-11-26
 ---
 
 # Administrator reference

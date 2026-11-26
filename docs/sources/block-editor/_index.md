@@ -3,7 +3,7 @@ title: Block editor
 menuTitle: Block editor
 description: Create interactive guides with the block editor in Grafana, record steps, save drafts, publish content for your organization, and import or export guide JSON.
 weight: 20
-review_date: 2026-11-23
+review_date: 2026-11-26
 keywords:
   - block editor
   - custom guide
@@ -188,6 +188,10 @@ When you save a guide that has no author, the editor attributes it to your Grafa
 
 To set the author or a team yourself, open **More actions** > **Guide details**. The name and team you enter are written the next time you save or publish, and the editor shows them as unsaved changes until then. Clear the name to go back to the default. A guide that already has an author keeps it, unless that author is a placeholder name such as `pathfinder-mcp`, which your name replaces.
 
+### If the saved copy is deleted
+
+If someone deletes the saved copy of the guide you have open, for example from the library, the editor keeps your local draft and shows a notice. The primary button then reads **Save as new**. Select it to save the draft to guide storage as a new guide.
+
 ### Unpublish
 
 Open **More actions** and select **Unpublish**. The guide returns to draft status and is removed from the published catalog. It stays in guide storage so you can publish it again. Readers might need to refresh to see the updated catalog.
@@ -198,10 +202,10 @@ Open **More actions** > **Library** to see the drafts and published guides saved
 
 ![Editor More actions menu with Library, Publish, display options, Import, and Download JSON.](/media/docs/pathfinder/2026-09-30/editor-actions.jpg)
 
-The menu item appears when guide storage is available and holds at least one guide. From the library you can:
+The menu item appears when guide storage is available. It is hidden once guide storage confirms there are no saved guides. From the library you can:
 
 - **Load** a guide into the editor for editing. Loading can fail if the stored copy was deleted or is invalid. Use **Refresh** to update the list.
-- **Delete** a guide permanently (you'll be asked to confirm).
+- **Delete** a guide permanently (you'll be asked to confirm). If you delete the guide you have open, the editor keeps your local draft.
 - **Refresh** the list to pick up changes made by other authors.
 
 Drafts are only visible in the library—they don't appear in the Interactive learning sidebar. Only published guides reach end users.
