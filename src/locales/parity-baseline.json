@@ -59,12 +59,6 @@
       "tracking": "#2412"
     },
     {
-      "locales": ["pt-BR"],
-      "violations": ["missing-key:docsPanel.refreshGuideErrorTitle"],
-      "reason": "Existing catalog drift before translation parity enforcement.",
-      "tracking": "#2412"
-    },
-    {
       "locales": [
         "cs-CZ",
         "de-DE",
@@ -179,18 +173,6 @@
       "tracking": "#2412"
     },
     {
-      "locales": ["pt-BR"],
-      "violations": [
-        "obsolete-key:contextPanel.giveFeedback",
-        "obsolete-key:contextPanel.menuAriaLabel",
-        "obsolete-key:contextPanel.menuTooltip",
-        "obsolete-key:contextPanel.recommendedLearning",
-        "obsolete-key:contextPanel.settings"
-      ],
-      "reason": "Existing catalog drift before translation parity enforcement.",
-      "tracking": "#2412"
-    },
-    {
       "locales": ["cs-CZ", "de-DE", "es-ES", "hu-HU", "it-IT", "nl-NL", "pl-PL", "pt-PT", "ru-RU", "sv-SE"],
       "violations": [
         "missing-key:coverPage.estimatedMinutes_one",
@@ -204,13 +186,13 @@
       "tracking": "#2412"
     },
     {
-      "locales": ["cs-CZ", "es-ES", "fr-FR", "it-IT", "pl-PL", "pt-BR", "pt-PT", "ru-RU"],
+      "locales": ["cs-CZ", "es-ES", "fr-FR", "it-IT", "pl-PL", "pt-PT", "ru-RU"],
       "violations": ["missing-key:myLearning.dueDayCount_many", "missing-key:sidebarHub.dueInDays_many"],
       "reason": "Existing catalog drift before translation parity enforcement.",
       "tracking": "#2412"
     },
     {
-      "locales": ["cs-CZ", "es-ES", "it-IT", "pl-PL", "pt-BR", "pt-PT", "ru-RU"],
+      "locales": ["cs-CZ", "es-ES", "it-IT", "pl-PL", "pt-PT", "ru-RU"],
       "violations": [
         "missing-key:coverPage.estimatedMinutes_many",
         "missing-key:coverPage.moduleCount_many",
