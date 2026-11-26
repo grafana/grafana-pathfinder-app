@@ -18,8 +18,7 @@
         "ru-RU",
         "sv-SE",
         "tr-TR",
-        "zh-CN",
-        "zh-Hans"
+        "zh-CN"
       ],
       "violations": [
         "missing-key:common.retry",
@@ -100,8 +99,7 @@
         "ru-RU",
         "sv-SE",
         "tr-TR",
-        "zh-CN",
-        "zh-Hans"
+        "zh-CN"
       ],
       "violations": ["missing-key:guideVersionNotice.body", "missing-key:guideVersionNotice.title"],
       "reason": "Existing catalog drift before translation parity enforcement.",
@@ -121,8 +119,7 @@
         "pt-PT",
         "ru-RU",
         "sv-SE",
-        "zh-CN",
-        "zh-Hans"
+        "zh-CN"
       ],
       "violations": [
         "missing-key:coverPage.earnsBadge",
