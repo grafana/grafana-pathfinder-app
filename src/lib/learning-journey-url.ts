@@ -1,20 +1,14 @@
 import { stripPrTestMarker } from './pr-test-marker';
 import { stripContentFile } from './guide-content-file';
-
-const JOURNEY_BASE_URL_PATTERNS = [
-  /^(https?:\/\/[^/]+\/docs\/learning-journeys\/[^/]+)/,
-  /^(https?:\/\/[^/]+\/docs\/learning-paths\/[^/]+)/,
-  /^(https?:\/\/[^/]+\/tutorials\/[^/]+)/,
-];
+import { classifyDocsUrl } from './docs-url-family';
 
 export function getLearningJourneyBaseUrl(url: string): string {
-  for (const pattern of JOURNEY_BASE_URL_PATTERNS) {
-    const match = url.match(pattern);
-    if (match?.[1]) {
-      return match[1];
-    }
+  const { journeyBaseUrl } = classifyDocsUrl(url);
+  if (journeyBaseUrl) {
+    return journeyBaseUrl;
   }
 
+  // Not an http(s) journey URL (relative, or another scheme): strip a milestone as plain text.
   return url.replace(/\/milestone-\d+.*$/, '').replace(/\/$/, '');
 }
 

@@ -14,14 +14,16 @@ export const grafanaUiStub = {
       {children}
     </button>
   ),
-  Combobox: ({ options, value, onChange, placeholder, isClearable: _isClearable, ...rest }: any) => (
+  Combobox: ({ options, value, onChange, placeholder, isClearable: _isClearable, loading, ...rest }: any) => (
     <select
       aria-label={placeholder}
+      aria-busy={loading ? true : undefined}
       value={value ?? ''}
       onChange={(e) => onChange(e.target.value ? { value: e.target.value } : null)}
       {...rest}
     >
       <option value="">{placeholder}</option>
+      {value && !options.some((o: any) => o.value === value) && <option value={value}>{value}</option>}
       {options.map((o: any) => (
         <option key={o.value} value={o.value}>
           {o.label}

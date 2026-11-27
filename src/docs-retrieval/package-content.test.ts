@@ -9,6 +9,12 @@
  * - Manifest metadata passthrough via fetchPackageContent
  * - setPackageResolver injection and resolver-not-configured error
  */
+
+jest.mock('../lib/telemetry/facade', () => ({
+  ...jest.requireActual('../lib/telemetry/facade'),
+  recordPackageMilestonesLocked: jest.fn(),
+}));
+
 import { discoverSdkBackend } from '../lib/backend-routes';
 import { config, getBackendSrv, setBackendSrv, type BackendSrv } from '@grafana/runtime';
 import { of } from 'rxjs';
@@ -24,6 +30,7 @@ import {
 } from './content-fetcher/package-content';
 import { fetchContent } from './content-fetcher';
 import { logger } from '../lib/logging';
+import { recordPackageMilestonesLocked } from '../lib/telemetry/facade';
 import { CompositePackageResolver } from '../package-engine/composite-resolver';
 import {
   isJourneyCoverPage,
@@ -46,6 +53,10 @@ if (!AbortSignal.timeout) {
     return controller.signal;
   });
 }
+
+beforeEach(() => {
+  (recordPackageMilestonesLocked as jest.Mock).mockClear();
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -700,7 +711,7 @@ describe('resolvePackageMilestones', () => {
     expect(result[2]!.number).toBe(3);
   });
 
-  it('keeps unresolvable milestones as locked placeholders rather than dropping them (§6.5)', async () => {
+  it('keeps unresolvable milestones as locked placeholders and counts them (§6.5)', async () => {
     const resolver: PackageResolver = {
       resolve: jest.fn().mockImplementation((id: string) => {
         if (id === 'missing') {
@@ -733,6 +744,34 @@ describe('resolvePackageMilestones', () => {
     expect(result[1]).toMatchObject({ number: 2, title: 'missing', url: '', isLocked: true });
     expect(result[2]).toMatchObject({ number: 3, title: 'Title: third' });
     expect(result[2]!.isLocked).toBeUndefined();
+    expect(recordPackageMilestonesLocked).toHaveBeenCalledTimes(1);
+    expect(recordPackageMilestonesLocked).toHaveBeenCalledWith(1, 3);
+  });
+
+  it('locks and counts a milestone whose resolve call rejects', async () => {
+    setPackageResolver({
+      resolve: jest
+        .fn()
+        .mockImplementation((id: string) =>
+          id === 'flaky'
+            ? Promise.reject(new Error('network'))
+            : Promise.resolve(makeSuccessResolution({ id, content: { id, title: id, blocks: [] } }))
+        ),
+    });
+
+    const result = await resolvePackageMilestones(['ok', 'flaky']);
+
+    expect(result[1]).toMatchObject({ title: 'flaky', isLocked: true });
+    expect(recordPackageMilestonesLocked).toHaveBeenCalledTimes(1);
+    expect(recordPackageMilestonesLocked).toHaveBeenCalledWith(1, 2);
+  });
+
+  it('does not count anything when every milestone resolves', async () => {
+    setPackageResolver(makeResolver(makeSuccessResolution()));
+
+    await resolvePackageMilestones(['first', 'second']);
+
+    expect(recordPackageMilestonesLocked).not.toHaveBeenCalled();
   });
 
   it('surfaces the manifest description as a subtitle when content already has its own title', async () => {
@@ -961,6 +1000,8 @@ describe('resolvePackageTracks', () => {
       expect.objectContaining({ number: 1, title: 'Title: ok' }),
       expect.objectContaining({ number: 2, title: 'missing', url: '', isLocked: true }),
     ]);
+    expect(recordPackageMilestonesLocked).toHaveBeenCalledTimes(1);
+    expect(recordPackageMilestonesLocked).toHaveBeenCalledWith(1, 2);
   });
 });
 

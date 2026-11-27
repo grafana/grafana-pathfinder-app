@@ -272,7 +272,7 @@ describe('saveGuide — round-trip of fields the editor does not own', () => {
     await act(async () => {
       await expect(
         result.current.saveGuide(loadedGuide(resource), 'alerting-path', undefined, 'draft')
-      ).rejects.toThrow(`Could not read the saved guide "alerting-path"`);
+      ).rejects.toMatchObject({ status: 404, message: 'Could not read the saved guide "alerting-path"' });
     });
     expect(writes()).toHaveLength(0);
   });

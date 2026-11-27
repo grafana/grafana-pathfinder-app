@@ -254,16 +254,6 @@ export interface ProgressRingProps {
 }
 
 /**
- * Props for the BadgesDisplay component
- */
-export interface BadgesDisplayProps {
-  /** All available badges with earned state */
-  badges: EarnedBadge[];
-  /** Callback when user clicks a badge */
-  onBadgeClick?: (badge: EarnedBadge) => void;
-}
-
-/**
  * Props for the BadgeUnlockedToast component
  */
 export interface BadgeUnlockedToastProps {

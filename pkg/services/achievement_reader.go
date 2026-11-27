@@ -55,6 +55,9 @@ func (r *AchievementReader) readAchievement(ctx context.Context, person achievem
 	var h heldAchievement
 	row, found := loaded[d.ID]
 	if found {
+		if achievements.Classify(row) == achievements.ShapeRepairable {
+			row = achievements.Normalize(row)
+		}
 		h.progress = &row
 	}
 	for _, tierID := range awardCandidates(d, row.TierIDs) {

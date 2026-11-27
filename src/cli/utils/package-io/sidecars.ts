@@ -103,6 +103,28 @@ export function readPackageSidecars(packageDir: string): SidecarReadResult[] {
   });
 }
 
+export interface SidecarEntries extends SidecarReadSuccess {
+  /** The asked-for block ids this sidecar keys an entry by, in file order. */
+  blockIds: string[];
+}
+
+/**
+ * The sidecars with a `blocks.<id>` entry for any of `blockIds`, and the ones
+ * that could not be read, sorted by tag. Each caller formats its own messages.
+ */
+export function findSidecarEntries(
+  packageDir: string,
+  blockIds: ReadonlySet<string>
+): Array<SidecarEntries | SidecarReadFailure> {
+  return readPackageSidecars(packageDir).flatMap((result): Array<SidecarEntries | SidecarReadFailure> => {
+    if (!result.ok) {
+      return [result];
+    }
+    const found = Object.keys(result.sidecar.blocks ?? {}).filter((id) => blockIds.has(id));
+    return found.length > 0 ? [{ ...result, blockIds: found }] : [];
+  });
+}
+
 function writeFailed(filePath: string, err: unknown): PackageIOError {
   const detail = err instanceof Error ? err.message : String(err);
   return new PackageIOError({

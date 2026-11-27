@@ -17,9 +17,10 @@
  *   1. errors            — stable error codes + PackageIOError
  *   2. tree              — walkers, lookups, container-key constants
  *   3. auto-id           — block-id minting (`<type>-<n>`)
+ *      stamp-ids         — the deterministic id rule for translatable units
  *   4. state-validation  — validatePackageState + classifiers
  *   5. disk              — readPackage / writePackage
- *      sidecars          — readPackageSidecars / writePackageSidecar
+ *      sidecars          — readPackageSidecars / findSidecarEntries / writePackageSidecar
  *   6. mutators          — appendBlock / appendStep / appendChoice / appendHint / editBlock / removeBlock
  *   7. move              — moveBlock
  *   8. compose           — mutateAndValidate
@@ -39,14 +40,23 @@ export type { TreeNode } from './summary';
 
 export { nextAutoBlockId, assignMissingIds } from './auto-id';
 
+export { stampIds } from './stamp-ids';
+export type { StampedId, StampIdsResult } from './stamp-ids';
+
 export { validatePackageState } from './state-validation';
 export type { ValidationOutcome, ValidatePackageStateOptions } from './state-validation';
 
-export { readPackage, writePackage } from './disk';
-export type { PackageState } from './disk';
+export { readPackage, writePackage, writePackageContent } from './disk';
+export type { PackageState, ReadPackageOptions } from './disk';
 
-export { readPackageSidecars, sidecarPath, writePackageSidecar } from './sidecars';
-export type { SidecarReadErrorCode, SidecarReadFailure, SidecarReadResult, SidecarReadSuccess } from './sidecars';
+export { findSidecarEntries, readPackageSidecars, sidecarPath, writePackageSidecar } from './sidecars';
+export type {
+  SidecarEntries,
+  SidecarReadErrorCode,
+  SidecarReadFailure,
+  SidecarReadResult,
+  SidecarReadSuccess,
+} from './sidecars';
 
 export {
   appendBlock,

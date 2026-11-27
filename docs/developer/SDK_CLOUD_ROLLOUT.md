@@ -8,6 +8,19 @@ Jay Clifford owns Cloud rollout sign-off for dev, ops and prod. Record the follo
 4. Agree with the backend team which manifest owns each shared kind, role and route. Compare effective Viewer grants on the live tenant, including named achievement reads and completion or assignment writes. Verify cross-user access restrictions. Confirm the public achievements definitions URL serves the intended catalogue and exercise an award write against it. Record a tested way to stop achievement writes before enabling them broadly.
 5. Exercise frontend pin, backend image and registration rollback separately. Verify existing records remain readable after each rollback, and capture route mix and failed writes. Promote to the next environment only after Jay records sign-off.
 
+## Check assignment reads after each dev wave
+
+Use a signed-in learner's GCX context and the namespace of the stack being tested. For example, this checks Pathfinder dev without printing learner data:
+
+```sh
+set -o pipefail
+gcx api --context pathfinder-dev \
+  '/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/stacks-9239/backend/assignments/my' -o json |
+  jq -e '.capability.available == true and (.assignments | type == "array")'
+```
+
+An empty assignments array is valid. Record the stack, rollout version, and result. If the request returns 503, follow its trace through Grafana Router and check the service token's delegated permission for `pathfinderbackend.ext.grafana.app/assignments:get`. The November dev rollout served health successfully while this permission was missing. On the [dev rollout dashboard](https://ops.grafana-ops.net/d/pathfinder-sdk-dev-rollout), use the gateway HTTP status for the request outcome. A provider log saying that a handler succeeded can also accompany an HTTP error.
+
 ## Publish workflow inputs
 
 | Input               | Use                                                                                                                  |

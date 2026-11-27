@@ -852,6 +852,7 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
       <BlockEditorHeader
         guideTitle={state.guide.title}
         isDirty={state.isDirty}
+        canSaveAsNew={backendSaveFlow.canSaveAsNew}
         publishedStatus={backendSaveFlow.publishedStatus}
         hasUnsyncedChanges={backendSaveFlow.hasUnsyncedChanges}
         viewMode={state.viewMode}
@@ -965,7 +966,10 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
         error={backendGuides.error}
         readGuide={backendGuides.readGuide}
         onLoadGuide={handleLoadGuideFromBackend}
-        onDeleteGuide={backendGuides.deleteGuide}
+        onDeleteGuide={async (name) => {
+          await backendGuides.deleteGuide(name);
+          backendSaveFlow.forgetDeletedGuide(name);
+        }}
         onRefresh={backendGuides.refreshGuides}
       />
 

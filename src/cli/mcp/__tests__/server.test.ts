@@ -6,11 +6,24 @@
  * stdio/HTTP transports use, without spawning a subprocess.
  */
 
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-import { CURRENT_SCHEMA_VERSION, JsonInteractiveBlockSchema, JsonStepSchema } from '../../../types/json-guide.schema';
+import {
+  CURRENT_SCHEMA_VERSION,
+  JsonCodeBlockBlockSchema,
+  JsonConditionalBlockSchema,
+  JsonInteractiveBlockSchema,
+  JsonStepSchema,
+} from '../../../types/json-guide.schema';
+import { mockStepIndexFetch } from '../../../test-utils/step-index-fixtures';
 import { CONTAINER_BLOCK_TYPES } from '../../utils/block-registry';
+import { __resetRepositoryClientForTests } from '../../utils/repository-client';
+import { __resetStepIndexForTests } from '../../utils/step-index/cache';
 import { SERVER_INSTRUCTIONS } from '../lib/server-instructions';
 import { buildServer } from '../server';
 import { KNOWN_TOOL_OPERATIONS } from '../transports/access-log';
@@ -107,6 +120,47 @@ describe('MCP server', () => {
     }
   });
 
+  it('sequences the procedure lookup as one search, then fetch by procedureId, then write', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const ctx = await callTool(client, 'pathfinder_authoring_start');
+      const step3 = (ctx.workflow as string[]).find((step) => step.startsWith('3. '));
+      expect(step3).toContain('send the independent sub-tasks in one call (up to 8 queries)');
+      expect(step3).toContain('naming third-party products by the Grafana process');
+      expect(step3).toContain('Gaps and weak matches: see `interactiveRules`.');
+    } finally {
+      await close();
+    }
+  });
+
+  it('leads with version, product and a workflow that fits the client preview', async () => {
+    const { client, close } = await spinUp();
+    try {
+      const result = await client.callTool({ name: 'pathfinder_authoring_start', arguments: {} });
+      const text = (result.content as Array<{ type: string; text: string }>)[0]!.text;
+      const ctx = JSON.parse(text) as Record<string, unknown>;
+      expect(Object.keys(ctx)).toEqual([
+        'version',
+        'product',
+        'workflow',
+        'interactiveRules',
+        'rules',
+        'guideShape',
+        'sessionMode',
+        'statelessModeFallback',
+        'interfaceContract',
+        'discovery',
+        'triggers',
+        'notFor',
+        'domains',
+      ]);
+      const { version, product, workflow } = ctx;
+      expect(JSON.stringify({ version, product, workflow }).length).toBeLessThanOrEqual(2400);
+    } finally {
+      await close();
+    }
+  });
+
   it('surfaces distilled interactiveRules in pathfinder_authoring_start (issue #8, OQ7 inline variant)', async () => {
     const { client, close } = await spinUp();
     try {
@@ -142,12 +196,27 @@ describe('MCP server', () => {
       expect(Object.keys(shape.kinds).sort()).toEqual(['reference', 'teach', 'walkthrough']);
       expect(shape.kinds.teach).toMatch(/quiz/);
       expect(shape.kinds.walkthrough).toMatch(/placeholder/i);
-      const placeholder = '[data-testid="TODO-<what-to-target>"]';
+      const placeholder = '[data-testid="TODO-<target>"]';
       const rules = (ctx.interactiveRules as string[]).join('\n');
       expect(rules).toContain(placeholder);
-      expect(rules).toMatch(/authorNote.*finalize strips/);
+      expect(rules).toContain('pathfinder_find_steps');
       expect(JsonStepSchema.shape.reftarget.description).toContain(placeholder);
       expect(JsonInteractiveBlockSchema.shape.reftarget.description).toContain(placeholder);
+      expect(JsonCodeBlockBlockSchema.shape.reftarget.description).toContain('pathfinder_find_steps');
+      expect(JsonConditionalBlockSchema.shape.reftarget.description).toContain('pathfinder_find_steps');
+      expect(JsonStepSchema.shape.reftarget.description).toContain('pathfinder_find_steps');
+      expect(JsonInteractiveBlockSchema.shape.reftarget.description).toContain('pathfinder_find_steps');
+      expect(JsonStepSchema.shape.reftarget.description).toContain(
+        "start the enclosing `multistep` or `guided` block's `content` with"
+      );
+      expect(rules).toContain("the enclosing block's `content`");
+      expect(JsonInteractiveBlockSchema.shape.reftarget.description).toContain("start the block's `content` with");
+      expect(JsonCodeBlockBlockSchema.shape.reftarget.description).toContain("start the block's `content` with");
+      expect(JsonConditionalBlockSchema.shape.reftarget.description).toContain(
+        'conditionals have no visible text to carry a lead'
+      );
+      expect(JsonConditionalBlockSchema.shape.reftarget.description).toContain(placeholder);
+      expect(JsonConditionalBlockSchema.shape.reftarget.description).not.toContain('authorNote');
     } finally {
       await close();
     }
@@ -165,6 +234,9 @@ describe('MCP server', () => {
         .filter((t) => !/^Use this (tool )?(when|to)\b/i.test(t.description ?? ''))
         .map((t) => ({ name: t.name, description: t.description }));
       expect(offenders).toEqual([]);
+      expect(tools.find((t) => t.name === 'pathfinder_find_steps')?.description).toMatch(
+        /^Use this tool to find verified Grafana procedures \(ordered steps with the exact selector, action and value that passed live tests\) when authoring a guide\. /
+      );
     } finally {
       await close();
     }
@@ -181,6 +253,7 @@ describe('MCP server', () => {
           'pathfinder_create_package',
           'pathfinder_finalize_for_app_platform',
           'pathfinder_find_guides',
+          'pathfinder_find_steps',
           'pathfinder_get_schema',
           'pathfinder_help',
           'pathfinder_inspect',
@@ -575,7 +648,7 @@ describe('MCP server', () => {
       expect(requiredByType?.input).not.toContain('variable-name');
 
       // Buckets follow declared roles: `id` is the address, requiredness rides on the
-      // parameter rather than the bucket, and `orphanChildren` is withheld.
+      // parameter rather than the bucket, and `orphanChildren` and `pruneTranslations` are withheld.
       const remove = await callTool(client, 'pathfinder_help', { command: 'remove-block' });
       expect(remove.addressing).toEqual(
         expect.arrayContaining([expect.objectContaining({ name: 'id', required: true })])
@@ -588,7 +661,7 @@ describe('MCP server', () => {
         ...(remove.optional as Array<{ name: string }>),
         ...((remove.addressing as Array<{ name: string }> | undefined) ?? []),
       ].map((parameter) => parameter.name);
-      for (const withheld of ['dir', 'orphanChildren']) {
+      for (const withheld of ['dir', 'orphanChildren', 'pruneTranslations']) {
         expect(removeParameters).not.toContain(withheld);
       }
 
@@ -849,6 +922,7 @@ describe('MCP server', () => {
         'remove-block',
         'schema',
         'find-guides',
+        'find-steps',
       ]);
 
       const { tools } = await client.listTools();
@@ -1171,5 +1245,67 @@ describe('MCP server', () => {
     } finally {
       await close();
     }
+  });
+});
+
+describe('pathfinder_find_steps through the server', () => {
+  let cacheRoot: string;
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    cacheRoot = mkdtempSync(join(tmpdir(), 'find-steps-mcp-'));
+    process.env.XDG_CACHE_HOME = cacheRoot;
+    __resetRepositoryClientForTests();
+    __resetStepIndexForTests();
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    delete process.env.XDG_CACHE_HOME;
+    rmSync(cacheRoot, { recursive: true, force: true });
+  });
+
+  async function findSteps(opts: Record<string, unknown>) {
+    const { client, close } = await spinUp();
+    try {
+      const result = await client.callTool({ name: 'pathfinder_find_steps', arguments: { opts } });
+      const text = (result.content as Array<{ type: string; text: string }>).find((b) => b.type === 'text')!.text;
+      return { isError: result.isError === true, payload: JSON.parse(text) as ToolPayload };
+    } finally {
+      await close();
+    }
+  }
+
+  it('searches by queries', async () => {
+    global.fetch = mockStepIndexFetch() as unknown as typeof fetch;
+    const { isError, payload } = await findSteps({ queries: ['dependent service filter'], limit: 1 });
+    expect(isError).toBe(false);
+    expect((payload.groups as Array<{ results: Array<{ procedureId: string }> }>)[0]!.results[0]!.procedureId).toBe(
+      'grafana-quickpizza-working-filters#2'
+    );
+  });
+
+  it('fetches by procedureId', async () => {
+    global.fetch = mockStepIndexFetch() as unknown as typeof fetch;
+    const { isError, payload } = await findSteps({ procedureId: 'grafana-quickpizza-working-filters#2' });
+    expect(isError).toBe(false);
+    expect((payload.results as Array<{ procedureId: string }>)[0]!.procedureId).toBe(
+      'grafana-quickpizza-working-filters#2'
+    );
+  });
+
+  it('rejects the removed expand key as an unsupported parameter', async () => {
+    global.fetch = mockStepIndexFetch() as unknown as typeof fetch;
+    const { isError, payload } = await findSteps({ expand: { procedureId: 'grafana-quickpizza-working-filters#2' } });
+    expect(isError).toBe(true);
+    expect(payload.code).toBe('UNSUPPORTED_PARAMETER');
+  });
+
+  it('reports an unreadable health report as an error', async () => {
+    global.fetch = mockStepIndexFetch({ healthStatus: 500 }) as unknown as typeof fetch;
+    const { isError, payload } = await findSteps({ queries: ['dependent service filter'] });
+    expect(isError).toBe(true);
+    expect(payload.status).toBe('error');
+    expect(payload.code).toBe('HTTP_ERROR');
   });
 });

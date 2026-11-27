@@ -32,9 +32,9 @@ export function presentAnnouncement(
     return null;
   }
   if (announcement.kind === 'progress') {
-    const nextTier = achievement.tiers.find((tier) => tier.at === announcement.next);
+    const nextTier = achievement.tiers.find((tier) => tier.id === announcement.tierId);
     return {
-      key: `${announcement.achievementId}:progress`,
+      key: `${announcement.achievementId}:progress:${announcement.tierId}`,
       achievementId: announcement.achievementId,
       kind: 'progress',
       eyebrow: t('achievements.announce.progress', 'Achievement progress'),

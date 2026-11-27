@@ -55,6 +55,14 @@ export interface PackageState {
   idsAssignedOnRead?: number;
 }
 
+export interface ReadPackageOptions {
+  /**
+   * Mint `<type>-<n>` ids for blocks that lack one (default true). `stamp-ids`
+   * turns it off: it applies its own rule and must see the ids as they are.
+   */
+  mintIds?: boolean;
+}
+
 /**
  * Read content.json (and optionally manifest.json) from a package directory
  * and parse them through their Zod schemas. Throws `PackageIOError` with a
@@ -67,7 +75,7 @@ export interface PackageState {
  * persists those defaults explicitly so the on-disk state reflects what was
  * validated.
  */
-export function readPackage(packageDir: string): PackageState {
+export function readPackage(packageDir: string, options: ReadPackageOptions = {}): PackageState {
   if (!fs.existsSync(packageDir)) {
     throw new PackageIOError({
       code: 'NOT_FOUND',
@@ -107,7 +115,7 @@ export function readPackage(packageDir: string): PackageState {
   // hand-authored content with `move-block`, `remove-block`, etc. The walk
   // order is deterministic so a read-only inspect and a subsequent mutation
   // see the same ids; mutateAndValidate persists them on the next write.
-  const { assigned } = assignMissingIds(content);
+  const { assigned } = options.mintIds === false ? { assigned: 0 } : assignMissingIds(content);
 
   return { content, manifest, manifestSchemaVersionAuthored, idsAssignedOnRead: assigned };
 }
@@ -164,6 +172,22 @@ export function writePackage(packageDir: string, state: PackageState): void {
     throw new PackageIOError({
       code: 'WRITE_FAILED',
       message: `Failed to write package to ${packageDir}: ${detail}`,
+    });
+  }
+}
+
+/**
+ * Write `content.json` alone. For commands whose whole change is in the
+ * content, so `manifest.json` is not rewritten with the writer's defaults.
+ */
+export function writePackageContent(packageDir: string, content: ContentJson): void {
+  try {
+    fs.writeFileSync(path.join(packageDir, 'content.json'), serializeJson(content));
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new PackageIOError({
+      code: 'WRITE_FAILED',
+      message: `Failed to write content.json to ${packageDir}: ${detail}`,
     });
   }
 }

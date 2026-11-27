@@ -21,6 +21,17 @@ type Spec struct {
 	// 1,040-byte unit-key limit, but maxLength counts characters, so it
 	// admits every unit within that byte limit and some longer in bytes.
 	Units []string `json:"units"`
+	// eventIds is the set of ids of the events counted: one per units entry,
+	// and at most one per held tier, for an event that earned the tier
+	// after another event had counted its unit. A posted event whose id is
+	// listed counts nothing more. Event ids are 1 to 64 bytes, so 64
+	// characters admits every one. The writer keeps the set sorted and
+	// distinct. Rows stored before this field existed have none.
+	EventIds []string `json:"eventIds,omitempty"`
+	// points is earned toward the lowest catalog tier tierIds does not hold.
+	// It resets to 0 when that tier is earned, so it stays below the tier's
+	// goal, which is at most 200.
+	Points int64 `json:"points"`
 	// updatedAt is the RFC 3339 UTC timestamp of the last write.
 	UpdatedAt time.Time `json:"updatedAt"`
 	// userId is the verified ID-token subject (such as "user:27"), the same
@@ -41,6 +52,7 @@ func NewSpec() *Spec {
 	return &Spec{
 		TierIds: []string{},
 		Units:   []string{},
+		Points:  0,
 	}
 }
 

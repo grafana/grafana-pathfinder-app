@@ -69,19 +69,55 @@ describe('announceEvaluated', () => {
   it('announces progress for an increment, and again at the next count', async () => {
     const seen = jest.fn();
     onAchievementAnnounced(seen);
-    const increment = (units: number) => ({
+    const increment = (units: number, nextTier = 'bronze') => ({
       eventId: 'e',
       retry: false,
       decisions: [
-        { achievementId: 'guides-finished', decision: 'increment' as const, awarded: [], final: false, units, next: 5 },
+        {
+          achievementId: 'guides-finished',
+          decision: 'increment' as const,
+          awarded: [],
+          final: false,
+          units,
+          next: 5,
+          nextTier,
+        },
       ],
     });
     await announceEvaluated(increment(2));
     await announceEvaluated(increment(2));
     await announceEvaluated(increment(3));
     expect(seen.mock.calls.map(([a]) => a)).toEqual([
-      { achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5 },
-      { achievementId: 'guides-finished', kind: 'progress', units: 3, next: 5 },
+      { achievementId: 'guides-finished', kind: 'progress', tierId: 'bronze', units: 2, next: 5 },
+      { achievementId: 'guides-finished', kind: 'progress', tierId: 'bronze', units: 3, next: 5 },
+    ]);
+  });
+
+  it('announces the same progress count again for the next tier', async () => {
+    const seen = jest.fn();
+    onAchievementAnnounced(seen);
+    const increment = (units: number, nextTier = 'bronze') => ({
+      eventId: 'e',
+      retry: false,
+      decisions: [
+        {
+          achievementId: 'guides-finished',
+          decision: 'increment' as const,
+          awarded: [],
+          final: false,
+          units,
+          next: 5,
+          nextTier,
+        },
+      ],
+    });
+    await announceEvaluated(increment(2));
+    await announceEvaluated(tierUp('bronze'));
+    await announceEvaluated(increment(2, 'silver'));
+    expect(seen.mock.calls.map(([a]) => [a.kind, a.tierId, a.units])).toEqual([
+      ['progress', 'bronze', 2],
+      ['tier_up', 'bronze', undefined],
+      ['progress', 'silver', 2],
     ]);
   });
 
@@ -141,6 +177,7 @@ describe('announcements across tabs', () => {
     let deliver: ((message: unknown) => void) | null = null;
     __setAchievementDisplayDepsForTests({
       fetchDefinitions: async () => definitions,
+      fetchMy: async () => myOk(),
       isVisible: () => visible,
       onVisible: (listener) => {
         becameVisible = listener;
@@ -206,6 +243,15 @@ describe('announcements across tabs', () => {
     expect(changed).toHaveBeenCalledTimes(1);
   });
 
+  it('refreshes the hub on a progress relay from a build that names no tier', () => {
+    const t = tab({ visible: true, claims: new Set() });
+    const changed = jest.fn();
+    onAchievementsChanged(changed);
+    t.receive({ achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5, displayed: false });
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(t.seen).not.toHaveBeenCalled();
+  });
+
   it('does not show an award another tab already displayed', () => {
     const claims = new Set(['guides-finished:silver']);
     const t = tab({ visible: false, claims });
@@ -219,7 +265,15 @@ describe('announcements across tabs', () => {
     t.receive({ ...relayed(false), kind: 'bogus' });
     t.receive(silver);
     t.receive('not an announcement');
-    t.receive({ achievementId: 'guides-finished', kind: 'progress', units: '2', next: 5, displayed: false });
+    t.receive({
+      achievementId: 'guides-finished',
+      kind: 'progress',
+      tierId: 'bronze',
+      units: '2',
+      next: 5,
+      displayed: false,
+    });
+    t.receive({ achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5, displayed: false });
     expect(t.seen).not.toHaveBeenCalled();
   });
 
@@ -229,25 +283,40 @@ describe('announcements across tabs', () => {
       eventId: 'e',
       retry: false,
       decisions: [
-        { achievementId: 'guides-finished', decision: 'increment', awarded: [], final: false, units: 2, next: 5 },
+        {
+          achievementId: 'guides-finished',
+          decision: 'increment',
+          awarded: [],
+          final: false,
+          units: 2,
+          next: 5,
+          nextTier: 'bronze',
+        },
       ],
     });
     expect(drainer.posted).toEqual([
-      { achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5, displayed: false },
+      { achievementId: 'guides-finished', kind: 'progress', tierId: 'bronze', units: 2, next: 5, displayed: false },
     ]);
     drainer.show();
     expect(drainer.seen).not.toHaveBeenCalled();
 
     __resetAchievementDisplayForTests();
     const receiver = tab({ visible: false, claims: new Set() });
-    receiver.receive({ achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5, displayed: false });
+    receiver.receive({
+      achievementId: 'guides-finished',
+      kind: 'progress',
+      tierId: 'bronze',
+      units: 2,
+      next: 5,
+      displayed: false,
+    });
     receiver.show();
     expect(receiver.seen).not.toHaveBeenCalled();
   });
 
   it('relays progress and shows it in a visible tab once', () => {
     const t = tab({ visible: true, claims: new Set() });
-    const progress = { achievementId: 'guides-finished', kind: 'progress', units: 2, next: 5 };
+    const progress = { achievementId: 'guides-finished', kind: 'progress', tierId: 'bronze', units: 2, next: 5 };
     t.receive({ ...progress, displayed: false });
     t.receive({ ...progress, displayed: false });
     expect(t.seen).toHaveBeenCalledTimes(1);

@@ -16,8 +16,10 @@ const (
   "resources":[{"unit":"guide","id":["guideSource","guideId"]}]}}}`
 	guidesFinished = `{
   "id": "guides-finished", "title": "Guide finisher", "description": "Finish guides.",
-  "counter": {"unit": "guide", "evidence": [{"entity": "guides", "action": "completed", "countBy": "resource"}]},
-  "tiers": [{"id": "bronze", "at": 1, "art": "guides-finished-1"}, {"id": "silver", "at": 5}]
+  "tiers": [
+    {"id": "bronze", "goal": 1, "rules": [{"entity": "guides", "action": "completed", "countBy": "resource"}], "art": "guides-finished-1"},
+    {"id": "silver", "goal": 4, "rules": [{"entity": "guides", "action": "completed", "countBy": "resource"}]}
+  ]
 }`
 	testSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>`
 )
@@ -62,7 +64,7 @@ func TestBuildWritesABundleThatLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(s.Skipped) != 0 || len(s.Catalog.Achievements) != 1 || s.Grammar != "1.0" {
+	if len(s.Skipped) != 0 || len(s.Catalog.Achievements) != 1 || s.Grammar != "2.0" {
 		t.Errorf("snapshot = %+v", s)
 	}
 	if strings.Join(s.Art, ",") != "guides-finished-1" || !strings.Contains(string(data), `"commit": "abc"`) {
@@ -176,6 +178,29 @@ func TestCompatRefusesABreak(t *testing.T) {
 	}
 	code, _, stderr := runCmd("compat", live, next)
 	if code != exitProblems || !strings.Contains(stderr, `art key "guides-finished-2" was removed`) {
+		t.Errorf("code = %d stderr = %q", code, stderr)
+	}
+}
+
+func TestCompatRefusesATierInsertedBelowAPublishedOne(t *testing.T) {
+	live := filepath.Join("..", "..", "testdata", "bundle.json")
+	data, err := os.ReadFile(live)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inserted := strings.Replace(string(data), `{
+            "id": "gold",`, `{ "id": "electrum", "goal": 2, "rules": [{ "entity": "guides", "action": "completed", "countBy": "resource" }] },
+          {
+            "id": "gold",`, 1)
+	if inserted == string(data) {
+		t.Fatal("fixture no longer has the gold tier")
+	}
+	next := filepath.Join(t.TempDir(), "next.json")
+	if err := os.WriteFile(next, []byte(inserted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := runCmd("compat", live, next)
+	if code != exitProblems || !strings.Contains(stderr, `tier "electrum" was added before published tier "gold"`) {
 		t.Errorf("code = %d stderr = %q", code, stderr)
 	}
 }

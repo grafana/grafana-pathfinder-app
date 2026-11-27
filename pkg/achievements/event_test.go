@@ -78,22 +78,32 @@ func TestNewEventContextBounds(t *testing.T) {
 	}
 }
 
-func TestCatalogNextAt(t *testing.T) {
+func TestCatalogToward(t *testing.T) {
 	catalog := mustCatalog(t)
-	if next, counted := catalog.NextAt("dash-builder", []string{"bronze"}); !counted || next == nil || *next != 5 {
-		t.Fatalf("dash-builder bronze = %v, %v", next, counted)
+	row := func(points int, held ...string) Progress {
+		return Progress{AchievementID: "dash-builder", TierIDs: held, Points: points}
 	}
-	if next, counted := catalog.NextAt("dash-builder", []string{"bronze", "gold"}); !counted || next == nil || *next != 5 {
-		t.Fatalf("dash-builder missing silver = %v, %v, want the lowest tier not held", next, counted)
-	}
-	if next, counted := catalog.NextAt("dash-builder", []string{"gold", "silver", "bronze"}); !counted || next != nil {
-		t.Fatalf("dash-builder final = %v, %v", next, counted)
-	}
-	if _, counted := catalog.NextAt("guide-routes", nil); counted {
-		t.Fatal("a milestone has no progress")
-	}
-	if _, counted := catalog.NextAt("retired", nil); counted {
-		t.Fatal("an unknown achievement has no progress")
+	for _, tc := range []struct {
+		name    string
+		row     Progress
+		awarded []string
+		units   int
+		next    *int
+		known   bool
+	}{
+		{"points toward the lowest tier not held", row(3, "bronze"), nil, 3, intp(4), true},
+		{"a tier missing below a held one is the next", row(2, "bronze", "gold"), nil, 2, intp(4), true},
+		{"every tier held", row(0, "gold", "silver", "bronze"), nil, 0, nil, true},
+		{"an award the row lags drops the row's points", row(3, "bronze"), []string{"silver"}, 0, intp(10), true},
+		{"an award the row records keeps them", row(3, "bronze"), []string{"bronze"}, 3, intp(4), true},
+		{"an unknown achievement", Progress{AchievementID: "retired", Points: 1}, nil, 0, nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			units, next, known := catalog.Toward(tc.row, tc.awarded)
+			if units != tc.units || known != tc.known || (next == nil) != (tc.next == nil) || (next != nil && *next != *tc.next) {
+				t.Errorf("Toward = %d, %v, %v, want %d, %v, %v", units, next, known, tc.units, tc.next, tc.known)
+			}
+		})
 	}
 }
 

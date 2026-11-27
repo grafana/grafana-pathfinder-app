@@ -1,0 +1,14 @@
+{
+    "schemaVersion": "1.1.0",
+    "id": "adaptive-metrics-value",
+    "title": "The value of Adaptive Metrics",
+    "blocks": [{
+            "type": "markdown",
+            "content": "As your observability footprint grows, metric data can multiply fast — often faster than you need it to.\n\nAdaptive Metrics is enabled by default, continuously analyzing your metric usage in the background to find optimization opportunities.\n\nThis helps you:\n\n- Lower ingestion and storage costs\n- Speed up dashboards and queries\n- Maintain observability quality as your environment grows\n- Automate ongoing optimization to prevent metric sprawl"
+        },
+        {
+            "type": "markdown",
+            "content": "## Common entry points\n\nYou can arrive at Adaptive Metrics from different Grafana workflows depending on the problem you're trying to solve.\n\n| Problem | Entry Point | Why Use Adaptive Metrics |\n| ------- | ----------- | ------------------------ |\n| You see a spike in metric ingestion or cost, or receive a Billing & Usage alert | Cost Management & Billing | Identify which metrics drive the increase and reduce redundant series to lower cost |\n| Dashboards take too long to load, or Explore queries time out | Dashboards or Explore | Find and optimize high-cardinality metrics causing performance issues |\n| Alerts or SLO tracking seem noisy or unstable | Alerting or SLOs | Remove duplicate or overly granular metrics that distort alert conditions |\n| You want to maintain consistent performance and cost control | Routine observability hygiene | Review recommendations and automate metric optimization on a schedule |\n\nIn the next milestone, you learn how Adaptive Metrics works."
+        }
+    ]
+}

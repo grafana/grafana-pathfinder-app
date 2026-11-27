@@ -19,6 +19,7 @@ type catalogueResponse = services.CatalogueResponse
 func catalogueReadHandler(store *resourceaccess.GuideStore) simple.AppCustomRouteHandler {
 	return func(ctx context.Context, w app.CustomRouteResponseWriter, req *app.CustomRouteRequest) error {
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
 		if req.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return nil

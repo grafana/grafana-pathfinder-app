@@ -8,7 +8,6 @@ export { VideoRenderer } from './video-renderer';
 export { YouTubeVideoRenderer } from './youtube-video-renderer';
 export { VimeoVideoRenderer } from './vimeo-video-renderer';
 export { resolveAssetUrl } from './resolve-asset-url';
-export { SideJourneyLink } from './side-journey-link';
 export { ContentParsingError } from './content-parsing-error';
 
 // Types
@@ -20,5 +19,4 @@ export type { ImageRendererProps } from './image-renderer';
 export type { VideoRendererProps } from './video-renderer';
 export type { YouTubeVideoRendererProps } from './youtube-video-renderer';
 export type { VimeoVideoRendererProps } from './vimeo-video-renderer';
-export type { SideJourneyLinkProps } from './side-journey-link';
 export type { ContentParsingErrorProps } from './content-parsing-error';

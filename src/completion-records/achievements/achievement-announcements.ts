@@ -19,6 +19,8 @@ export interface TierAnnouncement {
 
 export interface ProgressAnnouncement {
   achievementId: string;
+  /** The tier the points are toward, as the backend reports it. */
+  tierId: string;
   kind: 'progress';
   units: number;
   next: number;
@@ -74,10 +76,15 @@ export function selectAnnouncements(
     if (awardedIds.has(decision.achievementId) || !findAchievement(definitions, decision.achievementId)?.earnable) {
       continue;
     }
+    const tierId = decision.nextTier;
+    if (tierId === undefined) {
+      continue;
+    }
     const current = progress.get(decision.achievementId);
     if (!current || decision.units > current.units) {
       progress.set(decision.achievementId, {
         achievementId: decision.achievementId,
+        tierId,
         kind: 'progress',
         units: decision.units,
         next: decision.next,

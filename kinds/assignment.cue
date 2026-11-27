@@ -24,11 +24,8 @@ assignmentKind: {
 // Every field is a flat scalar, never a nested object, so any of them can
 // become a metadata.label for server-side selection.
 //
-// Enforcement note (manifest-only deploy posture, see PR #64): in production
-// this kind is served by a shared generic apiserver directly from the generated
-// CRD schema. The CUE schema below is therefore the ONLY enforcement surface
-// that ships, so every invariant we can express is pushed into it: field
-// presence, value domains (enums), and bounds.
+// The schema validates assignment fields. The SDK status repair path checks
+// caller ownership and completion evidence before updating status.
 assignmentv1alpha1: assignmentKind & {
 	schema: {
 		spec: {

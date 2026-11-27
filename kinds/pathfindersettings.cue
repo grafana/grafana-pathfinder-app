@@ -42,12 +42,8 @@ pathfinderSettingsKind: {
 // schema can enforce "only one"; the client always reads and writes the name
 // "default"; resources with any other name are ignored by Pathfinder.
 //
-// Enforcement note (manifest-only deploy posture, see PR #64): in production this
-// kind is served by a shared generic apiserver directly from the generated CRD
-// schema. The hand-written Go handlers in pkg/plugin are NOT in the production
-// request path. The CUE schema below is therefore the ONLY enforcement surface
-// that ships, so every invariant we can express is pushed into it: value domains
-// and bounds. Tenant defaults belong to the client and OpenFeature.
+// The SDK provider validates tenant requests. The resource schema also enforces
+// field constraints on writes to the backing API server.
 //
 // Tenant fields are sparse overrides: absence follows client defaults and system
 // feature flags rather than storing their evaluated values. An explicit false

@@ -1,3 +1,4 @@
+import type { ActiveConditionalBranch } from '../lib/guide-stats/conditional-progress';
 import { bundledTutorialContentKey } from '../lib/bundled-tutorial-identity';
 // Freeze pre-inlining positions together with their denominator; migrated tutorials may load a new revision.
 
@@ -5,8 +6,8 @@ import type { ChoiceProgressModel } from '../lib/guide-stats/choice-progress';
 import { evaluateChoiceConditions } from '../lib/choice-response';
 import type { GuideBlockIndex } from '../lib/guide-stats';
 
-/** Where the frozen denominator came from. Reported in telemetry, never branched on by UI. */
-export type ActiveGuideIndexDenominatorSource = 'live-pre-inlining' | 'live-post-inlining-degraded';
+/** Where the frozen denominator came from. Kept on the index; no production consumer reads it today. */
+export type ActiveGuideIndexDenominatorSource = 'live-pre-inlining';
 
 export interface ActiveGuideIndex {
   contentKey: string;
@@ -17,6 +18,30 @@ export interface ActiveGuideIndex {
   responses?: Readonly<Record<string, unknown>>;
   /** Preview-only completion evidence. Eviction resets it without a storage write. */
   previewChoiceCompletionKeys?: string[];
+}
+
+const conditionalBranches = new Map<string, Map<string, ActiveConditionalBranch>>();
+
+export function getGuideConditionalBranches(contentKey: string): ReadonlyMap<string, ActiveConditionalBranch> {
+  return conditionalBranches.get(bundledTutorialContentKey(contentKey)) ?? new Map();
+}
+
+export function setGuideConditionalBranch(
+  contentKey: string,
+  id: string,
+  branch: ActiveConditionalBranch | undefined
+): void {
+  contentKey = bundledTutorialContentKey(contentKey);
+  const branches = conditionalBranches.get(contentKey) ?? new Map<string, ActiveConditionalBranch>();
+  if (branch) {
+    branches.set(id, branch);
+    conditionalBranches.set(contentKey, branches);
+  } else {
+    branches.delete(id);
+    if (branches.size === 0) {
+      conditionalBranches.delete(contentKey);
+    }
+  }
 }
 
 const activeIndexes = new Map<string, ActiveGuideIndex>();
@@ -160,6 +185,7 @@ export function getGuideIndex(contentKey: string): ActiveGuideIndex | undefined 
 /** Paired with `evictContentCache` — a reset must let the next load recompute a fresh index. */
 export function evictGuideIndex(contentKey: string): void {
   contentKey = bundledTutorialContentKey(contentKey);
+  conditionalBranches.delete(contentKey);
   if (activeIndexes.delete(contentKey)) {
     notifyEvicted();
   }
@@ -167,6 +193,7 @@ export function evictGuideIndex(contentKey: string): void {
 
 /** Paired with `evictAllContentCaches` — "Reset all learning progress". */
 export function evictAllGuideIndexes(): void {
+  conditionalBranches.clear();
   if (activeIndexes.size === 0) {
     return;
   }

@@ -3,8 +3,6 @@
  * executor (tier 1) can reach it.
  */
 
-import type { DataSourceInstanceSettings } from '@grafana/data';
-
 export type SupportedDatasourceType = 'prometheus' | 'loki' | 'tempo' | 'pyroscope';
 
 export const DATASOURCE_TYPE_MAP: Record<string, SupportedDatasourceType> = {
@@ -25,6 +23,6 @@ export const getNormalizedDatasourceType = (type: string): SupportedDatasourceTy
   return DATASOURCE_TYPE_MAP[type] || null;
 };
 
-export const filterSupportedDatasources = (datasources: DataSourceInstanceSettings[]): DataSourceInstanceSettings[] => {
+export const filterSupportedDatasources = <T extends { type: string }>(datasources: T[]): T[] => {
   return datasources.filter((ds) => isSupportedDatasourceType(ds.type));
 };

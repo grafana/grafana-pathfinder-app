@@ -145,7 +145,7 @@ async function readStoredGuide(resourceName: string): Promise<BackendGuide | und
     if (status === 404) {
       return undefined;
     }
-    // Grafana errors carry `data.message`; the plugin proxy writes its reason as `data.error`.
+    // Grafana errors carry `data.message`; the SDK handler returns its reason as `data.error`.
     const data = (err as { data?: { message?: string; error?: string } } | null)?.data;
     const reason = data?.message || data?.error || (err instanceof Error ? err.message : 'request failed');
     const suffix = status === undefined ? '' : ` (HTTP ${status})`;
@@ -297,7 +297,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
         // would drop spec.manifest and the provenance annotations, and with no resourceVersion it
         // would not even 409 against a concurrent writer.
         if (existingResourceName && !existing) {
-          throw new Error(`Could not read the saved guide "${existingResourceName}" — try saving again.`);
+          throw Object.assign(new Error(`Could not read the saved guide "${existingResourceName}"`), { status: 404 });
         }
 
         // Caller metadata wins per field: its resourceVersion is the version the editor's content is
@@ -359,7 +359,7 @@ export function useBackendGuides(): UseBackendGuidesReturn {
       try {
         const existing = await readStoredGuide(resourceName);
         if (!existing) {
-          throw new Error(`Guide "${resourceName}" was not found on the server`);
+          throw Object.assign(new Error(`Guide "${resourceName}" was not found on the server`), { status: 404 });
         }
 
         const response = await lastValueFrom(

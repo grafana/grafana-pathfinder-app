@@ -16,6 +16,7 @@ import (
 	awards "github.com/grafana/grafana-pathfinder-app/pkg/generated/achievementaward/v1alpha1"
 	progress "github.com/grafana/grafana-pathfinder-app/pkg/generated/achievementprogress/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type AchievementClients struct{ progress, awards resource.Client }
@@ -103,6 +104,18 @@ func (c *AchievementClients) IsAbsent(err error, kind string) bool {
 	}
 	s := api.Status()
 	return s.Code == 404 && s.Reason == "NotFound" && s.Details != nil && s.Details.Group == "pathfinderbackend.ext.grafana.app" && s.Details.Kind == kind && s.Details.Name != ""
+}
+
+func (c *AchievementClients) Rejection(err error) (string, bool) {
+	var api apierrors.APIStatus
+	if !errors.As(err, &api) {
+		return "", false
+	}
+	s := api.Status()
+	if s.Code != http.StatusUnprocessableEntity || s.Reason != metav1.StatusReasonInvalid {
+		return "", false
+	}
+	return s.Message, true
 }
 
 func AchievementConfig(config rest.Config) rest.Config {

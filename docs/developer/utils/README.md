@@ -164,7 +164,7 @@ The only top-level hook in `src/utils/` is `usePublishedGuides.ts`. Development-
 **Role**:
 
 - Provides React context for plugin props
-- Updates plugin settings through Grafana's backend service
+- Reads and updates plugin settings through `@grafana/plugin-compat` (`getPluginSettings`, `updateAppPluginSettings`)
 
 **Key Exports**:
 
