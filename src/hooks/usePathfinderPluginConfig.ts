@@ -58,8 +58,13 @@ function withPerUserSettings(jsonData: PathfinderPluginConfig): PathfinderPlugin
   const legacy = hasLegacyDevModeOptIn(jsonData);
   if (legacy) {
     adoptLegacyDevModeOptIn();
+    return { ...jsonData, devModeOptIn: true };
   }
-  return { ...jsonData, devModeOptIn: legacy };
+  // No per-user choice recorded in this browser: honour a provisioned opt-in
+  // (jsonData.devModeOptIn) as the instance default, so an admin can enable
+  // developer mode through provisioning without every user toggling it by hand.
+  // An explicit per-user choice (handled above) still wins.
+  return { ...jsonData, devModeOptIn: jsonData.devModeOptIn ?? false };
 }
 
 async function resolvePathfinderSettings(useCachedAbsence: boolean): Promise<PathfinderPluginConfig> {
