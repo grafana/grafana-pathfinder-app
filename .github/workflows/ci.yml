@@ -237,7 +237,7 @@ jobs:
 
       - name: Setup Go environment
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: go.mod
 
@@ -270,7 +270,7 @@ jobs:
 
       - name: Setup Go environment
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: go.mod
 
@@ -327,7 +327,7 @@ jobs:
 
       - name: Setup Go environment
         if: steps.check-for-backend.outputs.has-backend == 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: go.mod
 
@@ -574,9 +574,10 @@ jobs:
       - name: Resolve Grafana E2E versions
         id: resolve-versions
         if: steps.check-for-e2e.outputs.has-e2e == 'true'
-        uses: grafana/plugin-actions/e2e-version@c246b748568a80db2a20ab5c65ff01b8b4f342c4 # e2e-version/v1.2.0
+        uses: grafana/plugin-actions/e2e-version@e7022755532ccbdcd470c999be9155e7d257dd8a # e2e-version/v4.0.1
         with:
-          skip-grafana-react-19-preview-image: false
+          grafana-image: grafana-enterprise
+          skip-grafana-nightly-image: true
 
   playwright-tests:
     needs: [resolve-versions, build]
@@ -586,7 +587,14 @@ jobs:
       fail-fast: false
       matrix:
         GRAFANA_IMAGE: ${{ fromJson(needs.resolve-versions.outputs.matrix) }}
-    name: e2e test ${{ matrix.GRAFANA_IMAGE.name }}@${{ matrix.GRAFANA_IMAGE.VERSION }}
+        include:
+          - GRAFANA_IMAGE:
+              name: grafana
+              version: nightly
+          - GRAFANA_IMAGE:
+              name: grafana
+              version: dev-preview-react19
+    name: e2e test ${{ matrix.GRAFANA_IMAGE.name }}@${{ matrix.GRAFANA_IMAGE.version }}
     runs-on: ubuntu-latest
     permissions:
       contents: read # Read repository contents
@@ -618,7 +626,7 @@ jobs:
       - name: Start Grafana
         run: |
           docker compose pull
-          ANONYMOUS_AUTH_ENABLED=false DEVELOPMENT=false GRAFANA_VERSION=${{ matrix.GRAFANA_IMAGE.VERSION }} GRAFANA_IMAGE=${{ matrix.GRAFANA_IMAGE.NAME }} docker compose up -d
+          ANONYMOUS_AUTH_ENABLED=false DEVELOPMENT=false GRAFANA_VERSION=${{ matrix.GRAFANA_IMAGE.version }} GRAFANA_IMAGE=${{ matrix.GRAFANA_IMAGE.name }} docker compose up -d
 
       - name: Wait for grafana server
         uses: grafana/plugin-actions/wait-for-grafana@4698961fa64137fcac207108397ebe8a738a33d1
@@ -631,8 +639,8 @@ jobs:
       - name: Run Playwright tests
         id: run-tests
         env:
-          GRAFANA_TEST_IMAGE_VERSION: ${{ matrix.GRAFANA_IMAGE.VERSION }}
-        run: npm run e2e
+          GRAFANA_TEST_IMAGE_VERSION: ${{ matrix.GRAFANA_IMAGE.version }}
+        run: npm run e2e -- --reporter=line,html
 
       - name: Upload e2e test summary
         uses: grafana/plugin-actions/playwright-gh-pages/upload-report-artifacts@4698961fa64137fcac207108397ebe8a738a33d1
@@ -655,7 +663,7 @@ jobs:
       #   uses: actions/upload-artifact@v4
       #   if: ${{ always() && steps.run-tests.outcome == 'failure' }}
       #   with:
-      #     name: ${{ matrix.GRAFANA_IMAGE.NAME }}-v${{ matrix.GRAFANA_IMAGE.VERSION }}-${{github.run_id}}-server-log
+      #     name: ${{ matrix.GRAFANA_IMAGE.name }}-v${{ matrix.GRAFANA_IMAGE.version }}-${{github.run_id}}-server-log
       #     path: grafana-server.log
       #     retention-days: 5
 

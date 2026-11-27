@@ -50,7 +50,7 @@ import {
   primeCompletionSession,
   readQueuedFacts,
   readStoredProgress,
-  seedRestoredTab,
+  seedRestoredTabs,
   stubAppPlatformGuide,
   waitForFooterHydrated,
   waitForQueuedFacts,
@@ -301,7 +301,7 @@ test.describe('completion tracking', () => {
     test('the same bundled guide launched by package path', async ({ page }) => {
       await primeCompletionSession(page);
       await page.goto('/');
-      await seedRestoredTab(page, {
+      await seedRestoredTabs(page, {
         id: 'restored-bundled-package-path',
         title: BUNDLED_GUIDE_TITLE,
         baseUrl: `bundled:${BUNDLED_GUIDE_ID}/content.json`,
@@ -471,9 +471,14 @@ test.describe('completion tracking', () => {
     const guideA = fixtureContentUrl(STANDALONE_GUIDE);
     const second = PATH_MILESTONES[0]!;
     const guideB = fixtureContentUrl(second);
-    await launchDoc(page, guideB);
-    await waitForFooterHydrated(page);
-    await launchDoc(page, guideA);
+    await page.goto('/');
+    await seedRestoredTabs(
+      page,
+      { id: STANDALONE_GUIDE.id, title: STANDALONE_GUIDE.title, baseUrl: guideA, type: 'interactive' },
+      { id: second.id, title: second.title, baseUrl: guideB, type: 'interactive' }
+    );
+    await page.reload();
+    await openDocsPanel(page);
     await expect(page.getByText('Guide step 1', { exact: true })).toBeVisible();
     await completeInteractiveStep(page);
     const earned = expectedPercentAtPosition(STANDALONE_GUIDE, fixtureCompletablePosition(STANDALONE_GUIDE, 1));

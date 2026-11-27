@@ -222,7 +222,7 @@ test('Escape dismisses an open data source picker before closing kiosk and prese
   );
   await page.goto(`/?pathfinderKiosk=1&kioskRulesUrl=${encodeURIComponent(catalogUrl)}`);
   await page.getByLabel('Your website').fill('https://example.com');
-  const picker = page.getByRole('combobox');
+  const picker = page.getByRole('dialog', { name: 'Kiosk mode' }).getByRole('combobox', { name: /Data source/ });
   await picker.click();
   await expect(page.getByRole('option', { name: 'gdev-testdata' })).toBeVisible();
   await picker.press('Escape');
