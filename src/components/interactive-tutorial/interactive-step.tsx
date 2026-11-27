@@ -1,3 +1,4 @@
+import { recordGuideAction } from '../../lib/guide-action-history';
 import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@grafana/ui';
@@ -736,6 +737,7 @@ export const InteractiveStep = forwardRef<
       setLazyScrollError(null);
       setLastAttemptedAction('show');
 
+      recordGuideAction();
       reportAppInteraction(
         UserInteraction.ShowMeButtonClick,
         buildInteractiveStepProperties(
@@ -855,6 +857,7 @@ export const InteractiveStep = forwardRef<
       setPostVerifyError(null);
       setLazyScrollError(null);
       setLastAttemptedAction('do');
+      recordGuideAction();
       reportAppInteraction(
         UserInteraction.DoItButtonClick,
         buildInteractiveStepProperties(

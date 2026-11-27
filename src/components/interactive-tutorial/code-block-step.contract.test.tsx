@@ -1,6 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+import { hasUsedGuideAction } from '../../lib/guide-action-history';
 import { testIds } from '../../constants/testIds';
 import { markStepCompleted, resetCompletionStoreForTests } from '../../global-state/completion-store';
 import { clearAndInsertCode } from '../../interactive-engine';
@@ -29,6 +30,7 @@ const checkerMock = jest.mocked(useStepChecker);
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  localStorage.clear();
   await interactiveStepStorage.clearAll();
   resetCompletionStoreForTests();
   checkerMock.mockReturnValue({ isEnabled: true, isChecking: false } as ReturnType<typeof useStepChecker>);
@@ -46,7 +48,9 @@ it('exposes the root, Insert control, and explicit successful completion', async
   expect(root()).toHaveAttribute('data-test-step-id', STEP_ID);
   expect(root()).toHaveAttribute('data-test-step-state', 'idle');
   expect(root()).toHaveAttribute('data-test-skippable', 'false');
+  expect(hasUsedGuideAction()).toBe(false);
   fireEvent.click(insert());
+  expect(hasUsedGuideAction()).toBe(true);
 
   await waitFor(() => expect(root()).toHaveAttribute('data-test-step-state', 'completed'));
   expect(insertMock).toHaveBeenCalledWith('#editor', 'up');
@@ -55,7 +59,9 @@ it('exposes the root, Insert control, and explicit successful completion', async
 
 it('keeps Show me distinct from insertion and completion', async () => {
   render(<CodeBlockStep stepId={STEP_ID} code="up" refTarget="#editor" />);
+  expect(hasUsedGuideAction()).toBe(false);
   fireEvent.click(screen.getByTestId(testIds.codeBlock.showMeButton(STEP_ID)));
+  expect(hasUsedGuideAction()).toBe(true);
 
   await waitFor(() => expect(root()).toHaveAttribute('data-test-step-state', 'idle'));
   expect(insertMock).not.toHaveBeenCalled();
