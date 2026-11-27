@@ -1,5 +1,6 @@
 import { NavigationManager } from './navigation-manager';
 import * as elementValidator from '../lib/dom';
+import { addGlobalInteractiveStyles } from '../styles/interactive.overlay.styles';
 
 // Mock the element validator functions
 jest.mock('../lib/dom');
@@ -776,6 +777,50 @@ describe('NavigationManager', () => {
         expect(document.querySelectorAll('.interactive-highlight-dot')).toHaveLength(0);
         expect(document.querySelectorAll('.interactive-comment-box')).toHaveLength(0);
       });
+    });
+
+    describe('highlight variants', () => {
+      const reducedMotionAnimation = (element: Element) =>
+        Array.from(document.styleSheets)
+          .flatMap((sheet) => Array.from(sheet.cssRules))
+          .filter((rule): rule is CSSMediaRule => rule instanceof CSSMediaRule && rule.conditionText.includes('reduce'))
+          .flatMap((rule) => Array.from(rule.cssRules) as CSSStyleRule[])
+          .filter((rule) => element.matches(rule.selectorText))
+          .map((rule) => rule.style.getPropertyValue('animation'))
+          .find(Boolean);
+
+      beforeEach(() => {
+        document.getElementById('interactive-global-styles')?.remove();
+        addGlobalInteractiveStyles();
+      });
+
+      it.each([
+        ['normal outline', 50, true, 'interactive-highlight-outline'],
+        ['persistent outline', 50, false, 'interactive-highlight-outline interactive-highlight-persistent'],
+        ['normal dot', 5, true, 'interactive-highlight-dot'],
+        ['persistent dot', 5, false, 'interactive-highlight-dot interactive-highlight-persistent'],
+      ])(
+        'renders the %s without catching clicks or moving under reduced motion',
+        async (_name, size, autoCleanup, className) => {
+          mockElement.getBoundingClientRect = jest.fn().mockReturnValue({
+            top: 100,
+            left: 100,
+            bottom: 100 + size,
+            right: 100 + size,
+            width: size,
+            height: size,
+          });
+
+          await navigationManager.highlightWithComment(mockElement, undefined, autoCleanup);
+
+          const highlight = document.querySelector<HTMLElement>(
+            '.interactive-highlight-outline, .interactive-highlight-dot'
+          )!;
+          expect(highlight.className).toBe(className);
+          expect(getComputedStyle(highlight).pointerEvents).toBe('none');
+          expect(reducedMotionAnimation(highlight)).toBe('none');
+        }
+      );
     });
 
     describe('position tracking', () => {
