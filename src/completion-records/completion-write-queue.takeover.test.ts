@@ -179,35 +179,56 @@ it('reports a failed replacement as non-durable and reloads the previous record'
   expect(reloaded.list().map((item) => item.id)).toEqual([attemptWriteId(attemptId, 50)]);
 });
 
-it('exposes a volatile replacement as accepted after refresh and duplicate enqueue', async () => {
+function memoryOnlyReplacement(ownerKey: string) {
   const attemptId = 'b'.repeat(32);
   const partial = completionBody(50, attemptId);
   const complete = completionBody(100, attemptId);
-  const storage = createCompletionWriteStorage('failed-replacement-duplicate', 'before-reload');
-  const response = heldResponse();
-  const queue = createWriteQueue({ now: () => Date.parse(partial.completedAt), storage, send: response.send });
   const halfId = attemptWriteId(attemptId, 50);
   const fullId = attemptWriteId(attemptId, 100);
+  const storage = createCompletionWriteStorage(ownerKey, 'before-reload');
+  const response = heldResponse();
+  const queue = createWriteQueue({ now: () => Date.parse(partial.completedAt), storage, send: response.send });
   expect(queue.enqueue(partial, { id: halfId })).toBe(true);
 
   const setItem = Storage.prototype.setItem;
-  const spy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+  const rejectFull = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
     if (key.endsWith(fullId)) {
       throw new Error('storage write failed');
     }
     return setItem.call(this, key, value);
   });
-  try {
-    expect(queue.enqueue(complete, { id: fullId })).toBe(false);
-  } finally {
-    spy.mockRestore();
-  }
-
+  expect(queue.enqueue(complete, { id: fullId })).toBe(false);
   const pass = queue.processDue();
   expect(response.send).toHaveBeenCalledWith(complete, fullId);
+
+  const reloadedIds = () =>
+    createCompletionWriteStorage(ownerKey, 'after-reload')
+      .list()
+      .map((item) => item.id);
+  return { queue, complete, halfId, fullId, response, pass, rejectFull, reloadedIds };
+}
+
+it('rejects a duplicate of a memory-only replacement while storage still fails', async () => {
+  const { queue, complete, halfId, fullId, response, pass, rejectFull, reloadedIds } =
+    memoryOnlyReplacement('failed-replacement-duplicate');
+  try {
+    expect(queue.enqueue(complete, { id: fullId })).toBe(false);
+    expect(reloadedIds()).toEqual([halfId]);
+  } finally {
+    rejectFull.mockRestore();
+  }
+
+  response.finish({ kind: 'created' });
+  await pass;
+});
+
+it('accepts a duplicate of a memory-only replacement once storage saves it', async () => {
+  const { queue, complete, fullId, response, pass, rejectFull, reloadedIds } =
+    memoryOnlyReplacement('failed-replacement-recovery');
+  rejectFull.mockRestore();
+
   expect(queue.enqueue(complete, { id: fullId })).toBe(true);
-  const reloaded = createCompletionWriteStorage('failed-replacement-duplicate', 'after-reload');
-  expect(reloaded.list().map((item) => item.id)).toEqual([halfId]);
+  expect(reloadedIds()).toEqual([fullId]);
 
   response.finish({ kind: 'created' });
   await pass;

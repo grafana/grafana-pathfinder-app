@@ -34,11 +34,21 @@ Refresh ==
     /\ stage' = "refreshed"
     /\ UNCHANGED <<disk, volatile, accepted, lastPutFailed, reloaded>>
 
-DuplicateFull ==
-    /\ stage = "refreshed" /\ Full \in memory
-    /\ accepted' = TRUE
+DuplicateFullWriteSuccess ==
+    /\ stage = "refreshed" /\ Full \in memory /\ Full \notin disk
+    /\ disk' = (disk \ {Half}) \cup {Full}
+    /\ memory' = memory \ {Half}
+    /\ volatile' = volatile \ {Full}
+    /\ accepted' = TRUE /\ lastPutFailed' = FALSE
     /\ stage' = "duplicate"
-    /\ UNCHANGED <<disk, memory, volatile, lastPutFailed, reloaded>>
+    /\ UNCHANGED reloaded
+
+DuplicateFullWriteFailure ==
+    /\ stage = "refreshed" /\ Full \in memory /\ Full \notin disk
+    /\ volatile' = volatile \cup {Full}
+    /\ accepted' = FALSE /\ lastPutFailed' = TRUE
+    /\ stage' = "duplicate"
+    /\ UNCHANGED <<disk, memory, reloaded>>
 
 Reload ==
     /\ stage \in {"written", "failed", "refreshed", "duplicate"} /\ ~reloaded
@@ -48,7 +58,7 @@ Reload ==
     /\ stage' = "reloaded"
     /\ UNCHANGED <<disk, accepted, lastPutFailed>>
 
-Next == PutReplacementSuccess \/ PutReplacementFailure \/ Refresh \/ DuplicateFull \/ Reload
+Next == PutReplacementSuccess \/ PutReplacementFailure \/ Refresh \/ DuplicateFullWriteSuccess \/ DuplicateFullWriteFailure \/ Reload
 
 DurableAcceptance == ~accepted \/ Full \in disk
 FailedReplacementPreservesOld == ~lastPutFailed \/ Half \in disk
