@@ -263,27 +263,19 @@ async function armPathfinderStorageReset(page: Page): Promise<void> {
   });
 }
 
-/**
- * Persist a single tab and make it active, so the next load restores it.
- *
- * Tab restore is a live launch shape, and the shape that matters here is a
- * persisted tab carrying no `packageInfo`: the content then loads through the
- * plain fetch path with no resolved manifest, which is how a bundled guide
- * comes to be identified by its content key alone.
- */
-export async function seedRestoredTab(
-  page: Page,
-  tab: { id: string; title: string; baseUrl: string; currentUrl?: string; type: string }
-): Promise<void> {
+type RestoredTab = { id: string; title: string; baseUrl: string; currentUrl?: string; type: string };
+
+export async function seedRestoredTabs(page: Page, active: RestoredTab, ...others: RestoredTab[]): Promise<void> {
   await page.evaluate(
-    ({ tabsKey, activeKey, persisted }) => {
-      localStorage.setItem(tabsKey, JSON.stringify([persisted]));
-      localStorage.setItem(activeKey, JSON.stringify(persisted.id));
+    ({ tabsKey, activeKey, tabs, activeId }) => {
+      localStorage.setItem(tabsKey, JSON.stringify(tabs));
+      localStorage.setItem(activeKey, JSON.stringify(activeId));
     },
     {
       tabsKey: StorageKeys.TABS,
       activeKey: StorageKeys.ACTIVE_TAB,
-      persisted: { ...tab, currentUrl: tab.currentUrl ?? tab.baseUrl },
+      tabs: [active, ...others].map((tab) => ({ ...tab, currentUrl: tab.currentUrl ?? tab.baseUrl })),
+      activeId: active.id,
     }
   );
 }
