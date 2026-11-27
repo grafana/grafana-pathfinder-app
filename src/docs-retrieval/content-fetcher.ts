@@ -17,6 +17,7 @@ import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
 import { logger } from '../lib/logging';
 import { contentFileSiblingUrl } from '../lib/guide-content-file';
+import { fetchPrivateCDNContent, PRIVATE_CDN_GUIDE, PRIVATE_CDN_REF } from '../lib/private-cdn-client';
 import { getPrTestFetchId, stripPrTestMarker, withPrTestMarker } from '../lib/pr-test-marker';
 import { recordContentFetch, recordContentFetchFallback, type ContentFetchTier } from '../lib/telemetry';
 
@@ -91,6 +92,36 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       if (url.startsWith('backend-guide:')) {
         tier = 'backend-guide';
         return restorePrTestMarker(await fetchBackendInteractive(stripPrTestMarker(url), options.loadContext), url);
+      }
+      if (url === PRIVATE_CDN_REF) {
+        try {
+          const content = await fetchPrivateCDNContent();
+          const guide = JSON.parse(content) as { id?: unknown; title?: unknown; blocks?: unknown };
+          if (guide.id !== PRIVATE_CDN_GUIDE || typeof guide.title !== 'string' || !Array.isArray(guide.blocks)) {
+            throw new Error('Invalid private guide');
+          }
+          return {
+            content: {
+              content,
+              metadata: {
+                title: guide.title,
+                repository: 'private-cdn',
+                packageManifest: { id: PRIVATE_CDN_GUIDE, type: 'guide', repository: 'private-cdn' },
+              },
+              type: 'interactive',
+              url,
+              lastFetched: new Date().toISOString(),
+              isNativeJson: true,
+            },
+          };
+        } catch {
+          return {
+            content: null,
+            error: 'Private guide is unavailable',
+            errorType: 'other',
+            diagnostic: { source: 'other', stage: 'fetch', reason: 'backend-unavailable' },
+          };
+        }
       }
 
       // SECURITY: Validate URL is from a trusted source before fetching

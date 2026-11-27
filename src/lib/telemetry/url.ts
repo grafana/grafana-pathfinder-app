@@ -12,6 +12,7 @@ export function normalizeTelemetryUrl(url: string): string {
   }
   if (
     url.startsWith('backend-guide:') ||
+    url.startsWith('private-cdn:') ||
     url.startsWith('app-platform:') ||
     url.includes('/interactiveguides/') ||
     url.includes('/api/v1/packages/')

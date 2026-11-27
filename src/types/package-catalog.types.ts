@@ -8,7 +8,7 @@ export interface CatalogPackage {
   title: string;
   description?: string;
   format: 'guide' | 'path';
-  source: 'grafana' | 'organization';
+  source: 'grafana' | 'organization' | 'private-cdn';
   category?: string;
   targeting?: GuideTargeting;
   url: string;
@@ -31,7 +31,7 @@ export interface EligibleCatalogEntry {
 export interface CatalogFilters {
   query: string;
   format: 'all' | 'guide' | 'path';
-  source: 'all' | 'grafana' | 'organization';
+  source: 'all' | 'grafana' | 'organization' | 'private-cdn';
   category: string;
 }
 

@@ -156,7 +156,7 @@ export const getPackageBrowserStyles = (theme: GrafanaTheme2) => ({
   }),
   sourceSegments: css({
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr)',
+    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1.3fr)',
     minWidth: 0,
     border: `1px solid ${theme.colors.border.medium}`,
     borderRadius: theme.shape.radius.default,

@@ -120,6 +120,26 @@ it('freshly validates a private package and rejects unpublished content without 
   expect(result.current.launchError?.key).toBe('app-platform:guide');
 });
 
+it('opens a granted CDN guide by stable reference without sending its title or URL to analytics', async () => {
+  const privateEntry: CatalogPackage = {
+    ...entry,
+    key: 'private-cdn:builders-observability-foundations',
+    id: 'builders-observability-foundations',
+    source: 'private-cdn',
+    url: 'private-cdn:builders-observability-foundations',
+  };
+  const { result } = renderHook(() => useCatalogLaunch([privateEntry], 'stack:13:user:1367', progress));
+  await act(async () => {
+    await result.current.launch(privateEntry);
+  });
+  expect(mockResolve).not.toHaveBeenCalled();
+  expect(prepareMock).toHaveBeenCalledWith(privateEntry.url, expect.objectContaining({ title: privateEntry.title }));
+  expect(reportAppInteraction).toHaveBeenCalledWith(UserInteraction.OpenResourceClick, {
+    interaction_location: 'my_learning_continue',
+    content_type: 'interactive-guide',
+  });
+});
+
 it('resumes the next existing curated member without writing enrollment or progress', async () => {
   const path: CatalogPackage = {
     ...entry,

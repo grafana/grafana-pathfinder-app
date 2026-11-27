@@ -15,6 +15,7 @@ import { fetchOnlinePackageRecommendations } from '../lib/package-recommendation
 import { fetchEligibleCatalog } from '../lib/eligible-catalog-client';
 import { getRecommenderStackContext } from '../lib/recommender-context';
 import { fetchCustomGuideCatalogue } from '../lib/custom-guide-repository-client';
+import { fetchPrivateCDNCatalogue, PRIVATE_CDN_REF } from '../lib/private-cdn-client';
 import { getPathsData } from './paths-data';
 
 const ABSENT_ORGANIZATION_CAPABILITIES = new Set([
@@ -60,6 +61,7 @@ export function usePackageCatalog(
     loading: boolean;
     unavailable: boolean;
   }>();
+  const [privateCDN, setPrivateCDN] = useState<{ scope: string; items: CatalogPackage[]; loading: boolean }>();
 
   useEffect(() => {
     if (!publicEnabled) {
@@ -123,11 +125,39 @@ export function usePackageCatalog(
     };
   }, [enabled, publicOnly, namespace, scope, revision]);
 
+  useEffect(() => {
+    if (!enabled || publicOnly) {
+      return;
+    }
+    let cancelled = false;
+    void fetchPrivateCDNCatalogue().then((entries) => {
+      if (!cancelled) {
+        setPrivateCDN({
+          scope,
+          loading: false,
+          items: entries.map(({ id, title }) => ({
+            key: `private-cdn:${id}`,
+            id,
+            title,
+            format: 'guide',
+            source: 'private-cdn',
+            url: PRIVATE_CDN_REF,
+          })),
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, publicOnly, scope, revision]);
+
   const currentPublic = publicEnabled && online?.key === publicKey ? online : undefined;
   const currentPrivate = enabled && !publicOnly && organization?.scope === scope ? organization : undefined;
+  const currentCDN = enabled && !publicOnly && privateCDN?.scope === scope ? privateCDN : undefined;
   const retry = useCallback(() => {
     setOnline((current) => (current ? { ...current, loading: true } : current));
     setOrganization((current) => (current ? { ...current, loading: true } : current));
+    setPrivateCDN((current) => (current ? { ...current, loading: true } : current));
     setRevision((value) => value + 1);
   }, []);
   const items = useMemo(() => {
@@ -137,14 +167,15 @@ export function usePackageCatalog(
     const official = isDiscovery
       ? eligibleDiscoveryCatalog(local.bundled, currentPublic?.items ?? [], local.curated)
       : mergeCatalog(local.bundled, currentPublic?.items ?? [], local.curated);
-    return mergeCatalog(official, currentPrivate?.items ?? []);
-  }, [enabled, isDiscovery, local, currentPublic, currentPrivate]);
+    return mergeCatalog(official, currentPrivate?.items ?? [], currentCDN?.items ?? []);
+  }, [enabled, isDiscovery, local, currentPublic, currentPrivate, currentCDN]);
   return {
     scope,
     items,
     loading:
       (publicEnabled && (currentPublic?.loading ?? true)) ||
-      (enabled && !publicOnly && (currentPrivate?.loading ?? true)),
+      (enabled && !publicOnly && (currentPrivate?.loading ?? true)) ||
+      (enabled && !publicOnly && (currentCDN?.loading ?? true)),
     publicUnavailable: currentPublic?.unavailable ?? false,
     privateUnavailable: currentPrivate?.unavailable ?? false,
     retry,

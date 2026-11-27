@@ -191,6 +191,11 @@ describe('Localhost URL validators', () => {
       expect(isAllowedContentUrl('api:my-custom-guide')).toBe(true);
     });
 
+    it('allows only the fixed private CDN guide reference', () => {
+      expect(isAllowedContentUrl('private-cdn:builders-observability-foundations')).toBe(true);
+      expect(isAllowedContentUrl('private-cdn:other')).toBe(false);
+    });
+
     it('should always allow Grafana docs URLs', () => {
       expect(isAllowedContentUrl('https://grafana.com/docs/grafana/latest/')).toBe(true);
       expect(isAllowedContentUrl('https://grafana.com/tutorials/getting-started/')).toBe(true);
