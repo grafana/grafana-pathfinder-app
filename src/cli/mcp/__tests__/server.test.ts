@@ -648,7 +648,7 @@ describe('MCP server', () => {
       expect(requiredByType?.input).not.toContain('variable-name');
 
       // Buckets follow declared roles: `id` is the address, requiredness rides on the
-      // parameter rather than the bucket, and `orphanChildren` is withheld.
+      // parameter rather than the bucket, and `orphanChildren` and `pruneTranslations` are withheld.
       const remove = await callTool(client, 'pathfinder_help', { command: 'remove-block' });
       expect(remove.addressing).toEqual(
         expect.arrayContaining([expect.objectContaining({ name: 'id', required: true })])
@@ -661,7 +661,7 @@ describe('MCP server', () => {
         ...(remove.optional as Array<{ name: string }>),
         ...((remove.addressing as Array<{ name: string }> | undefined) ?? []),
       ].map((parameter) => parameter.name);
-      for (const withheld of ['dir', 'orphanChildren']) {
+      for (const withheld of ['dir', 'orphanChildren', 'pruneTranslations']) {
         expect(removeParameters).not.toContain(withheld);
       }
 

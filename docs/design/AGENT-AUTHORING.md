@@ -342,9 +342,12 @@ Remove a block by ID. Validates the package after removal.
 ```
 pathfinder-cli remove-block <dir> <id>
   --cascade                           Also remove all child blocks (required for non-empty containers)
+  --prune-translations                Also delete the removed blocks' entries from every i18n/<tag>.json
 ```
 
 Without `--cascade`, the command fails if the block is a container with children. This prevents accidental loss of content authored inside a container.
+
+In a package with translation sidecars, a successful removal lists the sidecar entries it orphaned (`i18n/ja.json: blocks.setup`, and `blocks.<id>.steps.<step>` for steps), including those of cascaded children. `--prune-translations` deletes them. Without it the sidecars are not touched. The MCP `pathfinder_manage_block` tool does not expose the flag.
 
 **Output on success (leaf block):**
 
