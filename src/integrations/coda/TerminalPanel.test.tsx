@@ -10,8 +10,6 @@ import { testIds } from '../../constants/testIds';
 
 jest.mock('./useTerminalLive.hook', () => ({ useTerminalLive: jest.fn() }));
 
-jest.mock('./useGcxCredential.hook', () => ({ useGcxCredential: () => ({}) }));
-jest.mock('./GcxSetupPanel', () => ({ GcxReadyLine: () => null, GcxSetupPanel: () => null }));
 jest.mock('./WorkspaceLink', () => ({ WorkspaceLink: () => null }));
 jest.mock('@xterm/xterm', () => ({
   Terminal: jest.fn(() => ({
@@ -147,7 +145,6 @@ it('keeps the toolbar extension request mounted across collapse and retry', asyn
   try {
     openPanel();
     const extension = await screen.findByRole('button', { name: 'Extend by 30 minutes' });
-    expect(extension.parentElement).toBe(screen.getByTestId(testIds.codaTerminal.gcxButton).parentElement);
     fireEvent.click(extension);
     expect(screen.getByRole('button', { name: 'Extending…' })).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(screen.getByTestId(testIds.codaTerminal.collapseButton));

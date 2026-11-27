@@ -339,7 +339,6 @@ it('uses Continue for an already connected default sandbox', async () => {
 });
 
 it.each([
-  ['data-test-terminal-gcx', 'true', 'gcx'],
   ['data-test-terminal-unavailable', 'true', 'Sandbox unavailable'],
   ['data-test-terminal-vm-requested', 'true', 'requested sandbox'],
   ['data-test-step-state', 'requirements-unmet', 'Sandbox unavailable'],

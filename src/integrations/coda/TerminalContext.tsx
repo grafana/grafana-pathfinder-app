@@ -12,7 +12,6 @@
 import React, { createContext, useContext, useCallback, useRef, useState, useEffect } from 'react';
 import { TERMINAL_STATUS_CHANGED_EVENT } from '../../lib/event-names';
 import type { ConnectionStatus, TerminalVMOptions } from './useTerminalLive.hook';
-import { invalidateGcxCredentialForSession } from './gcx-credential-store';
 import { setLastVmOpts } from './terminal-storage';
 import { logger } from '../../lib/logging';
 
@@ -80,7 +79,6 @@ export interface TerminalContextValue {
   _register: (opts: {
     status: ConnectionStatus;
     sessionId: string | null;
-    vmId?: string | null;
     error: string | null;
     connect: (vmOpts?: TerminalVMOptions) => void;
     disconnect: () => void;
@@ -181,7 +179,6 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     (opts: {
       status: ConnectionStatus;
       sessionId: string | null;
-      vmId?: string | null;
       error: string | null;
       connect: (vmOpts?: TerminalVMOptions) => void;
       disconnect: () => void;
@@ -194,7 +191,6 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
       registeredConnectRef.current = opts.connect;
       registeredDisconnectRef.current = opts.disconnect;
       registeredSendCommandRef.current = opts.sendCommand;
-      invalidateGcxCredentialForSession(opts.sessionId, opts.vmId ?? null);
       settleWaiters(opts.status, opts.sessionId);
 
       // When a disconnect/error originates outside openTerminal (e.g. panel button,
@@ -240,7 +236,6 @@ export function TerminalProvider({ children }: TerminalProviderProps) {
     setRegisteredStatus('disconnected');
     setRegisteredSessionId(null);
     setRegisteredError(null);
-    invalidateGcxCredentialForSession(null, null);
   }, [disconnect]);
 
   const sendCommand = useCallback(async (command: string) => {

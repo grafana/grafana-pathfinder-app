@@ -14,7 +14,6 @@ async function loadFixture(
     outcome?: 'complete' | 'error' | 'detach' | 'disconnect' | 'hang';
     connected?: boolean;
     continueRequired?: boolean;
-    gcx?: boolean;
     unavailable?: boolean;
     customVm?: boolean;
     skippable?: boolean;
@@ -26,11 +25,10 @@ async function loadFixture(
   await page.setContent(`
     <div data-test-step-kind="terminal-connect" data-test-step-id="connect" data-test-step-state="idle"
          data-testid="${testIds.interactive.terminalConnectStep('connect')}"
-         data-test-terminal-status="disconnected" data-test-terminal-gcx="false"
+         data-test-terminal-status="disconnected"
          data-test-terminal-unavailable="false" data-test-terminal-checking="false">
       <button data-testid="${testIds.interactive.terminalConnectButton('connect')}">Custom connect label</button>
       <button hidden data-testid="${testIds.interactive.terminalSkipButton('connect')}">Continue</button>
-      <button data-testid="${testIds.interactive.gcxSkipButton('connect')}">Continue without gcx</button>
     </div>
     <div data-test-step-kind="terminal" data-test-step-id="command" data-test-step-state="idle"
          data-testid="${testIds.interactive.terminalStep('command')}" data-test-skippable="false"
@@ -63,7 +61,6 @@ async function loadFixture(
       if (options.connected) {
         makeConnected();
       }
-      connect.setAttribute('data-test-terminal-gcx', String(!!options.gcx));
       connect.setAttribute('data-test-terminal-vm-requested', String(!!options.customVm));
       command.setAttribute('data-test-skippable', String(!!options.skippable));
       if (options.requirementsUnmet) {
@@ -387,19 +384,6 @@ test('refuses missing Coda and stops before the command', async ({ page }) => {
   });
   expect(result.results[1]).toMatchObject({ status: 'not_reached' });
   await expect(page.locator('body')).toHaveAttribute('data-connect-count', '0');
-});
-
-test('does not mint or skip gcx credentials', async ({ page }) => {
-  const { steps } = await loadFixture(page, { gcx: true });
-  expect(await executeStep(page, steps[0]!)).toMatchObject({
-    status: 'failed',
-    error: expect.stringContaining('gcx credential provisioning is not supported'),
-  });
-  await expect(page.locator('body')).toHaveAttribute('data-connect-count', '0');
-  await expect(page.getByTestId(testIds.interactive.terminalConnectStep('connect'))).toHaveAttribute(
-    'data-test-step-state',
-    'idle'
-  );
 });
 
 test('refuses to substitute an existing sandbox for explicit VM options', async ({ page }) => {

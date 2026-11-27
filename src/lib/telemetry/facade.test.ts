@@ -12,7 +12,6 @@ import {
   recordStartupSettings,
   recordPanelReady,
   recordAssignmentsUnavailable,
-  recordGcxCredentialDegradation,
   recordPackageIndex,
   recordProxyFailure,
   recordSandboxUnavailable,
@@ -234,13 +233,6 @@ describe('snake_case conversion of kebab-case vocabularies', () => {
     expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_sandbox_unavailable', {
       reason: 'plugin_missing',
       blockType: 'terminal_connect',
-    });
-  });
-
-  it('recordGcxCredentialDegradation converts the reason', () => {
-    recordGcxCredentialDegradation('account-outranks-caller');
-    expect(mockPushFaroEvent).toHaveBeenCalledWith('pathfinder_gcx_credential_degraded', {
-      reason: 'account_outranks_caller',
     });
   });
 

@@ -710,7 +710,7 @@ export const JsonTerminalConnectBlockSchema = z.object({
   credentials: z
     .array(z.object({ tool: z.literal('gcx') }).strict())
     .optional()
-    .describe('Named tools that need Grafana credentials'),
+    .describe('Legacy credential requests; accepted for published guides and ignored'),
   ...AuthorAnnotatedSchema.shape,
 });
 

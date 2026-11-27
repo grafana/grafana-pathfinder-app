@@ -3,8 +3,8 @@
  *
  * The form rebuilds the block object from scratch on submit, so any field it
  * does not know about is silently dropped the moment an author opens an existing
- * block for editing. `gcx` is therefore only durable if the form carries it —
- * which is what these tests pin.
+ * block for editing. Legacy `credentials` are therefore only durable if the
+ * form carries them — which is what these tests pin.
  */
 
 import React from 'react';
@@ -61,8 +61,8 @@ function submitted(onSubmit: jest.Mock): JsonTerminalConnectBlock {
   return onSubmit.mock.calls[0]![0] as JsonTerminalConnectBlock;
 }
 
-describe('TerminalConnectBlockForm gcx', () => {
-  it('omits gcx entirely when the author leaves it off', () => {
+describe('TerminalConnectBlockForm legacy credentials', () => {
+  it('omits credentials entirely when the author leaves it off', () => {
     const onSubmit = renderForm();
     fireEvent.change(screen.getByPlaceholderText(/Click the button below/), { target: { value: 'Connect' } });
 
@@ -70,29 +70,14 @@ describe('TerminalConnectBlockForm gcx', () => {
     expect(submitted(onSubmit)).not.toHaveProperty('credentials');
   });
 
-  it('emits a named credential request when the author ticks it', () => {
-    const onSubmit = renderForm();
-    fireEvent.change(screen.getByPlaceholderText(/Click the button below/), { target: { value: 'Connect' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: /set up gcx/i }));
+  it('preserves credentials across an edit round-trip', () => {
+    const onSubmit = renderForm({ type: 'terminal-connect', content: 'Connect', credentials: [{ tool: 'gcx' }] });
 
+    expect(screen.queryByRole('checkbox', { name: /set up gcx/i })).not.toBeInTheDocument();
     expect(submitted(onSubmit).credentials).toEqual([{ tool: 'gcx' }]);
   });
 
-  it('preserves gcx across an edit round-trip', () => {
-    const onSubmit = renderForm({ type: 'terminal-connect', content: 'Connect', credentials: [{ tool: 'gcx' }] });
-
-    expect(screen.getByRole('checkbox', { name: /set up gcx/i })).toBeChecked();
-    expect(submitted(onSubmit).credentials).toEqual([{ tool: 'gcx' }]);
-  });
-
-  it('lets an author turn gcx back off', () => {
-    const onSubmit = renderForm({ type: 'terminal-connect', content: 'Connect', credentials: [{ tool: 'gcx' }] });
-    fireEvent.click(screen.getByRole('checkbox', { name: /set up gcx/i }));
-
-    expect(submitted(onSubmit)).not.toHaveProperty('credentials');
-  });
-
-  it('keeps gcx alongside the VM options', () => {
+  it('keeps credentials alongside the VM options', () => {
     const onSubmit = renderForm({
       type: 'terminal-connect',
       content: 'Connect',

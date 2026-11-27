@@ -141,10 +141,6 @@ export enum UserInteraction {
   SectionRecoveryRestore = 'section_recovery_restore',
   SectionRecoveryResolved = 'section_recovery_resolved',
 
-  // Sandbox gcx credentials
-  GcxCredentialInstalled = 'gcx_credential_installed',
-  GcxSetupSkipped = 'gcx_setup_skipped',
-
   // AI auto-heal
   AiFixOffered = 'ai_fix_offered',
   AiFixAccepted = 'ai_fix_accepted',

@@ -192,13 +192,12 @@ function terminalDriver(kind: TerminalKind): StepDriver {
         }
         await page.waitForTimeout(Math.min(COMPLETION_POLL_INTERVAL_MS, Math.max(1, deadline - Date.now())));
       }
-      const gcx = (await readAttribute('data-test-terminal-gcx')) === 'true';
       const unavailable = (await readAttribute('data-test-terminal-unavailable')) === 'true';
       const existingSandbox =
         kind === 'terminal-connect' &&
         ['connected', 'connecting'].includes((await readAttribute('data-test-terminal-status')) ?? '') &&
         (await readAttribute('data-test-terminal-vm-requested')) === 'true';
-      const unmet = gcx || unavailable || existingSandbox || state === 'requirements-unmet';
+      const unmet = unavailable || existingSandbox || state === 'requirements-unmet';
       const hasSkipButton =
         kind === 'terminal' &&
         (await root.getByTestId(testIds.interactive.terminalSkipButton(step.stepId)).count()) > 0;
@@ -211,11 +210,9 @@ function terminalDriver(kind: TerminalKind): StepDriver {
           hasSkipButton,
           skippable: step.skippable && hasSkipButton,
           isChecking: false,
-          explanationText: gcx
-            ? 'Automatic gcx credential provisioning is not supported by the terminal runner.'
-            : existingSandbox
-              ? "Disconnect the existing terminal before connecting to the guide's requested sandbox."
-              : await textEvidence(root, testIds.interactive.requirementCheck(step.stepId)),
+          explanationText: existingSandbox
+            ? "Disconnect the existing terminal before connecting to the guide's requested sandbox."
+            : await textEvidence(root, testIds.interactive.requirementCheck(step.stepId)),
         },
       };
     },
@@ -239,9 +236,6 @@ function terminalDriver(kind: TerminalKind): StepDriver {
       const root = terminalRoot(page, kind, step.stepId);
       const deadline = Date.now() + timeout;
       const remaining = () => Math.max(1, deadline - Date.now());
-      if ((await root.getAttribute('data-test-terminal-gcx', { timeout: remaining() })) === 'true') {
-        throw new Error('Automatic gcx credential provisioning is not supported by the terminal runner.');
-      }
       const { connection } = await readStatus(root, remaining());
       if (
         kind === 'terminal-connect' &&

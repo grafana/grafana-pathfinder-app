@@ -1069,29 +1069,11 @@ A button that provisions a sandbox VM (via Coda) and opens a terminal panel insi
 | `vmTemplate`  | string | `""` (→ `vm-aws`)   | VM template to provision                                  |
 | `vmApp`       | string | `""`                | App name for `vm-aws-sample-app`                          |
 | `vmScenario`  | string | `""`                | Scenario ID for `vm-aws-alloy-scenario` (may contain `/`) |
-| `credentials` | array  | omitted             | Also install a Grafana credential for the `gcx` CLI       |
+| `credentials` | array  | omitted             | Legacy; accepted for backward compatibility and ignored   |
 
-Inside a section the block gates on sequential position (`isEligibleForChecking`), which is a behavior change: a published guide with a `terminal-connect` step after any other step now shows "Complete previous step" where it previously offered the connect button unconditionally. The gate hides the whole action area, including the `gcx` controls below. The block takes no `requirements` or `skippable`, so position is its only gate and a blocked step offers no skip: the learner has to complete the step before it.
+Inside a section the block gates on sequential position (`isEligibleForChecking`), which is a behavior change: a published guide with a `terminal-connect` step after any other step now shows "Complete previous step" where it previously offered the connect button unconditionally. The block takes no `requirements` or `skippable`, so position is its only gate and a blocked step offers no skip: the learner has to complete the step before it.
 
-With `credentials: [{ "tool": "gcx" }]` the step also gives the VM a credential, so the `gcx` CLI that ships in every sandbox
-image can talk to this Grafana as the learner:
-
-```json
-{
-  "type": "terminal-connect",
-  "content": "Connect a sandbox and set up `gcx`:",
-  "buttonText": "Connect and set up gcx",
-  "vmTemplate": "vm-aws",
-  "credentials": [{ "tool": "gcx" }]
-}
-```
-
-Minting the token needs `serviceaccounts:create`, which is an admin permission by default while sandbox
-sessions are open to editors — so the step offers a pasted service account token as well, and that is the
-path most learners take. A refusal never blocks the guide: the terminal is connected either way, so the
-step offers "Continue without gcx" and later `is-terminal-active` steps still run.
-
-> Backend saves require the credentials schema in [grafana-pathfinder-backend#92](https://github.com/grafana/grafana-pathfinder-backend/pull/92). Deploy it before releasing the frontend. Replace the old `gcx: true` flag in bundled or local guides with the list shown above. Only the tool name belongs in guide JSON; never include a token.
+Published guides may still carry `credentials: [{ "tool": "gcx" }]` from the retired gcx setup. The schema still accepts the field, and the block editor preserves it on save, but nothing reads it: the step renders as an ordinary `terminal-connect` step and completes when the terminal connects. It installs no credential and offers no token prompt. Leave it out of new guides.
 
 See [`CODA.md`](../CODA.md) for the full VM template catalog and lifecycle details.
 

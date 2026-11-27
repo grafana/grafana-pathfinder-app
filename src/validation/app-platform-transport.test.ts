@@ -323,8 +323,8 @@ function resolveLocalDeclarationInitializer(name: string, blocks: readonly ts.No
 //
 // Terminates in a binary decision (addresses App Platform, or not) rather
 // than ever reporting "unresolved" on its own. An identifier or callee that
-// cannot be traced (a function parameter, e.g. gcx-service-account.ts's
-// `readJson(url)`) fails every positive-match criterion by construction, so
+// cannot be traced (a function parameter, such as a `readJson(url)`
+// helper's) fails every positive-match criterion by construction, so
 // it is a confident negative. "Cannot resolve with confidence" is instead
 // enforced one level up, at the request-BAG resolution for .fetch() below:
 // that is the shape the precision requirements actually describe (a request

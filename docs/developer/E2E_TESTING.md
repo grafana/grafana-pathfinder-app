@@ -217,7 +217,7 @@ Connection steps allow 240 seconds for provisioning. Command steps allow 270 sec
 
 Missing Coda or insufficient permissions produce unmet prerequisites. Mandatory steps fail and stop the guide under the existing result contract. Optional command steps can skip only through an available product Skip control, with explicit completion afterward.
 
-Connection steps with `credentials: [{ "tool": "gcx" }]` fail as unmet prerequisites in this first implementation. The runner does not mint credentials, paste tokens, or click Continue without gcx. Challenge blocks remain unsupported.
+Connection steps with legacy `credentials: [{ "tool": "gcx" }]` metadata run like any other connection step: the product ignores the field, and the step completes on connect. Challenge blocks remain unsupported.
 
 Run the browser fixtures without Coda or Grafana authentication:
 

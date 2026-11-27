@@ -1755,7 +1755,6 @@ function renderParsedElement(
           vmTemplate={element.props.vmTemplate}
           vmApp={element.props.vmApp}
           vmScenario={element.props.vmScenario}
-          gcx={element.props.gcx}
           stepIndex={standaloneStepPosition?.stepIndex}
           totalSteps={standaloneStepPosition?.totalSteps}
         >
