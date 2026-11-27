@@ -79,7 +79,8 @@ export async function runAddStep(args: AddStepInput): Promise<CommandOutcome> {
         if (shipsSidecar) {
           const { stamped } = stampIdsInPlace(state);
           const parent = findBlockById(state.content, parentId) as { steps?: Array<{ id?: string }> } | undefined;
-          stepId = parent?.steps?.at(-1)?.id;
+          const steps = parent?.steps ?? [];
+          stepId = steps[steps.length - 1]?.id;
           stampedElsewhere = stamped.filter((stamp) => stamp.id !== stepId).length;
         }
       },
