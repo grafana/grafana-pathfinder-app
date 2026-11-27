@@ -9,7 +9,7 @@ Learning Paths transform documentation consumption into an engaging learning exp
 ## Location
 
 **Path**: `/src/components/LearningPaths/`
-**Main Component**: `LearningPathsPanel.tsx`
+**Main Component**: `MyLearningTab.tsx`
 
 ## Purpose
 
@@ -41,7 +41,6 @@ Learning Paths exist to:
 ### Streak Tracking
 
 - **Daily Streaks**: Track consecutive days of learning activity
-- **Streak Indicators**: Visual display of current streak count
 - **Streak Maintenance**: Encourages daily return to maintain streaks
 - **Streak History**: Track longest streak achievements
 
@@ -56,13 +55,6 @@ Learning Paths exist to:
 
 ### Core Components
 
-**LearningPathsPanel.tsx** - Main panel component
-
-- Displays learning path cards
-- Manages badge modals
-- Shows streak indicators
-- Handles guide navigation
-
 **LearningPathCard.tsx** - Individual path card
 
 - Path metadata display
@@ -75,7 +67,7 @@ Learning Paths exist to:
 - Progress overview
 - Path management
 
-**BadgesDisplay.tsx** - Badge collection view
+**BadgesPanel.tsx** - Badge collection view
 
 - Grid of all badges
 - Locked/unlocked states
@@ -86,12 +78,6 @@ Learning Paths exist to:
 - Toast notification for new badges
 - Badge details display
 - Dismissal handling
-
-**StreakIndicator.tsx** - Streak display
-
-- Current streak count
-- Flame icon visualization
-- Streak milestone indicators
 
 **ProgressRing.tsx** - Progress visualization
 

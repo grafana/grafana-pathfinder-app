@@ -183,15 +183,6 @@ export interface ExpandableTableProps {
 }
 
 /**
- * Props for SideJourneyLink component
- */
-export interface SideJourneyLinkProps {
-  link: string;
-  title: string;
-  className?: string;
-}
-
-/**
  * Props for ContentParsingError component
  */
 export interface ContentParsingErrorProps {

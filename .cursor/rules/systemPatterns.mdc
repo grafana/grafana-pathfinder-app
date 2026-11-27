@@ -62,7 +62,6 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 - `LearningPathCard` → Collapsible card with progress ring, expandable guide list
 - `BadgeUnlockedToast` → Celebratory modal with confetti, auto-dismiss with queue support
 - `ProgressRing` → SVG circular progress indicator with gradient stroke
-- `StreakIndicator` → Fire emoji with day count display
 
 **Badge Triggers**:
 - `guide-completed` → Any/specific guide completion
