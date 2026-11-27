@@ -1,7 +1,8 @@
 import { isGrafanaDocsUrl } from '../security';
 import { logger } from '../lib/logging';
-import { formatSlug, getInteractiveLearningUrlTitle } from './doc-page-title';
+import { formatSlug, getInteractiveLearningUrlTitle, getLearnUrlPlaceholderTitle } from './doc-page-title';
 import { canonicalContentFileUrl } from '../lib/guide-content-file';
+import { classifyDocsUrl } from '../lib/docs-url-family';
 
 export interface DocPage {
   type: 'docs-page' | 'learning-journey' | 'interactive';
@@ -114,9 +115,7 @@ function findCanonicalDocPage(param: string): DocPage | null {
   // Case 4: Any Grafana docs URL (fallback for non-curated content)
   const isPathOnly =
     param.startsWith('/docs/') ||
-    param.startsWith('/tutorials/') ||
-    param.startsWith('/docs/learning-journeys/') ||
-    param.startsWith('/docs/learning-paths/');
+    (param.startsWith('/') && classifyDocsUrl(`https://grafana.com${param}`).family === 'tutorial');
   const isFullGrafanaUrl = param.startsWith('https://grafana.com/') || param.startsWith('https://docs.grafana.com/');
 
   if (isPathOnly || isFullGrafanaUrl) {
@@ -129,6 +128,11 @@ function findCanonicalDocPage(param: string): DocPage | null {
     if (!isGrafanaDocsUrl(fullUrl)) {
       logger.warn('Security: Rejected non-Grafana docs URL', { url: fullUrl });
       return null;
+    }
+
+    const learnTitle = getLearnUrlPlaceholderTitle(fullUrl);
+    if (learnTitle) {
+      return { type: 'learning-journey', url: fullUrl, title: learnTitle };
     }
 
     const pathSegments = param

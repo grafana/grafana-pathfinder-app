@@ -15,6 +15,7 @@ import { simpleMarkdownToHtml, injectJourneyExtrasIntoJsonGuide } from './conten
 import { fetchBundledInteractive } from './content-fetcher/bundled';
 import { fetchBackendInteractive } from './content-fetcher/backend-guide';
 import { enforceHttps, fetchRawHtml, generateUserFriendlyError } from './content-fetcher/fetch-raw';
+import { planLearnJourney } from './content-fetcher/learn-journey';
 import { logger } from '../lib/logging';
 import { contentFileSiblingUrl } from '../lib/guide-content-file';
 import { classifyDocsUrl, isJourneyContent } from '../lib/docs-url-family';
@@ -129,16 +130,20 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
         };
       }
 
-      const contentType = determineContentType(url);
+      // Resolved before the page so a section URL can fetch its first step. Learn
+      // publishes no content.json, so a Learn journey never tries that rung.
+      const learnPlan = await planLearnJourney(cleanUrl, options.loadContext);
+      const contentType = learnPlan ? 'learning-journey' : determineContentType(url);
       // Whether fetchRawHtml attempted the content.json ↔ unstyled.html ladder.
       // `learning-journey` is `isJourneyContent` (a path rule); interactive-learning
       // hosts reach the ladder through a separate branch, so they count too.
-      const triedContentJsonLadder = contentType === 'learning-journey' || isInteractiveLearningUrl(url);
+      const triedContentJsonLadder =
+        (contentType === 'learning-journey' && !learnPlan) || isInteractiveLearningUrl(url);
 
       // fetchRawHtml resolves the content.json ↔ unstyled.html ladder
       // internally (tryGrafanaDocsContentLadder) — the tier isn't knowable
       // from the requested URL alone, only from its result.
-      const fetchResult = await fetchRawHtml(cleanUrl, options);
+      const fetchResult = await fetchRawHtml(learnPlan?.fetchUrl ?? cleanUrl, options);
       if (!fetchResult.html) {
         // Generate user-friendly error message based on error type
         const userFriendlyError = generateUserFriendlyError(fetchResult.error, cleanUrl);
@@ -164,7 +169,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       }
 
       // Use the final URL (after redirects) if available, otherwise use the requested URL
-      const finalUrl = fetchResult.finalUrl || cleanUrl;
+      const finalUrl = fetchResult.finalUrl || learnPlan?.fetchUrl || cleanUrl;
 
       // Determine if this is native JSON content (content.json) that doesn't need wrapping
       const isNativeJson = fetchResult.isNativeJson || false;
@@ -184,7 +189,7 @@ export async function fetchContent(url: string, options: ContentFetchOptions = {
       }
 
       markGuideLoadStage(options.loadContext, 'decode');
-      const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType, isNativeJson);
+      const metadata = await extractMetadata(fetchResult.html, finalUrl, contentType, isNativeJson, learnPlan);
 
       let jsonContent: string;
 

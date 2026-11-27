@@ -180,6 +180,19 @@ describe('openfeature', () => {
       });
     });
 
+    it('pathfinder.learn-journey-mode must default to false until Learn completion identity has merged', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.learn-journey-mode'].valueType).toBe('boolean');
+        expect(pathfinderFeatureFlags['pathfinder.learn-journey-mode'].defaultValue).toBe(false);
+      });
+    });
+
     it('pathfinder.learning-insights is a default-off boolean rollout flag', () => {
       jest.isolateModules(() => {
         const mockOF = createMockOpenFeature();

@@ -9,6 +9,7 @@ import {
   Milestone,
 } from '../../types/content.types';
 import { getLearningJourneyBaseUrl, urlsMatch } from './url-utils';
+import { cleanLearnDocumentTitle, learnJourneyMetadata, type LearnJourneyPlan } from './learn-journey';
 import { logger } from '../../lib/logging';
 import { stripContentFile } from '../../lib/guide-content-file';
 
@@ -20,9 +21,18 @@ export async function extractMetadata(
   html: string,
   url: string,
   contentType: ContentType,
-  isNativeJson: boolean
+  isNativeJson: boolean,
+  learnPlan?: LearnJourneyPlan
 ): Promise<ContentMetadata> {
   const title = isNativeJson ? extractTitleFromJson(html) : extractTitleFromHtml(html);
+
+  if (learnPlan) {
+    const current = learnPlan.journey.milestones.find((milestone) => milestone.number === learnPlan.currentMilestone);
+    return {
+      title: current?.title ?? cleanLearnDocumentTitle(title),
+      learningJourney: learnJourneyMetadata(learnPlan, extractJourneySummary(html)),
+    };
+  }
 
   if (contentType === 'learning-journey') {
     const learningJourney = await extractLearningJourneyMetadata(html, url);

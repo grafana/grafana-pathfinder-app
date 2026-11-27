@@ -854,6 +854,40 @@ describe('CombinedLearningJourneyPanel.loadTab — learning-journey completion s
       { attemptEligible: false }
     );
   });
+
+  it('leaves the stored journey percentage untouched when a Learn section failed to resolve', async () => {
+    (shouldUseDocsLoader as jest.Mock).mockReturnValue(false);
+    (getJourneyProgress as jest.Mock).mockReturnValue(100);
+    const baseUrl = 'https://grafana.com/docs/learning-hub/intro-to-data-sources/';
+    mockFetchContent.mockResolvedValue({
+      content: {
+        content: '<p>cover</p>',
+        metadata: {
+          title: 'Intro to data sources',
+          learningJourney: {
+            baseUrl,
+            currentMilestone: 0,
+            totalMilestones: 1,
+            milestones: [{ title: 'Overview', url: `${baseUrl}00-overview/what-is/`, number: 1, isActive: false }],
+            hasUnavailableMilestones: true,
+          },
+        },
+        type: 'learning-journey',
+        url: baseUrl,
+        lastFetched: '2026-07-28T00:00:00.000Z',
+      },
+    });
+    const panel = new CombinedLearningJourneyPanel();
+    panel.setState({
+      tabs: [{ ...makeTab('journey-tab'), type: 'learning-journey' as const, title: 'Journey', baseUrl }],
+      activeTabId: 'journey-tab',
+    });
+
+    await panel.loadTab('journey-tab', baseUrl);
+
+    expect(panel.getActiveTab()).toMatchObject({ isLoading: false, error: null });
+    expect(setJourneyCompletionPercentage).not.toHaveBeenCalled();
+  });
 });
 
 describe('trailing-slash journey deep link', () => {

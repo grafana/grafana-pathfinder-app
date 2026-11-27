@@ -3,10 +3,18 @@ import { renderHook, fireEvent, waitFor } from '@testing-library/react';
 import { useLinkClickHandler } from './link-handler.hook';
 import { UserInteraction } from '../../lib/analytics';
 import { isDevModeEnabledGlobal } from '../../utils/dev-mode';
+import { isLearnJourneyModeUrl } from '../../utils/learn-journey-mode';
 
 jest.mock('../../utils/dev-mode', () => ({
   ...jest.requireActual('../../utils/dev-mode'),
   isDevModeEnabledGlobal: jest.fn(() => false),
+}));
+
+// The flag itself is covered in learn-journey-mode.test.ts; here only the routing it drives.
+jest.mock('../../utils/learn-journey-mode', () => ({
+  isLearnJourneyModeUrl: jest.fn(() => false),
+  learnJourneyLocation: jest.fn(),
+  learnMilestoneUrl: jest.fn(),
 }));
 
 // Mock analytics reporting
@@ -243,6 +251,47 @@ describe('useLinkClickHandler', () => {
         'Grafana Docs',
         { source: 'content_link' }
       );
+    });
+
+    describe('Grafana Learn links', () => {
+      const learnStep =
+        'https://grafana.com/docs/learning-hub/intro-to-data-sources/01-data-source-tour/07-prometheus/';
+
+      function clickLearnLink() {
+        renderHook(() =>
+          useLinkClickHandler({
+            contentRef,
+            activeTab: mockModel.getActiveTab(),
+            theme: mockTheme,
+            model: mockModel,
+          })
+        );
+        const link = document.createElement('a');
+        link.href = learnStep;
+        link.textContent = 'Prometheus';
+        contentDiv.appendChild(link);
+        fireEvent.click(link);
+      }
+
+      afterEach(() => {
+        jest.mocked(isLearnJourneyModeUrl).mockReturnValue(false);
+      });
+
+      it('opens a Learn step as a learning journey while the flag is on', () => {
+        jest.mocked(isLearnJourneyModeUrl).mockReturnValue(true);
+
+        clickLearnLink();
+
+        expect(mockModel.openLearningJourney).toHaveBeenCalledWith(learnStep, 'Prometheus', { source: 'content_link' });
+        expect(mockModel.openDocsPage).not.toHaveBeenCalled();
+      });
+
+      it('keeps opening a Learn step as a docs page while the flag is off', () => {
+        clickLearnLink();
+
+        expect(mockModel.openDocsPage).toHaveBeenCalledWith(learnStep, 'Prometheus', { source: 'content_link' });
+        expect(mockModel.openLearningJourney).not.toHaveBeenCalled();
+      });
     });
 
     it('should handle relative docs links', () => {

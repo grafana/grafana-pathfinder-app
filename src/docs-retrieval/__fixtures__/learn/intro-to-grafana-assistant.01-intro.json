@@ -1,0 +1,26 @@
+[
+  {
+    "permalink": "/docs/learning-hub/intro-to-grafana-assistant/01-intro/01-guide-overview/",
+    "params": {
+      "title": "Grafana Assistant journey outcomes",
+      "layout": "step",
+      "weight": 10
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-grafana-assistant/01-intro/02-what-is-assistant/",
+    "params": {
+      "title": "What is Grafana Assistant?",
+      "layout": "step",
+      "weight": 20
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-grafana-assistant/01-intro/03-privacy-and-security/",
+    "params": {
+      "title": "Privacy and security",
+      "layout": "step",
+      "weight": 30
+    }
+  }
+]

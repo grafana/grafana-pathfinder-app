@@ -1,4 +1,7 @@
 import { isGrafanaDocsUrl, cleanDocsUrl, isLearningJourneyUrl } from './url-validation';
+import { getFeatureFlagValue } from '../../../utils/openfeature';
+
+jest.mock('../../../utils/openfeature', () => ({ getFeatureFlagValue: jest.fn(() => false) }));
 
 // Mock the constants
 jest.mock('../../../constants', () => ({
@@ -115,6 +118,40 @@ describe('url-validation', () => {
 
     it('treats bundled URLs as docs', () => {
       expect(isLearningJourneyUrl('bundled:first-dashboard')).toBe(false);
+    });
+
+    describe('Grafana Learn', () => {
+      const learn = 'https://grafana.com/docs/learning-hub';
+      const urls = [
+        `${learn}/intro-to-data-sources/`,
+        `${learn}/intro-to-data-sources/01-data-source-tour/`,
+        `${learn}/intro-to-data-sources/01-data-source-tour/07-prometheus/`,
+        `${learn}/intro-to-data-sources/01-data-source-tour/07-prometheus/unstyled.html`,
+      ];
+
+      afterEach(() => {
+        jest.mocked(getFeatureFlagValue).mockReturnValue(false);
+      });
+
+      it.each(urls)('routes %s as a journey while the flag is on', (url) => {
+        jest.mocked(getFeatureFlagValue).mockReturnValue(true);
+
+        expect(isLearningJourneyUrl(url)).toBe(true);
+      });
+
+      it.each(urls)('keeps %s a docs page while the flag is off', (url) => {
+        expect(isLearningJourneyUrl(url)).toBe(false);
+      });
+
+      it.each([
+        `${learn}/`,
+        `${learn}/search/`,
+        'https://grafana.com.evil.example/docs/learning-hub/intro-to-data-sources/',
+      ])('keeps %s a docs page even while the flag is on', (url) => {
+        jest.mocked(getFeatureFlagValue).mockReturnValue(true);
+
+        expect(isLearningJourneyUrl(url)).toBe(false);
+      });
     });
   });
 });

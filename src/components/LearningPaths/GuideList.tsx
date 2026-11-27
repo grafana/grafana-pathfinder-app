@@ -58,82 +58,84 @@ export function GuideList({ guides, isLoading = false, className, enableRowLinks
           const metaId = `${listId}-${index}-meta`;
           const describedBy = [guide.description && descriptionId, hasMeta && metaId].filter(Boolean).join(' ');
           return (
-            <div
-              key={guide.id}
-              className={cx(
-                styles.guideItem,
-                guide.isCurrent && styles.guideItemCurrent,
-                isRowLink && styles.guideItemClickable,
-                showCurrentChrome && styles.guideItemCurrentCard,
-                guide.locked && styles.guideItemLocked
-              )}
-              // Same attribute contract as the cover page's CTA button, picked
-              // up by the shared click handler on contentRef's container
-              // (link-handler.hook.ts) rather than a React onClick here, so
-              // keyboard activation dispatches a real click via `.click()`.
-              {...(isRowLink
-                ? {
-                    'data-journey-start': 'true',
-                    'data-milestone-url': guide.url,
-                    // guide.id is a React-key-only fallback for some producers;
-                    // only a real manifest id may become the click-target id.
-                    ...(guide.guideId != null && { 'data-milestone-id': guide.guideId }),
-                    'data-interaction-location': 'module_row_click',
-                    'data-row-state': rowState(guide),
-                    role: 'button',
-                    tabIndex: 0,
-                    'aria-label': rowAccessibleName(guide),
-                    ...(describedBy && { 'aria-describedby': describedBy }),
-                    onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        event.currentTarget.click();
-                      }
-                    },
-                  }
-                : {})}
-            >
-              <span
+            <React.Fragment key={guide.id}>
+              {guide.sectionHeading && <h3 className={styles.sectionHeading}>{guide.sectionHeading}</h3>}
+              <div
                 className={cx(
-                  styles.guideIconBadge,
-                  guide.completed && styles.guideIconBadgeCompleted,
-                  guide.isCurrent && styles.guideIconBadgeCurrent,
-                  (guide.locked || (!guide.completed && !guide.isCurrent)) && styles.guideIconBadgeLocked
+                  styles.guideItem,
+                  guide.isCurrent && styles.guideItemCurrent,
+                  isRowLink && styles.guideItemClickable,
+                  showCurrentChrome && styles.guideItemCurrentCard,
+                  guide.locked && styles.guideItemLocked
                 )}
+                // Same attribute contract as the cover page's CTA button, picked
+                // up by the shared click handler on contentRef's container
+                // (link-handler.hook.ts) rather than a React onClick here, so
+                // keyboard activation dispatches a real click via `.click()`.
+                {...(isRowLink
+                  ? {
+                      'data-journey-start': 'true',
+                      'data-milestone-url': guide.url,
+                      // guide.id is a React-key-only fallback for some producers;
+                      // only a real manifest id may become the click-target id.
+                      ...(guide.guideId != null && { 'data-milestone-id': guide.guideId }),
+                      'data-interaction-location': 'module_row_click',
+                      'data-row-state': rowState(guide),
+                      role: 'button',
+                      tabIndex: 0,
+                      'aria-label': rowAccessibleName(guide),
+                      ...(describedBy && { 'aria-describedby': describedBy }),
+                      onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          event.currentTarget.click();
+                        }
+                      },
+                    }
+                  : {})}
               >
-                {guide.completed ? (
-                  <Icon name="check" size="md" />
-                ) : guide.locked ? (
-                  <Icon name="lock" size="md" />
-                ) : showCurrentChrome ? (
-                  <Icon name="play" size="md" />
-                ) : (
-                  <Icon name="circle" size="md" />
-                )}
-              </span>
-              <span className={styles.guideTextGroup}>
-                <span>{guide.title}</span>
-                {guide.description && (
-                  <span id={descriptionId} className={styles.guideDescription}>
-                    {guide.description}
-                  </span>
-                )}
-                {hasMeta && (
-                  <span id={metaId} className={styles.guideMeta}>
-                    {typeof guide.estimatedMinutes === 'number' && (
-                      <>
-                        <Icon name="clock-nine" size="sm" />
-                        {t('coverPage.estimatedMinutes', '{{count}} min', { count: guide.estimatedMinutes })}
-                      </>
-                    )}
-                    {typeof guide.estimatedMinutes === 'number' && guide.locked && <span aria-hidden="true">·</span>}
-                    {guide.locked && t('coverPage.locked', 'Locked')}
-                  </span>
-                )}
-              </span>
-              {showCurrentChrome && <span className={styles.guideUpNext}>{t('coverPage.upNext', 'Up next')}</span>}
-              {isRowLink && <Icon name="angle-right" size="md" className={styles.guideChevron} />}
-            </div>
+                <span
+                  className={cx(
+                    styles.guideIconBadge,
+                    guide.completed && styles.guideIconBadgeCompleted,
+                    guide.isCurrent && styles.guideIconBadgeCurrent,
+                    (guide.locked || (!guide.completed && !guide.isCurrent)) && styles.guideIconBadgeLocked
+                  )}
+                >
+                  {guide.completed ? (
+                    <Icon name="check" size="md" />
+                  ) : guide.locked ? (
+                    <Icon name="lock" size="md" />
+                  ) : showCurrentChrome ? (
+                    <Icon name="play" size="md" />
+                  ) : (
+                    <Icon name="circle" size="md" />
+                  )}
+                </span>
+                <span className={styles.guideTextGroup}>
+                  <span>{guide.title}</span>
+                  {guide.description && (
+                    <span id={descriptionId} className={styles.guideDescription}>
+                      {guide.description}
+                    </span>
+                  )}
+                  {hasMeta && (
+                    <span id={metaId} className={styles.guideMeta}>
+                      {typeof guide.estimatedMinutes === 'number' && (
+                        <>
+                          <Icon name="clock-nine" size="sm" />
+                          {t('coverPage.estimatedMinutes', '{{count}} min', { count: guide.estimatedMinutes })}
+                        </>
+                      )}
+                      {typeof guide.estimatedMinutes === 'number' && guide.locked && <span aria-hidden="true">·</span>}
+                      {guide.locked && t('coverPage.locked', 'Locked')}
+                    </span>
+                  )}
+                </span>
+                {showCurrentChrome && <span className={styles.guideUpNext}>{t('coverPage.upNext', 'Up next')}</span>}
+                {isRowLink && <Icon name="angle-right" size="md" className={styles.guideChevron} />}
+              </div>
+            </React.Fragment>
           );
         })
       )}

@@ -1,0 +1,26 @@
+[
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/02-after-you-connect/22-resources-and-next-steps/",
+    "params": {
+      "title": "Resources and next steps",
+      "layout": "step",
+      "weight": 50
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/02-after-you-connect/17-after-you-connect/",
+    "params": {
+      "title": "After you connect",
+      "layout": "step",
+      "weight": 5
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/02-after-you-connect/20-build-a-dashboard/",
+    "params": {
+      "title": "Build a dashboard",
+      "layout": "step",
+      "weight": 30
+    }
+  }
+]

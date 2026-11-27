@@ -241,4 +241,23 @@ describe('GuideList', () => {
     expect(screen.getByText('What data sources are and why they matter.')).toBeInTheDocument();
     expect(screen.getByText('Second module').closest('div')).not.toHaveTextContent('undefined');
   });
+
+  it('renders a heading above a row that carries a section heading, and none otherwise', () => {
+    render(
+      <GuideList
+        guides={[
+          { id: 'a', title: 'First module', completed: false, isCurrent: true, sectionHeading: 'Fundamentals' },
+          { id: 'b', title: 'Second module', completed: false, isCurrent: false },
+        ]}
+      />
+    );
+
+    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+      'Fundamentals',
+    ]);
+    expect(
+      screen.getByRole('heading', { name: 'Fundamentals' }).compareDocumentPosition(screen.getByText('First module')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
 });

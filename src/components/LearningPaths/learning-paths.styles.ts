@@ -557,6 +557,13 @@ export const getGuideListStyles = (theme: GrafanaTheme2) => {
       flexDirection: 'column',
       gap: theme.spacing(1.5),
     }),
+    sectionHeading: css({
+      margin: `${theme.spacing(1)} 0 0`,
+      fontSize: theme.typography.h5.fontSize,
+      fontWeight: theme.typography.fontWeightMedium,
+      color: theme.colors.text.primary,
+      '&:first-child': { marginTop: 0 },
+    }),
     guideItem: css({
       display: 'flex',
       alignItems: 'center',

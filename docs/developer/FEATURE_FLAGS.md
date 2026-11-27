@@ -42,6 +42,29 @@ Production opt-in requires registration in both `flags/` and `flag-definitions.l
 
 ---
 
+### `pathfinder.learn-journey-mode`
+
+**Type**: Boolean
+
+**Default**: `false`
+
+**Purpose**: Release gate for Grafana Learn journeys (`docs/design/GRAFANA_LEARN.md`). While it is off, every Learn URL under `/docs/learning-hub/` opens as a flat document, exactly as before the flag existed.
+
+**Behavior**:
+
+- **`true`**: a Learn journey URL opens a cover with an ordered table of contents grouped under its section or module headings. A step URL opens at its milestone, and a section or module URL opens at its first step. Links to Learn pages inside guides open as journey tabs. The resolver fetches the journey's `index.json` and each section's `index.json`, re-checks every permalink against the Grafana docs trust predicate, and keeps the result in memory for ten minutes. A failure is kept for thirty seconds. If one section index fails, the journey sets `hasUnavailableMilestones` and no journey completion is granted from the partial tree. If the journey index fails, or the page is not in the index, the page opens as a single document.
+- **`false`**: no Learn index is requested and the Learn home, journeys, sections and steps are single documents.
+
+The Learn home and `/docs/learning-hub/search/` stay single documents in both states.
+
+**Do not enable this flag in any environment until Learn completion identity ([#2513](https://github.com/grafana/grafana-pathfinder-app/issues/2513)) has merged.** Today a milestone's progress and durable record are keyed by its last URL segment, and Learn step slugs repeat across journeys, so a step completed in one journey would count as done in another.
+
+The flag is read each time a Learn URL is routed or fetched, so a flip applies to the next open. Readers go through `src/utils/learn-journey-mode.ts`. `src/validation/learn-journey-gate-off.test.ts` pins the flag-off behavior of every Learn reader to the behavior before the flag existed. Registering it in MTFF needs both a `flags/` file and a `Public()` entry in `flag-definitions.libsonnet` in `grafana/deployment_tools`, with the default kept `false`.
+
+**Tracking key**: `learn_journey_mode`
+
+---
+
 ### `pathfinder.enabled`
 
 **Type**: Boolean

@@ -637,4 +637,52 @@ describe('LearningPathTableOfContents', () => {
       await Promise.resolve();
     });
   });
+
+  describe('Grafana Learn section headings', () => {
+    const learnBase = 'https://grafana.com/docs/learning-hub/intro-to-data-sources';
+    const section = (slug: string, title: string) => ({ url: `${learnBase}/${slug}`, title });
+    const learnMilestones: Milestone[] = [
+      {
+        number: 1,
+        title: 'Course overview',
+        url: `${learnBase}/00-overview/01/`,
+        isActive: false,
+        section: section('00-overview', 'Fundamentals'),
+      },
+      {
+        number: 2,
+        title: 'Prerequisites',
+        url: `${learnBase}/00-overview/02/`,
+        isActive: false,
+        section: section('00-overview', 'Fundamentals'),
+      },
+      {
+        number: 3,
+        title: 'Prometheus',
+        url: `${learnBase}/01-tour/01/`,
+        isActive: false,
+        section: section('01-tour', 'Common data sources'),
+      },
+    ];
+
+    it('renders one heading at the start of each section, in order, above that section’s rows', () => {
+      render(<LearningPathTableOfContents milestones={learnMilestones} baseUrl={learnBase} />);
+
+      const headings = screen.getAllByRole('heading', { level: 3 });
+      expect(headings.map((heading) => heading.textContent)).toEqual(['Fundamentals', 'Common data sources']);
+      const overview = screen.getByText('Course overview');
+      const prometheus = screen.getByText('Prometheus');
+      expect(headings[0]!.compareDocumentPosition(overview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(headings[1]!.compareDocumentPosition(prometheus) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(
+        headings[1]!.compareDocumentPosition(screen.getByText('Prerequisites')) & Node.DOCUMENT_POSITION_PRECEDING
+      ).toBeTruthy();
+    });
+
+    it('leaves a path whose milestones carry no section exactly as before', () => {
+      render(<LearningPathTableOfContents milestones={milestones} baseUrl={baseUrl} />);
+
+      expect(screen.queryAllByRole('heading', { level: 3 })).toHaveLength(0);
+    });
+  });
 });

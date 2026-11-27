@@ -1,0 +1,18 @@
+[
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/02-tied-b/only-step/",
+    "params": {
+      "title": "Only step",
+      "layout": "step",
+      "weight": 1
+    }
+  },
+  {
+    "permalink": "https://evil.example.com/docs/learning-hub/synthetic-journey/02-tied-b/foreign-step/",
+    "params": {
+      "title": "Foreign step",
+      "layout": "step",
+      "weight": 2
+    }
+  }
+]

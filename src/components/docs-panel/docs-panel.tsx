@@ -73,6 +73,7 @@ import {
   isPackageContentUrl,
   resolvePackageMilestones,
 } from '../../docs-retrieval';
+import { learnMilestoneUrl } from '../../utils/learn-journey-mode';
 import { createCompositeResolver } from '../../package-engine';
 
 import { ContextPanel } from './context-panel';
@@ -652,11 +653,19 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
         const updatedTab = this.finishTabSuccess(tabId, (tab) => {
           const title = titleFromLoadedContent(tab, url, content);
-          return { content, currentUrl: url, ...(title ? { title } : {}) };
+          return {
+            content,
+            currentUrl: learnMilestoneUrl(content.metadata.learningJourney) ?? url,
+            ...(title ? { title } : {}),
+          };
         });
 
         // Completion readers key journey progress by the cover URL.
-        if (updatedTab?.type === 'learning-journey' && updatedTab.content) {
+        if (
+          updatedTab?.type === 'learning-journey' &&
+          updatedTab.content &&
+          !updatedTab.content.metadata.learningJourney?.hasUnavailableMilestones
+        ) {
           const progress = getJourneyProgress(updatedTab.content);
           const completionKey = updatedTab.content.metadata.learningJourney?.baseUrl || updatedTab.baseUrl;
           setJourneyCompletionPercentage(

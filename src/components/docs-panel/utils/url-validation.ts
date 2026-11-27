@@ -6,6 +6,7 @@
 import { ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../../../constants';
 import { classifyDocsUrl, isLegacyJourneyFamily } from '../../../lib/docs-url-family';
 import { stripContentFile } from '../../../lib/guide-content-file';
+import { isLearnJourneyModeUrl } from '../../../utils/learn-journey-mode';
 
 /**
  * Routing predicate shared by the auto-open listener and `prepareGuideLaunch`:
@@ -15,7 +16,8 @@ import { stripContentFile } from '../../../lib/guide-content-file';
  * consumers stay consistent by construction.
  */
 export function isLearningJourneyUrl(url: string): boolean {
-  return isLegacyJourneyFamily(classifyDocsUrl(url));
+  const classification = classifyDocsUrl(url);
+  return isLegacyJourneyFamily(classification) || isLearnJourneyModeUrl(classification);
 }
 
 /**

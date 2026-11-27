@@ -1,0 +1,83 @@
+[
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/02-tied-b/",
+    "params": {
+      "title": "Tied weight, listed second",
+      "layout": "section",
+      "weight": 5
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/01-tied-a/",
+    "params": {
+      "title": "Tied weight, listed first",
+      "layout": "section",
+      "weight": 5
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/09-no-weight/",
+    "params": {
+      "title": "No weight",
+      "layout": "section"
+    }
+  },
+  {
+    "permalink": "https://evil.example.com/docs/learning-hub/synthetic-journey/03-foreign-host/",
+    "params": {
+      "title": "Foreign host",
+      "layout": "section",
+      "weight": 1
+    }
+  },
+  {
+    "permalink": "/docs/grafana/latest/alerting/",
+    "params": {
+      "title": "Outside Learn",
+      "layout": "section",
+      "weight": 2
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/another-journey/01-other/",
+    "params": {
+      "title": "Another journey",
+      "layout": "section",
+      "weight": 3
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/04-skipped/",
+    "params": {
+      "title": "Skipped section",
+      "layout": "section",
+      "weight": 4,
+      "grafana": {
+        "skip": true
+      }
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/01-tied-a/",
+    "params": {
+      "title": "Duplicate of the first tied section",
+      "layout": "section",
+      "weight": 6
+    }
+  },
+  {
+    "params": {
+      "title": "No permalink",
+      "layout": "section",
+      "weight": 7
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/synthetic-journey/08-fails/",
+    "params": {
+      "title": "Section whose index fails",
+      "layout": "section",
+      "weight": 8
+    }
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "permalink": "/docs/learning-hub/intro-to-grafana-assistant/02-get-started/06-learn-mode/",
+    "params": {
+      "title": "Use Learn mode",
+      "layout": "step",
+      "weight": 30
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-grafana-assistant/02-get-started/04-set-up-grafana-cloud/",
+    "params": {
+      "title": "Set up Grafana Assistant in Grafana Cloud",
+      "layout": "step",
+      "weight": 10
+    }
+  }
+]

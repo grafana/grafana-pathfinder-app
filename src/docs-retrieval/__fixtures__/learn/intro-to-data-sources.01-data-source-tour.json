@@ -1,0 +1,26 @@
+[
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/01-data-source-tour/15b-troubleshoot-a-connection/",
+    "params": {
+      "title": "Troubleshoot a failed connection",
+      "layout": "step",
+      "weight": 150
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/01-data-source-tour/06-data-source-tour/",
+    "params": {
+      "title": "Browse the data sources",
+      "layout": "step",
+      "weight": 10
+    }
+  },
+  {
+    "permalink": "/docs/learning-hub/intro-to-data-sources/01-data-source-tour/07-prometheus/",
+    "params": {
+      "title": "Prometheus",
+      "layout": "step",
+      "weight": 20
+    }
+  }
+]
