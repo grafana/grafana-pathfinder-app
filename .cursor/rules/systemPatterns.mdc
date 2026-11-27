@@ -62,7 +62,6 @@ This Grafana App Plugin integrates as a sidebar panel using **Grafana Scenes** f
 - `LearningPathCard` → Collapsible card with progress ring, expandable guide list
 - `BadgeUnlockedToast` → Celebratory modal with confetti, auto-dismiss with queue support
 - `ProgressRing` → SVG circular progress indicator with gradient stroke
-- `StreakIndicator` → Fire emoji with day count display
 
 **Badge Triggers**:
 - `guide-completed` → Any/specific guide completion
@@ -205,3 +204,47 @@ Learning insights makes fresh caller-delegated reads and never updates status;
 see `docs/developer/LEARNING_INSIGHTS.md` for reporting semantics.
 
 Browser reads and writes use the bounded SDK route helper. An unregistered OSS install keeps tenant settings in plugin JSON. A registered install reads and writes the SDK settings resource. Failed discovery leaves those settings unavailable until discovery recovers. No database or streaming backend is introduced.
+
+`pkg/achievements` is the achievements evaluator. Given an event, it uses the catalog and event registry to
+decide which tiers the user earns and what progress to record. Each tier carries its own requirement: a points
+`goal` and `rules` (entity, action, optional `where`, `countBy`, and a `worth` of 1 unless set). Only the
+lowest tier not held accrues. An event scores the highest `worth` among that tier's matching rules, once, and
+only for a unit the achievement has not counted toward any tier. Reaching the goal earns exactly that tier, and
+points do not carry over. A progress row holds the held tier ids, the achievement-wide unit ledger and the
+points toward the next tier. Definitions are not bundled with the plugin: they are published from
+grafana/interactive-tutorials, one file per catalog format version built from one source catalog, and each
+plugin build reads the version it was compiled for (`FormatVersion`, at
+`achievements/<FormatVersion>/definitions.json`). `LoadBundle` reads that file and skips with a reason any
+entry this build cannot read. A registry action may list Echo `sources` (`source.go`): the backend maps a
+source-shaped event to its pair and copies the listed properties into context, and `/definitions` lists the
+sources the stack's Grafana version emits and marks an achievement unearnable when none of its pairs can be
+emitted there. `cmd/achievements-check` builds, validates and compares the file with the same
+loader; a published achievement may only gain tiers after its last one, and a published goal never goes
+down. The package does no I/O: storage and
+admission are interfaces for the App Platform store to implement, so it is tested on its own with
+golden tables and `testdata/bundle.json`.
+`pkg/services/achievement_store.go` is the App Platform `Store` adapter behind the SDK achievement routes in
+`pkg/provider/achievements.go` (compare-and-swap on progress; a 409 on an award create returns `ErrExists`,
+meaning already held) and `pkg/achievements/storetest` holds the
+contract every `Store` must pass, with an in-memory implementation.
+A progress row's version always comes from its explicit `schemaVersion`, never from its shape. Migrations are
+keyed off that version (`pkg/achievements/shape.go`); a field-presence check only detects a required field the
+deployed kind pruned within the current version. The store reports it in `Progress.MissingFields`, never as an
+error, and `Classify` sorts every row as current, repairable (older version, or a required field missing) or
+newer (left alone as `record_newer`). `Normalize` is the one pure repair: it applies the migrations, fills
+required-field defaults, keeps held tiers and stamps the current version. The evaluator has one repair path:
+a repairable row is saved as `Normalize(row)` before scoring, adding no unit, points or award; a conflict
+reloads and reclassifies, and an acknowledgement that cannot be read is re-read. The store checks every create
+and save acknowledgement of a row it wrote in full: one that comes back without a required field proves the
+kind does not serve it, so the store logs a Warn naming the field and returns `ErrFieldUnserved`, the event is
+`store_unavailable`, and nothing is spent. A stranded row heals on the first event after the kind serves the
+field. `/my` is read-only: it shows `Normalize(row)` for a repairable row and never writes a repair.
+A tier is stranded when its award row exists but the progress row does not hold it, because the save after the
+award create failed. Before scoring, the evaluator holds each stranded tier in the same save that scores the
+event: the unit and the event id the award row records are spent and the points reset, so later-tier evidence
+is never discarded. An award row that records no unit or no event id is not held early, because either could
+then count twice. When the event would also earn a tier, the heal is saved on its own first, so no award is
+created against an unsaved heal that a lost compare-and-swap could prove wrong. The row records the id of each
+event counted (`eventIds`), and an event whose id is listed counts nothing more, whatever tier or unit it
+would count toward: tiers may count one pair by different units, so the unit alone cannot tell a re-sent
+event.

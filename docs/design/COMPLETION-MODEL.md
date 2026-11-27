@@ -707,6 +707,40 @@ comparison — e.g. a badge for finishing the Seller track specifically — is a
 `src/lib/guide-stats` and `path-member-join.ts`. This decision only says which
 of a path's existing sequences its one path-wide percentage/completion follows.
 
+### Decision 11 — a Grafana Learn step is keyed on its path, and a renamed step starts fresh
+
+**Decision.** A Grafana Learn step's durable record uses a source of its own,
+`guideSource: 'grafana-learn'`, with `guideId` set to the step's path below
+`/docs/learning-hub/` (`<journey>/<section>/<step>`), `guideCategory:
+'learning-journey'` and `pathId` set to the journey slug. A finished Learn
+journey writes one journey record, `('grafana-learn', <journey slug>)`. Every
+part of the identity comes from `classifyDocsUrl` (`src/lib/docs-url-family.ts`),
+never from a hand-parsed path. Learn completion never writes into the shared
+completed-guides list (`markGuideCompleted`), never reads the slug-keyed legacy
+milestone store, and never awards a curated-path badge.
+
+**Why.** Every other milestone record is keyed on the milestone's last URL
+segment. Learn step slugs repeat across journeys (`01-course-overview` appears
+in twelve), so that key would credit a step in one journey as done in another,
+and the bare slug in the completed-guides list would feed curated paths and
+badges. The step path is unique, and it is the only identifier the website
+publishes. `guideSource` is documented as free-form on the record, so the new
+source needs no schema change.
+
+**What it costs.** A Learn step that the website renames or moves loses its
+completion, and the reader starts it fresh. Nothing aliases an old path to a new
+one, and existing records are not migrated. Legacy docs paths behave the same
+way. Progress rings are unaffected by the choice: they already read the per-URL
+key in `interactiveCompletionStorage`. A journey is never granted from a tree
+with `hasUnavailableMilestones` set, so a section that failed to load cannot
+complete it.
+
+**What we are not doing here.** Learn badges, Learn curated paths, section-level
+completion and aliases for renamed pages. Each is its own decision. The
+recommender and the public-source analytics allowlist do not include
+`grafana-learn` yet, so Learn records are excluded from completion-based
+recommendations and reported as `other` in analytics.
+
 ## The alternative considered and rejected
 
 One position argued against the path-level half of this model. It was overridden,
@@ -1029,6 +1063,8 @@ cost the exact-key cross-tab match the store's storage listener depends on.
 - **`src/lib/guide-stats` publishes the denominator and the per-block positions
   together**, so a numerator and a denominator can never come from two traversals
   — see `denominator-position-pairing` in `docs/design/CONCERN_DETAILS.md`.
+- **A Grafana Learn step is keyed on its path under `grafana-learn`** (decision
+  11). Keying it on its slug credits same-named steps in other journeys.
 - **An unresolvable member is excluded from the mean, never scored zero**
   (decision 9), and the join reads `interactiveCompletionStorage` by key
   presence, taking the furthest record in `[0, 100]` across a member's

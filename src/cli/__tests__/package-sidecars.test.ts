@@ -4,7 +4,13 @@ import * as path from 'path';
 
 import type { TranslationSidecar } from '../../types/translation-sidecar.schema';
 import type { ContentJson } from '../../types/package.types';
-import { PackageIOError, readPackageSidecars, writePackage, writePackageSidecar } from '../utils/package-io';
+import {
+  findSidecarEntries,
+  PackageIOError,
+  readPackageSidecars,
+  writePackage,
+  writePackageSidecar,
+} from '../utils/package-io';
 
 const SIDECAR: TranslationSidecar = {
   schemaVersion: '1.0.0',
@@ -88,6 +94,33 @@ describe('readPackageSidecars', () => {
     } finally {
       fs.chmodSync(dir, 0o755);
     }
+  });
+});
+
+describe('findSidecarEntries', () => {
+  const withBlocks = (language: string, blocks: TranslationSidecar['blocks']) =>
+    JSON.stringify({ ...SIDECAR, language, blocks });
+
+  it('returns the sidecars keyed by the asked-for ids, in tag and file order, with the unreadable ones', () => {
+    writeRaw(
+      'i18n/ja.json',
+      withBlocks('ja', { outro: { content: 'o' }, other: { content: 'x' }, intro: { content: 'i' } })
+    );
+    writeRaw('i18n/de.json', withBlocks('de', { other: { content: 'x' } }));
+    writeRaw('i18n/es.json', '{ not json');
+
+    const results = findSidecarEntries(packageDir, new Set(['intro', 'outro']));
+
+    expect(results).toEqual([
+      expect.objectContaining({ ok: false, tag: 'es', code: 'invalid_json' }),
+      expect.objectContaining({ ok: true, tag: 'ja', blockIds: ['outro', 'intro'] }),
+    ]);
+  });
+
+  it('returns an empty list when no sidecar has an entry for the ids', () => {
+    writeRaw('i18n/ja.json', JSON.stringify(SIDECAR));
+    expect(findSidecarEntries(packageDir, new Set(['outro']))).toEqual([]);
+    expect(findSidecarEntries(packageDir, new Set())).toEqual([]);
   });
 });
 

@@ -68,6 +68,8 @@ export interface PackageValidationResult {
 export interface PackageValidationOptions {
   strict?: boolean;
   snippetCatalogIds?: ReadonlySet<string>;
+  /** Report stale translations as warnings in `messages` instead of errors. */
+  allowStaleTranslations?: boolean;
 }
 
 /**
@@ -192,6 +194,7 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
     content: content as ContentJson,
     manifest: validManifest,
     sidecars: readPackageSidecars(packageDir),
+    allowStaleTranslations: options.allowStaleTranslations,
   });
   errors.push(...sidecarResult.errors);
   messages.push(...sidecarResult.messages);

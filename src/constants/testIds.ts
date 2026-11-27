@@ -280,7 +280,6 @@ export const testIds = {
     confirmResetButton: (pathId: string) => `learning-path-confirm-reset-${pathId}`,
     cancelResetButton: (pathId: string) => `learning-path-cancel-reset-${pathId}`,
     expandButton: (pathId: string) => `learning-path-expand-${pathId}`,
-    viewBadgesButton: 'learning-paths-view-badges',
     badgesModal: 'learning-paths-badges-modal',
     badgesModalClose: 'learning-paths-badges-modal-close',
     badgeItem: (badgeId: string) => `learning-paths-badge-${badgeId}`,

@@ -25,6 +25,7 @@ import { createSpec } from './create';
 import { e2eSpec } from './e2e';
 import { editBlockSpec } from './edit-block';
 import { findGuidesSpec } from './find-guides';
+import { findStepsSpec } from './find-steps';
 import { inspectSpec } from './inspect';
 import { moveBlockSpec } from './move-block';
 import { removeBlockSpec } from './remove-block';
@@ -71,6 +72,7 @@ export const COMMAND_MANIFEST: readonly CommandEntry[] = Object.freeze([
   entry(schemaSpec),
   // Catalog search.
   entry(findGuidesSpec),
+  entry(findStepsSpec),
   entry(requirementsGroup),
 ]);
 

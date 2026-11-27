@@ -20,7 +20,7 @@ export const MANIFEST_BLOCK_FIELDS_CODES = ['sidecar_manifest_block_field'] as c
 /** `orphan-key` (#2387): a sidecar key with no matching block or step id. Warnings. */
 export const ORPHAN_KEY_CODES = ['sidecar_orphan_key', 'sidecar_orphan_step'] as const;
 
-/** `source-hash` (#2388): a missing hash is an error; a mismatched one is a staleness warning. */
+/** `source-hash` (#2388): a missing hash and a stale translation are errors; `--allow-stale-translations` makes stale a warning. */
 export const SOURCE_HASH_CODES = ['sidecar_missing_source_hash', 'sidecar_stale_translation'] as const;
 
 /** `projection-conformance` (#2389): fields the projection table does not allow. */

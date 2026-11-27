@@ -342,9 +342,12 @@ Remove a block by ID. Validates the package after removal.
 ```
 pathfinder-cli remove-block <dir> <id>
   --cascade                           Also remove all child blocks (required for non-empty containers)
+  --prune-translations                Also delete the removed blocks' entries from every i18n/<tag>.json
 ```
 
 Without `--cascade`, the command fails if the block is a container with children. This prevents accidental loss of content authored inside a container.
+
+In a package with translation sidecars, a successful removal lists the sidecar entries it orphaned (`i18n/ja.json: blocks.setup`, and `blocks.<id>.steps.<step>` for steps), including those of cascaded children. `--prune-translations` deletes them. Without it the sidecars are not touched. The MCP `pathfinder_manage_block` tool does not expose the flag.
 
 **Output on success (leaf block):**
 
@@ -483,20 +486,21 @@ function buildOptionForField(name: string, field: z.ZodType): commander.Option |
 
 Which fields become parameters is stated by a command's own schema (`CommandSpec`), and `mountCommander` walks it. The type mapping below is what `describeField` decides and both entrypoints read, so a parameter cannot be an enum on one surface and an array on the other:
 
-| Zod type                             | Commander option             | Help display                 |
-| ------------------------------------ | ---------------------------- | ---------------------------- |
-| `z.string()`                         | `--name <string>`            | `--name <string>`            |
-| `z.string().optional()`              | `--name <string>` (optional) | `--name <string>`            |
-| `z.boolean().optional()`             | `--name` (flag)              | `--name`                     |
-| `z.enum(['a', 'b', 'c'])`            | `--name <a\|b\|c>`           | `--name <a\|b\|c>`           |
-| `z.array(z.string())`                | `--name <item>` (repeatable) | `--name <item> (repeatable)` |
-| `z.number()`                         | `--name <number>`            | `--name <number>`            |
-| `z.union([z.string(), z.boolean()])` | `--name <string-or-boolean>` | `--name <string-or-boolean>` |
-| `z.literal(...)`                     | skipped                      | —                            |
+| Zod type                                     | Commander option             | Help display                 |
+| -------------------------------------------- | ---------------------------- | ---------------------------- |
+| `z.string()`                                 | `--name <string>`            | `--name <string>`            |
+| `z.string().optional()`                      | `--name <string>` (optional) | `--name <string>`            |
+| `z.boolean().optional()`                     | `--name` (flag)              | `--name`                     |
+| `z.enum(['a', 'b', 'c'])`                    | `--name <a\|b\|c>`           | `--name <a\|b\|c>`           |
+| `z.array(z.string())`                        | `--name <item>` (repeatable) | `--name <item> (repeatable)` |
+| `z.number()`                                 | `--name <number>`            | `--name <number>`            |
+| `z.union([z.string(), z.boolean()])`         | `--name <string-or-boolean>` | `--name <string-or-boolean>` |
+| `z.union([z.string(), z.array(z.string())])` | `--name <item>` (repeatable) | `--name <item> (repeatable)` |
+| `z.literal(...)`                             | skipped                      | —                            |
 
 For array fields like `requirements` and `objectives`, options are repeatable: `--requirements on-page:/dashboards --requirements is-admin`.
 
-A union of primitives (string, number, boolean — `input.defaultValue`'s `z.union([z.string(), z.boolean()])` is the schema's own example) is one parameter with more than one acceptable shape, not an unsupported one: the CLI coerces the typed token toward whichever branch it looks like (`"true"`/`"false"` to a boolean, a numeric string to a number where the union declares one) before the schema ever sees it, and the agent interface publishes `valueType: 'union'` with a `unionOf` list naming the accepted types. A union that mixes in a non-primitive branch — an object, an array, a nested union — still cannot become one CLI token and stays `unsupported`.
+A union of primitives (string, number, boolean — `input.defaultValue`'s `z.union([z.string(), z.boolean()])` is the schema's own example) is one parameter with more than one acceptable shape, not an unsupported one: the CLI coerces the typed token toward whichever branch it looks like (`"true"`/`"false"` to a boolean, a numeric string to a number where the union declares one) before the schema ever sees it, and the agent interface publishes `valueType: 'union'` with a `unionOf` list naming the accepted types. A `z.union([z.string(), z.array(z.string())])` (`find-steps`'s `procedureId`) is a repeatable array flag that also takes a single value: the agent interface publishes `valueType: 'array'`, `repeatable: true` and `acceptsSingle: true`, and `validateCommandArgs` accepts a bare string for it. Any other union that mixes in a non-primitive branch — an object, another kind of array, a nested union — still cannot become one CLI token and stays `unsupported`.
 
 Which fields become parameters is a fact about a `CommandSpec`'s own schema, not a name this bridge recognizes: a variant's schema simply does not declare `type` (the block type is the subcommand name) or `blocks` / `whenTrue` / `whenFalse` / `steps` (populated by subcommands like `add-block` and `add-step`, not flags), so there is nothing for `describeField` to see. An earlier version of this bridge walked a runtime schema and skipped fields by a hardcoded name list, which is also what silently dropped `create --type` — a package-type enum unrelated to any block discriminator, but named `type` all the same.
 

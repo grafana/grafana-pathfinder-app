@@ -146,6 +146,7 @@ function flagFor(entry: SpecField, view: SurfaceView): HelpJsonFlag {
     // or a boolean without decoding "union" as a type name.
     ...(shape.kind === 'union' ? { unionOf: shape.branches } : {}),
     ...(valueType === 'array' ? { repeatable: true } : {}),
+    ...(shape.kind === 'array-string' && shape.acceptsSingle ? { acceptsSingle: true } : {}),
     ...(fallback.present && !(Array.isArray(fallback.value) && fallback.value.length === 0)
       ? { default: fallback.value }
       : {}),

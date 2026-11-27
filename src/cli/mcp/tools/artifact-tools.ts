@@ -37,7 +37,7 @@ export function registerArtifactTools(
     'pathfinder_create_package',
     {
       description:
-        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call pathfinder_help({ command: "create" }) for the `opts` interface. Pass `authorName` (and `authorTeam` if known): resolve the author from context and ask the user when unclear — it defaults to pathfinder-mcp. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
+        'Use this tool when the user wants to start a new Grafana Pathfinder interactive guide, tutorial, or walkthrough. Call pathfinder_help({ command: "create" }) for the `opts` interface. `title` is required: `{ "opts": { "title": "Alert on PostgreSQL connections", "authorName": "Ada Lovelace" } }`. Pass `authorName` (and `authorTeam` if known): resolve the author from context and ask the user when unclear — it defaults to pathfinder-mcp. Returns a sessionToken (for session-mode authoring) AND the seed artifact (for stateless-mode authoring) — clients pick the mode that suits them on subsequent mutation calls.',
       annotations: writeAppend('Create Pathfinder package'),
       inputSchema: {
         opts: z

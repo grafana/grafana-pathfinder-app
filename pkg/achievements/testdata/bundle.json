@@ -1,5 +1,5 @@
 {
-  "grammar": "1.0",
+  "grammar": "2.0",
   "builtFrom": { "repo": "grafana/interactive-tutorials", "commit": "0000000000000000000000000000000000000000" },
   "registry": {
     "entities": {
@@ -27,14 +27,25 @@
         "id": "guides-finished",
         "title": "Guide finisher",
         "description": "Finish guides in Grafana.",
-        "counter": {
-          "unit": "guide",
-          "evidence": [{ "entity": "guides", "action": "completed", "countBy": "resource" }]
-        },
         "tiers": [
-          { "id": "bronze", "at": 1, "art": "guides-finished-1" },
-          { "id": "silver", "at": 5, "art": "guides-finished-2" },
-          { "id": "gold", "at": 15, "art": "guides-finished-3" }
+          {
+            "id": "bronze",
+            "goal": 1,
+            "rules": [{ "entity": "guides", "action": "completed", "countBy": "resource" }],
+            "art": "guides-finished-1"
+          },
+          {
+            "id": "silver",
+            "goal": 4,
+            "rules": [{ "entity": "guides", "action": "completed", "countBy": "resource" }],
+            "art": "guides-finished-2"
+          },
+          {
+            "id": "gold",
+            "goal": 10,
+            "rules": [{ "entity": "guides", "action": "completed", "countBy": "resource" }],
+            "art": "guides-finished-3"
+          }
         ]
       }
     ]
