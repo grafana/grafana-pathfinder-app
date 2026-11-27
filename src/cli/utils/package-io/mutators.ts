@@ -63,6 +63,8 @@ export interface AppendBlockOptions {
   before?: string;
   after?: string;
   position?: number;
+  /** Give a leaf with no id a `<type>-<n>` id (default true). Off where `stampIds` assigns it instead. */
+  mintId?: boolean;
 }
 
 export interface AppendBlockResult {
@@ -121,7 +123,7 @@ export function appendBlock(
     // "fail if any sibling of this type exists".
   }
 
-  if (!block.id && !isContainer) {
+  if (!block.id && !isContainer && options.mintId !== false) {
     block.id = nextAutoBlockId(content, block.type);
   }
 
