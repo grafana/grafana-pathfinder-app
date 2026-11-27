@@ -181,7 +181,7 @@ on a connection must check `isTerminalRegistered` or it hangs (issue #1541).
 
 | File | Purpose |
 |------|---------|
-| `src/integrations/coda/coda-api.ts` | The only module that knows the Coda plugin id. `createSession`, `execInSession`, `getCapabilities`, `provisionGcx`, `sessionChannelAddress` |
+| `src/integrations/coda/coda-api.ts` | The only module that knows the Coda plugin id. `createSession`, `execInSession`, `getCapabilities`, `sessionChannelAddress` |
 | `src/integrations/coda/useTerminalLive.hook.ts` | SDK recovery coordinator, input gating and provisioning progress |
 | `src/integrations/coda/TerminalContext.tsx` | Shared context (`isTerminalRegistered`, `error`) + module-level `getTerminalConnectionStatus()` / `getTerminalSessionId()` for the requirements checker |
 | `src/integrations/coda/TerminalPanel.tsx` | xterm.js panel: fit/resize, scrollback persistence, WebGL renderer, auto-reconnect |
