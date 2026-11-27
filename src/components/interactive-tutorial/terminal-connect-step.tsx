@@ -36,8 +36,6 @@ export interface TerminalConnectStepProps {
   vmApp?: string;
   /** Scenario name for alloy-scenario template */
   vmScenario?: string;
-  /** Accepted for compatibility with previously published guides. */
-  gcx?: boolean;
 
   stepId?: string;
   isEligibleForChecking?: boolean;

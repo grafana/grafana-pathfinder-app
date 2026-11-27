@@ -159,12 +159,12 @@ describe('json-parser terminal block', () => {
   });
 });
 
-describe('json-parser terminal-connect gcx field', () => {
+describe('json-parser terminal-connect legacy credentials field', () => {
   function parseConnectBlock(block: Record<string, unknown>) {
     const result = parseJsonGuide(
       JSON.stringify({
-        id: 'test-gcx',
-        title: 'gcx test',
+        id: 'test-credentials',
+        title: 'Credentials test',
         blocks: [{ type: 'terminal-connect', content: 'Connect', ...block }],
       })
     );
@@ -172,19 +172,12 @@ describe('json-parser terminal-connect gcx field', () => {
     return result.data!.elements.find((el) => el.type === 'terminal-connect-step')!;
   }
 
-  it('carries gcx through to the step props', () => {
-    expect(parseConnectBlock({ credentials: [{ tool: 'gcx' }] }).props.gcx).toBe(true);
-  });
-
-  it('leaves gcx undefined when the author did not ask for it', () => {
-    // Undefined, not false: the component owns the default, and a parser that
-    // invented one would make "unset" indistinguishable from "opted out".
-    expect(parseConnectBlock({}).props.gcx).toBeUndefined();
-  });
-
-  it('keeps gcx alongside the VM options rather than replacing them', () => {
-    const el = parseConnectBlock({ credentials: [{ tool: 'gcx' }], vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
-    expect(el.props).toMatchObject({ gcx: true, vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
+  it('parses a published gcx step into the same props as a plain terminal-connect step', () => {
+    const vm = { vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' };
+    const legacy = parseConnectBlock({ credentials: [{ tool: 'gcx' }], ...vm });
+    expect(legacy.props).toEqual(parseConnectBlock(vm).props);
+    expect(legacy.props).not.toHaveProperty('gcx');
+    expect(legacy.props).not.toHaveProperty('credentials');
   });
 
   it.each([[{ tool: 'unknown' }], [{ tool: 'gcx', token: 'secret' }], [{}], true])(
@@ -192,8 +185,8 @@ describe('json-parser terminal-connect gcx field', () => {
     (credentials) => {
       const result = parseJsonGuide(
         JSON.stringify({
-          id: 'test-gcx-bad',
-          title: 'gcx test',
+          id: 'test-credentials-bad',
+          title: 'Credentials test',
           blocks: [{ type: 'terminal-connect', content: 'Connect', credentials }],
         })
       );

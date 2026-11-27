@@ -245,13 +245,8 @@ describe('step-type-registry', () => {
       );
     });
 
-    it('runs a previously published credential step as a regular terminal connection', () => {
-      expect(TERMINAL_CONNECT_STEP_SCHEMA.toStepInfoExtension({ gcx: true }).pausesSectionRun).toBe(false);
-    });
-
-    it('leaves the section run alone without gcx, so existing guides are unchanged', () => {
+    it('never pauses a section run', () => {
       expect(TERMINAL_CONNECT_STEP_SCHEMA.toStepInfoExtension({}).pausesSectionRun).toBe(false);
-      expect(TERMINAL_CONNECT_STEP_SCHEMA.toStepInfoExtension({ gcx: false }).pausesSectionRun).toBe(false);
     });
   });
 
