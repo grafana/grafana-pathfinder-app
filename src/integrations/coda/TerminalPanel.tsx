@@ -89,8 +89,8 @@ export function TerminalPanel({ onClose }: TerminalPanelProps) {
   const unregisterTerminal = terminalCtx?._unregister;
   useEffect(() => () => unregisterTerminal?.(), [unregisterTerminal]);
   useEffect(() => {
-    terminalCtx?._register({ status, sessionId, vmId, error, connect, disconnect, sendCommand });
-  }, [terminalCtx, status, sessionId, vmId, error, connect, disconnect, sendCommand]);
+    terminalCtx?._register({ status, sessionId, error, connect, disconnect, sendCommand });
+  }, [terminalCtx, status, sessionId, error, connect, disconnect, sendCommand]);
 
   // Sync: when something calls context.openTerminal, the context sets its
   // isExpanded flag. Mirror that into the panel's local state so we actually

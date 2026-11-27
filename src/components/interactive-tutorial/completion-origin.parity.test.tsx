@@ -91,12 +91,6 @@ jest.mock('../../interactive-engine', () => ({
   })),
 }));
 
-jest.mock('../../integrations/coda/coda-api', () => ({
-  ...jest.requireActual('../../integrations/coda/coda-api'),
-  provisionGcx: jest.fn(),
-  canMintGrafanaToken: () => false,
-}));
-
 jest.mock('../../lib/datasource/run-data-check-query', () => ({
   runDataCheckQuery: jest.fn().mockResolvedValue({ ok: true, hasData: true, seriesCount: 1, rowCount: 3 }),
 }));

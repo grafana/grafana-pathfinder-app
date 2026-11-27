@@ -53,7 +53,6 @@ export const TELEMETRY_EVENTS = {
   sandboxUnavailable: 'pathfinder_sandbox_unavailable',
   proxyFailure: 'pathfinder_proxy_failure',
   settingsStoreResolved: 'pathfinder_settings_store_resolved',
-  gcxCredentialDegraded: 'pathfinder_gcx_credential_degraded',
   assignmentsUnavailable: 'pathfinder_assignments_unavailable',
   assignmentTargetUnresolved: 'pathfinder_assignment_target_unresolved',
   packageMilestonesLocked: 'pathfinder_package_milestones_locked',

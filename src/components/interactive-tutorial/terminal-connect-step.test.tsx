@@ -2,7 +2,7 @@ import React from 'react';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 import { TerminalConnectStep, resetTerminalConnectStepCounter } from './terminal-connect-step';
-import { resetGcxCredentialStore } from '../../integrations/coda/gcx-credential-store';
+import { parseJsonGuide } from '../../docs-retrieval/json-parser';
 import { testIds } from '../../constants/testIds';
 
 jest.mock('@grafana/ui', () => ({
@@ -16,43 +16,13 @@ jest.mock('@grafana/ui', () => ({
   useStyles2: () => new Proxy({}, { get: () => '' }),
 }));
 
-// `requireActual` on coda-api below pulls the real SDK in, which imports
-// @grafana/runtime — and that reaches into @grafana/ui internals this suite's
-// partial mock does not carry. Mocking runtime stops the chain at the edge
-// rather than growing the ui mock to satisfy it.
-const mockBackendFetch = jest.fn();
+// parseJsonGuide reaches @grafana/runtime, which the partial ui mock cannot satisfy.
 jest.mock('@grafana/runtime', () => ({
-  getBackendSrv: () => ({ fetch: (...args: unknown[]) => mockBackendFetch(...args) }),
-  getGrafanaLiveSrv: () => ({}),
-  config: { bootData: { user: { id: 7, isSignedIn: true, login: 'admin', orgId: 1, orgRole: 'Admin' } } },
+  config: { bootData: { user: null }, buildInfo: { version: '10.0.0' } },
 }));
-
-/**
- * The mint preflight reads Grafana directly and fails closed, so a mint only
- * gets as far as `provisionGcx` once the account name is answered for. Nothing
- * holds it here, which is the ordinary case for a first mint.
- */
-function preflightFindsNothing() {
-  mockBackendFetch.mockImplementation(() => ({
-    subscribe: (observer: any) => {
-      observer.next({ data: { serviceAccounts: [] } });
-      observer.complete();
-      return undefined;
-    },
-  }));
-}
 
 jest.mock('../../lib/logging', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), exception: jest.fn() },
-}));
-
-const mockReportAppInteraction = jest.fn();
-const mockReportStepSkipped = jest.fn();
-jest.mock('../../lib/analytics', () => ({
-  reportAppInteraction: (...args: unknown[]) => mockReportAppInteraction(...args),
-  reportStepSkipped: (...args: unknown[]) => mockReportStepSkipped(...args),
-  UserInteraction: { GcxCredentialInstalled: 'gcx_credential_installed', GcxSetupSkipped: 'gcx_setup_skipped' },
-  buildInteractiveStepProperties: jest.fn((props: unknown) => props),
 }));
 
 // Mirrors `createBlockedState` / `createEnabledState`: an ineligible step is
@@ -73,8 +43,6 @@ jest.mock('../../requirements-manager', () => ({
     };
   },
 }));
-
-jest.mock('../../lib/telemetry', () => ({ recordGcxCredentialDegradation: jest.fn() }));
 
 const mockMarkStepCompleted = jest.fn();
 const mockResetStep = jest.fn();
@@ -107,17 +75,6 @@ jest.mock('../../integrations/coda/useCodaAvailability.hook', () => ({
   useReportSandboxUnavailable: jest.fn(),
 }));
 
-// Only the two network-touching functions are stubbed. `toCodaError`,
-// `isMintForbidden` and `codaErrorCodeMessage` stay real: the classification is
-// the behaviour under test.
-const mockProvisionGcx = jest.fn();
-let mockCanMint = true;
-jest.mock('../../integrations/coda/coda-api', () => ({
-  ...jest.requireActual('../../integrations/coda/coda-api'),
-  provisionGcx: (...args: unknown[]) => mockProvisionGcx(...args),
-  canMintGrafanaToken: () => mockCanMint,
-}));
-
 const STEP_ID = 'step-1';
 
 /** Connect resolves a session id and the context reports connected, as it does live. */
@@ -141,20 +98,13 @@ beforeEach(() => {
   mockIsTerminalRegistered = true;
   mockSandboxUnavailable = null;
   mockCheckerStatusOverride = null;
-  mockCanMint = true;
-  mockProvisionGcx.mockReset();
-  mockBackendFetch.mockReset();
-  preflightFindsNothing();
-  // The credential state is module-scoped, shared with the terminal toolbar.
-  resetGcxCredentialStore();
 });
 
-describe('without gcx', () => {
+describe('connecting a terminal', () => {
   it('exposes the connection contract and custom button control', () => {
     renderStep({ buttonText: 'Start nginx', vmTemplate: 'vm-aws-sample-app', vmApp: 'nginx' });
     const root = screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID));
     expect(root).toHaveAttribute('data-test-terminal-status', 'disconnected');
-    expect(root).not.toHaveAttribute('data-test-terminal-gcx');
     expect(root).toHaveAttribute('data-test-terminal-vm-requested', 'true');
     expect(screen.getByTestId(testIds.interactive.terminalConnectButton(STEP_ID))).toHaveTextContent('Start nginx');
   });
@@ -223,7 +173,7 @@ describe('without gcx', () => {
     fireEvent.click(screen.getByText('Try in terminal'));
 
     await waitFor(() => expect(onComplete).toHaveBeenCalled());
-    expect(mockProvisionGcx).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
   it('passes the VM options through to openTerminal', async () => {
@@ -242,18 +192,31 @@ describe('without gcx', () => {
   });
 });
 
-it('opens the terminal for a previously published GCX step without provisioning a credential', async () => {
+it('renders a published guide step with gcx credentials as a plain connect step that completes on connect', async () => {
+  const parsed = parseJsonGuide(
+    JSON.stringify({
+      id: 'legacy-gcx',
+      title: 'Legacy gcx',
+      blocks: [{ type: 'terminal-connect', id: STEP_ID, content: 'Connect', credentials: [{ tool: 'gcx' }] }],
+    })
+  );
+  expect(parsed.isValid).toBe(true);
+  const element = parsed.data!.elements.find((el) => el.type === 'terminal-connect-step')!;
   connectResolves();
   const onComplete = jest.fn();
-  renderStep({ gcx: true, onComplete });
+  render(<TerminalConnectStep {...element.props} onComplete={onComplete} />);
+
+  expect(screen.getByTestId(testIds.interactive.terminalConnectStep(STEP_ID))).not.toHaveAttribute(
+    'data-test-terminal-gcx'
+  );
   fireEvent.click(screen.getByText('Try in terminal'));
   await waitFor(() => expect(onComplete).toHaveBeenCalled());
-  expect(mockProvisionGcx).not.toHaveBeenCalled();
+  expect(mockMarkStepCompleted).toHaveBeenCalled();
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
 });
 
 describe('the executeStep handle', () => {
-  it('reports success for a connected terminal when gcx was not asked for', async () => {
+  it('reports success for a connected terminal', async () => {
     mockTerminalStatus = 'connected';
     mockSessionId = 's_abc';
     const ref = React.createRef<{ executeStep: () => Promise<boolean> }>();
