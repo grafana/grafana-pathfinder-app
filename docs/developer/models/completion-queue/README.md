@@ -19,7 +19,7 @@ Mapping baseline: `7f63aa476700683e40131ff29a558dbe12b37328`. The model starts j
 | LocalWithdrawal          | A transient for a submission pending in the clearing instance at reset must skip the put. `withdrawn` independently records that pending submission; `badPut` remembers any forbidden put.                     |
 | OwnerWithdrawal          | After reset the owner prefix must contain no rows, including after a peer's pending response. With no fresh enqueues this expresses the stronger shared-storage requirement.                                   |
 
-**Bounds and omissions.** Two tabs, one owner, two initially durable events, at most one pending send per tab and one reset anywhere. Repeated passes and expiries revisit a finite graph. Each pass selects one due row; either row may be eligible. Retry timing, attempts and row ordering are abstracted. Only transient responses are explored. The replay also uses success to finish one pending call. The response can be delayed by a suspended tab regardless of the normal request timeout. Renewal, selection/send, release and the reset sweep each group storage operations; races inside those groups and time passing during acquisition are outside coverage. Storage succeeds. Volatile fallback, partials, cap/retention, identity changes, hook scheduling, tab crashes, new enqueues and the backend are outside scope. There is no fairness condition. A reset cannot undo a submitted write. Delivery and server deduplication require separate evidence.
+**Bounds and omissions of the original model.** Two tabs, one owner, two initially durable events, at most one pending send per tab and one reset anywhere. Repeated passes and expiries revisit a finite graph. Each pass selects one due row; either row may be eligible. Retry timing, attempts and row ordering are abstracted. Only transient responses are explored. The replay also uses success to finish one pending call. The response can be delayed by a suspended tab regardless of the normal request timeout. Renewal, selection/send, release and the reset sweep each group storage operations; races inside those groups and time passing during acquisition are outside coverage. Storage succeeds. Volatile fallback, partials, cap/retention, identity changes, hook scheduling, tab crashes, new enqueues and the backend are outside this original model. There is no fairness condition. A reset cannot undo a submitted write. Delivery and server deduplication require separate evidence.
 
 ## Repeat the check
 
@@ -49,6 +49,50 @@ Read each invocation separately. A complete pass needs exit 0, TLC's no-error co
 
 Times include JVM startup on Apple silicon. Only the first row describes exhaustive coverage.
 
+## Three bounded extensions
+
+These are separate small state spaces, in the proposed order, rather than one combined state space. They use the same queue and storage mapping above. A clean result applies only to the transitions named in its row.
+
+| Step and model                                     | Source mapping                                                                                                                                                                                                                                                      | Checked rule and result                                                                                                                                                                                                   |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reset then complete again: `ResetAndReenqueue.tla` | A submits the old row; either tab resets; B enqueues a new row for the same guide with a distinct id; both pending responses may be success or transient. A retry submits the new row's stored id.                                                                  | `StableKeys` and `NewSurvivesOld` hold. `OldStaysWithdrawn` fails when B resets and A's late transient re-persists the old row beside the new row. This is the existing owner-wide weakness in a new-completion schedule. |
+| Partial progress: `PartialProgress.tla`            | A submits 50%; B may refresh and queue the same 50% under the same attempt id, then queues 100% while A waits. B removes its known predecessor only after putting 100%; A's later response may succeed or be transient.                                             | `FullSurvivesHalf` and `SamePercentageSameKey` hold. A late 50% response may restore 50%, but it does not remove 100%.                                                                                                    |
+| Storage failure and reload: `StorageFailure.tla`   | A holds durable 50%. A replacement `put` for 100% succeeds or fails once. After failure, `processDue` refreshes from the adapter's volatile overlay and holds the 100% send; another enqueue of 100% sees a duplicate in queue memory. Reload drops volatile state. | `FailedReplacementPreservesOld` and `ReloadMatchesDisk` hold. `DurableAcceptance` fails: duplicate enqueue reports success while only 50% is durable. After reload, the 100% record is gone.                              |
+
+From the same directory, reuse the verified `jar` and `work` variables above:
+
+```sh
+check_extension() {
+  config=$1
+  module=$2
+  java -XX:+UseParallelGC -cp "$jar" tlc2.TLC -workers 1 -fp 0 -deadlock -noGenerateSpecTE \
+    -metadir "$work/states-$config" -config "$config.cfg" "$module"
+}
+check_extension ResetAndReenqueue ResetAndReenqueue
+check_extension ResetAndReenqueueOwner ResetAndReenqueue
+check_extension PartialProgress PartialProgress
+check_extension PartialProgressFault PartialProgress
+check_extension StorageFailure StorageFailure
+check_extension StorageFailureAcceptance StorageFailure
+check_extension StorageFailureFault StorageFailure
+```
+
+`-deadlock` disables TLC's deadlock check because these finite schedules intentionally end. It does not disable the listed invariants. The owner and storage-acceptance configurations are expected to exit 12 with counterexamples. The partial and storage fault configurations deliberately remove the 100% row and the previous durable row, respectively; each must exit 12 on its named invariant. The three clean configurations must exit 0 with no error and zero queued states.
+
+| Configuration            | Generated / distinct / queued at stop | Depth | Outcome                                                                     |
+| ------------------------ | ------------------------------------- | ----- | --------------------------------------------------------------------------- |
+| ResetAndReenqueue        | 62 / 20 / 0                           | 7     | Exhausted graph; both invariants held                                       |
+| ResetAndReenqueueOwner   | 13 / 10 / 3                           | 5     | Counterexample: B reset, B enqueued new, A's old transient restored old     |
+| PartialProgress          | 16 / 11 / 0                           | 5     | Exhausted graph; both invariants held                                       |
+| PartialProgressFault     | 11 / 8 / 2                            | 4     | Injected fault violated `FullSurvivesHalf`                                  |
+| StorageFailure           | 9 / 8 / 0                             | 5     | Exhausted graph; predecessor and reload invariants held                     |
+| StorageFailureAcceptance | 7 / 7 / 1                             | 4     | Counterexample: refresh then duplicate reports non-durable 100% as accepted |
+| StorageFailureFault      | 3 / 3 / 1                             | 2     | Injected fault violated `FailedReplacementPreservesOld`                     |
+
+The [focused implementation replay](../../../../src/completion-records/completion-write-queue.takeover.test.ts) holds the old or partial send while the other queue changes storage. It checks reset and re-completion, both late 50% outcomes, deterministic attempt keys, a failed replacement followed by a fresh storage adapter simulating reload, and a duplicate enqueue after volatile refresh. The owner-wide and durable-acceptance cases assert current limitations, not desired behavior. Run it with the focused Jest command above; the four focused suites passed with 80 tests after this expansion.
+
+These extensions abstract the lease steps, retry delay, partial capability check, backoff metadata, storage-event timing and server effects. The storage-failure model has one replacement write and one reload; it does not combine a failed write with a concurrent reset or response. The passing invariants therefore do not establish those unmodeled combinations.
+
 ## Read and replay a trace
 
 Both shortest counterexamples start with A reading an available lease, writing A, verifying A, then submitting event 1 with key 11. The row remains on disk until reset. Compare TLC states 5–7:
@@ -64,7 +108,7 @@ The shortest traces need no expiry. The [implementation replay](../../../../src/
 npm run test:ci -- --coverage=false --runTestsByPath src/completion-records/completion-write-queue.takeover.test.ts
 ```
 
-The replay holds A's response, verifies B cannot send before expiry, advances the injected clock past the TTL, and observes B submit the original key. B clears, then receives a transient. The real adapter lists an empty queue. A receives success and the queue stays empty. The four focused queue/adapter suites passed (73 tests).
+The original replay holds A's response, verifies B cannot send before expiry, advances the injected clock past the TTL, and observes B submit the original key. B clears, then receives a transient. The real adapter lists an empty queue. A receives success and the queue stays empty. The four focused queue/adapter suites passed at the pilot baseline (73 tests).
 
 **Mutation check.** In a disposable checkout, remove only the membership check immediately before `item.attempts += 1` in `processDueWithLease`. Run the replay: the first post-clear storage assertion failed with id `original-key` and attempts 1. Restore the guard. TLC's Clean run is independent of that edit; the model must be kept in sync by hand.
 
@@ -74,6 +118,6 @@ The replay holds A's response, verifies B cannot send before expiry, advances th
 
 **Recommendation: narrow.** Keep this a manual investigation for changes to shared queue membership or lease handling. The new evidence is the difference between two outstanding responses to the same key after a reset. The existing separate lease-expiry and local-clear tests do not observe that distinction.
 
-On a queue change, diff the two mapped source files from the baseline, identify the storage reads/writes and suspension points that moved, and update the matching actions and replay together. In particular, splitting renewal or changing which tab observes a withdrawal can invalidate the abstraction. Revisit grouping before interpreting a clean check. Rerun all three configurations, record counts and the first divergent state, then rerun the real-code replay and its negative control. Review any property change separately and advance the baseline once the mapping agrees.
+On a queue change, diff the two mapped source files from the baseline, identify the storage reads/writes and suspension points that moved, and update the matching actions and replay together. In particular, splitting renewal or changing which tab observes a withdrawal can invalidate the abstraction. Revisit grouping before interpreting a clean check. Rerun all configurations, record counts and the first divergent state, then rerun the real-code replay and its negative control. Review any property change separately and advance the baseline once the mapping agrees.
 
-For a second subsystem, start with one contested resource, two actors and an observable safety property. Write down which operations can interleave, inject one wrong decision, and hold the corresponding real callback in a deterministic test. The cost here was maintaining one model, three small configurations and one replay; TLC itself took under a second per run. Independent reproduction by a second engineer and the cost of keeping a second mapping current remain unmeasured.
+For a second subsystem, start with one contested resource, two actors and an observable safety property. Write down which operations can interleave, inject one wrong decision, and hold the corresponding real callback in a deterministic test. This pilot now has four small models, ten configurations and one focused replay suite; each TLC run took under a second. Independent reproduction by a second engineer and the cost of keeping a second mapping current remain unmeasured.
