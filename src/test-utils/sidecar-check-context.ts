@@ -23,6 +23,7 @@ export function contextOf(
     sidecars,
     projection: PROJECTION_TABLE,
     hash: SIDECAR_HASH_FUNCTIONS,
+    allowStaleTranslations: false,
     ...overrides,
   };
 }

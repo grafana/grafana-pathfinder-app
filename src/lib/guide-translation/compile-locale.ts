@@ -316,7 +316,7 @@ function canonicalLanguageOf(manifest: CompileManifest): string {
   return (isRecord(manifest) ? nonBlankString(manifest.language) : undefined) ?? DEFAULT_CANONICAL_LANGUAGE;
 }
 
-// Blocks only: stale guide title and manifest entries are not reported yet (#2475).
+// Blocks only: stale guide title and manifest entries are reported by validate's source-hash check (#2388).
 async function staleIdsOf(records: readonly BlockRecord[]): Promise<string[]> {
   const verdicts = await Promise.all(
     records.map(async (record) => {

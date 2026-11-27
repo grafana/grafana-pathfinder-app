@@ -8,6 +8,7 @@ import {
   hashManifestSource,
   isWellFormedSourceHash,
 } from '../../lib/guide-translation/source-hash';
+import { hashEntryText } from '../../lib/guide-translation/review';
 import type { JsonBlock } from '../../types/json-guide.types';
 import { SIDECAR_HASH_FUNCTIONS } from './hash';
 
@@ -38,6 +39,14 @@ describe('sidecar hash functions', () => {
   it('hashes the manifest block as the canonical async hash does', async () => {
     const manifest = { description: 'Build a dashboard.', category: 'Dashboards' };
     expect(SIDECAR_HASH_FUNCTIONS.manifest(manifest)).toBe(await hashManifestSource(manifest));
+  });
+
+  it.each([
+    ['a block entry', { content: 'Café ガイド', reviewed: true, _sourceHash: 'sha256:x' }],
+    ['an entry with steps', { content: '保存', steps: { open: { description: '開く' }, empty: {} } }],
+    ['an entry with no text', { reviewed: true }],
+  ])('hashes the translated text of %s as hashEntryText does', async (_name, entry) => {
+    expect(SIDECAR_HASH_FUNCTIONS.entryText(entry)).toBe(await hashEntryText(entry));
   });
 
   it('hashes the guide title as the canonical async hash does', async () => {

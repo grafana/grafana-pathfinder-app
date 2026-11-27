@@ -1031,6 +1031,7 @@ describe('runValidate', () => {
         bundled: false,
         stdin: false,
         strict: false,
+        allowStaleTranslations: false,
         format: 'json',
         verbose: false,
       });
@@ -1070,6 +1071,7 @@ describe('runValidate', () => {
         bundled: false,
         stdin: true,
         strict: false,
+        allowStaleTranslations: false,
         format: 'text',
         verbose: false,
       });

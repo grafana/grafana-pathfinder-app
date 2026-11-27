@@ -2,6 +2,7 @@ import * as fs from 'fs';
 
 import { validatePackage } from '../validate-package';
 import { createTmpDir, sidecarJson, writePackage } from '../../test-utils/sidecar-package-fixture';
+import { SIDECAR_HASH_FUNCTIONS } from './hash';
 
 describe('validatePackage — sidecar seam', () => {
   let tmpDir: string;
@@ -75,5 +76,42 @@ describe('validatePackage — sidecar seam', () => {
     fs.rmSync(`${dir}/content.json`);
     const result = validatePackage(dir);
     expect(result.errors.map((e) => e.code)).toEqual(['missing_content']);
+  });
+});
+
+describe('validatePackage — a stale translation with the real checks', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = createTmpDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  // writePackage's English is "Hello"; this entry was reviewed against "Hi".
+  const translation = { content: 'こんにちは' };
+  const staleEntry = {
+    ...translation,
+    reviewed: true,
+    _reviewHash: SIDECAR_HASH_FUNCTIONS.entryText(translation),
+    _sourceHash: SIDECAR_HASH_FUNCTIONS.block({ type: 'markdown', id: 'intro', content: 'Hi' }),
+  };
+
+  it.each([
+    [false, false, false],
+    [true, false, false],
+    [false, true, true],
+    [true, true, true],
+  ])('strict=%s, allowStaleTranslations=%s: valid is %s', (strict, allowStaleTranslations, valid) => {
+    const dir = writePackage(tmpDir, 'stale', { ja: sidecarJson('ja', { blocks: { intro: staleEntry } }) });
+    const result = validatePackage(dir, { strict, allowStaleTranslations });
+
+    expect(result.isValid).toBe(valid);
+    const stale = (findings: Array<{ code?: string }>) =>
+      findings.filter((f) => f.code === 'sidecar_stale_translation');
+    expect(stale(result.errors)).toHaveLength(valid ? 0 : 1);
+    expect(stale(result.messages)).toHaveLength(valid ? 1 : 0);
   });
 });
