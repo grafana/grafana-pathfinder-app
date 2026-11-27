@@ -99,6 +99,56 @@ describe('add-block and add-step ids in a guide with a translation sidecar', () 
       expect(outcome).toMatchObject({ status: 'ok', data: { id: 'callout-1' } });
     });
 
+    it('stamps nothing when an --if-absent retry matches an existing block', async () => {
+      writeGuide(
+        [
+          { type: 'markdown', id: 'markdown-1', content: 'New' },
+          { type: 'multistep', id: 'save', content: 'Save it.', steps: [step()] },
+        ],
+        { sidecar: true }
+      );
+      const outcome = await runAddBlock({ dir: pkg, type: 'markdown', ifAbsent: true, fields: { content: 'New' } });
+
+      expect(outcome).toMatchObject({ status: 'ok', data: { appended: false, id: 'markdown-1' } });
+      expect(outcome.status === 'ok' && outcome.data).not.toHaveProperty('idsStamped');
+      expect(blocksOnDisk()[1]!.steps[0].id).toBeUndefined();
+    });
+
+    it('treats a sidecar that fails to parse as present', async () => {
+      writeGuide(existing, { sidecar: true });
+      fs.writeFileSync(path.join(pkg, 'i18n', 'ja.json'), '{ not json');
+      const outcome = await runAddBlock({ dir: pkg, type: 'markdown', fields: { content: 'New' } });
+
+      expect(outcome).toMatchObject({ status: 'ok', data: { id: 'markdown-1' } });
+    });
+
+    it('stamps a new block in a conditional branch and the id-less blocks beside it', async () => {
+      writeGuide(
+        [
+          {
+            type: 'conditional',
+            id: 'admin-only',
+            conditions: ['is-admin'],
+            whenTrue: [{ type: 'markdown', content: 'Admin text' }],
+            whenFalse: [{ type: 'markdown', content: 'Viewer text' }],
+          },
+        ],
+        { sidecar: true }
+      );
+      const outcome = await runAddBlock({
+        dir: pkg,
+        type: 'markdown',
+        parent: 'admin-only',
+        branch: 'false',
+        fields: { content: 'New' },
+      });
+
+      expect(outcome).toMatchObject({ status: 'ok', data: { id: 'markdown-3', idsStamped: 2 } });
+      const [conditional] = blocksOnDisk();
+      expect(conditional!.whenTrue.map((block: Loose) => block.id)).toEqual(['markdown-1']);
+      expect(conditional!.whenFalse.map((block: Loose) => block.id)).toEqual(['markdown-2', 'markdown-3']);
+    });
+
     it('leaves the guide untouched when the add is rejected', async () => {
       writeGuide([{ type: 'markdown', content: 'Untouched' }], { sidecar: true });
       const before = fs.readFileSync(path.join(pkg, 'content.json'), 'utf-8');
