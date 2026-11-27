@@ -31,4 +31,4 @@ An empty assignments array is valid. Record the stack, rollout version, and resu
 | `sdk-only-version`  | Reuse an existing dev catalogue version for an SDK-only dev rollout. Verify its frontend matches the intended trial. |
 | `docs-only`         | Publish documentation only. Leave the SDK-only version empty.                                                        |
 
-Grafana 13.1 remains the plugin minimum. Bundled guides and the public recommendations feed remain available without registration. Features that persist data through SDK resources require a capable host and healthy registered routes.
+The plugin needs Grafana 13.3.0 or later because of the App Platform migration. `grafanaDependency` in `src/plugin.json` is still `>=13.1.0-0`. Bundled guides and the public recommendations feed remain available without registration. Features that persist data through SDK resources require a capable host and healthy registered routes.

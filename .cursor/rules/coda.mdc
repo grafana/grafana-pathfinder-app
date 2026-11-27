@@ -204,9 +204,9 @@ helper, rejection, or `true` all fall through, since it does not itself check *e
 **The terminal needs Grafana 13.1**, and only because of that second gate: `isAppPluginEnabled` is
 served by core's own `@grafana/runtime` and does not exist before 13.1, where it throws synchronously
 rather than rejecting. Nothing else in the path needs it — the SDK uses only `getBackendSrv().fetch`
-and `getGrafanaLiveSrv` — so the sandbox would otherwise work on 12.3–13.0. This floor is deliberately
-**not** in `plugin.json`: `grafanaDependency` stays `>=12.3.0-0` because raising it would block the
-whole plugin from installing for an optional, off-by-default feature. `isCodaProbeSupported()` is the
+and `getGrafanaLiveSrv` — so the sandbox would otherwise work on 12.3–13.0. Pathfinder itself now
+needs Grafana 13.3.0 or later because of the App Platform migration, and `grafanaDependency` in
+`src/plugin.json` is `>=13.1.0-0`, so this floor limits no supported host. `isCodaProbeSupported()` is the
 one place that distinguishes "cannot ask" from "plugin absent"; anything that explains unavailability
 to an operator must call it, or it reports a missing plugin on a stack where the plugin is fine.
 

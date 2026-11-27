@@ -3,7 +3,7 @@ title: Administrator reference
 menuTitle: Administration
 description: Configure Interactive learning for your Grafana organization, disable Pathfinder in Grafana Cloud, manage recommendations, and choose how guides open and run.
 weight: 30
-review_date: 2026-09-30
+review_date: 2026-11-26
 ---
 
 # Administrator reference
@@ -112,9 +112,31 @@ The two-tab controller is experimental and enabled by default. Admins can turn i
 
 Users with the Editor or Admin role can open **More options** > **Create guide** in the sidebar. Dev mode is not required.
 
-Saving and publishing guides requires the Pathfinder storage service to be available on the instance and the user to have permission to write guides. If storage is unavailable, authors can still work locally and export guide JSON. Published guides are available to users in the same Grafana organization; they are not automatically shared to other stacks.
+Saving and publishing guides uses guide storage, the Interactive learning App Platform backend. Guide storage keeps each guide as an `InteractiveGuide` resource in the current Grafana organization. The **Save** and **Publish** controls show when guide storage is available. Saving and publishing also need permission to write guides, which the Editor and Admin roles include. If custom role-based access control removes that permission, a save reports a permission error. If guide storage is unavailable, authors can still work in the browser and transfer guide JSON with **More actions** > **Download JSON** and **More actions** > **Import**. Published guides are available to users in the same Grafana organization; they are not automatically shared to other stacks.
 
 For draft, publishing, sharing, and import instructions, refer to the [Block editor guide](../block-editor/).
+
+### Set up guide storage
+
+Guide storage is available on Grafana Cloud and on self-managed Grafana, both open source and Enterprise.
+
+| Deployment                                        | What you need                                                                                                                                                                        |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Grafana Cloud                                     | Nothing. Grafana Cloud always runs the latest Grafana and Interactive learning plugin.                                                                                               |
+| Self-managed Grafana (open source and Enterprise) | Grafana 13.3.0 or later, Interactive learning plugin version TBD (the first release after 2.30.0 that includes the App Platform migration), and the feature toggles described below. |
+
+The plugin needs Grafana 13.3.0 or later because of the App Platform migration. Grafana 13.3.0 is also the first Grafana release that has all three feature toggles.
+
+On self-managed Grafana, turn on these experimental feature toggles in the Grafana configuration file, then restart Grafana:
+
+```ini
+[feature_toggles]
+enable = appplugins.loadAppManifest,appplugins.registerAPIServer,grafana.useRouterMiddleware
+```
+
+All three toggles are experimental and off by default in Grafana. The plugin ships its own app manifest, so you don't need to provision any other resource.
+
+Without these toggles, guide storage is unavailable. Authors keep their browser working copy and can transfer guide JSON between instances.
 
 ## Kiosk mode
 

@@ -3,7 +3,7 @@ title: Block editor
 menuTitle: Block editor
 description: Create interactive guides with the block editor in Grafana, record steps, save drafts, publish content for your organization, and import or export guide JSON.
 weight: 20
-review_date: 2026-09-30
+review_date: 2026-11-26
 keywords:
   - block editor
   - custom guide
@@ -13,7 +13,7 @@ keywords:
 
 # Block editor
 
-The block editor is a visual authoring tool built into Interactive learning. You can use it to compose your own interactive guides without writing any JSON, save them as drafts, publish them to your Grafana instance, and update them as your processes change.
+The block editor is a visual authoring tool built into Interactive learning. You can use it to compose your own interactive guides without writing any JSON, save them as drafts, publish them to your Grafana organization, and update them as your processes change.
 
 This page walks you through:
 
@@ -33,7 +33,9 @@ This page walks you through:
 
 The block editor is available to users with the Editor or Admin role in Grafana. The **Create guide** menu item is not available to users with the Viewer role. Published guides are visible to users in the same Grafana organization, regardless of role.
 
-Publishing requires server storage to be available on your stack. Published custom guides are shared within the current Grafana organization. Other authors with the required access can load guides from the library. When publishing is unavailable, you can still author guides locally and export their JSON.
+Saving and publishing use guide storage, the Interactive learning App Platform backend. Guide storage keeps each guide as an `InteractiveGuide` resource in the current Grafana organization. Grafana Cloud needs no setup. Self-managed Grafana, both open source and Enterprise, needs an administrator to turn it on. Refer to [Set up guide storage](../administrators-reference/#set-up-guide-storage).
+
+The **Save** and **Publish** controls show when guide storage is available. Saving and publishing also need permission to write guides, which the Editor and Admin roles include. If custom role-based access control removes that permission, a save reports a permission error. Other authors with the required access can load saved guides from the library. When guide storage is unavailable, you can still author guides in this browser and transfer their JSON.
 
 ## Open the block editor
 
@@ -50,15 +52,32 @@ When you open the editor for a new guide, you see the empty canvas:
 
 ![Block editor with a new guide, Edit, Preview, and JSON views, the Save button, and Add block control.](/media/docs/pathfinder/2026-09-30/block-editor.jpg)
 
-| Area                                 | What it does                                                                                                         |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| Title                                | Name the guide. The editor generates an ID from its title; saved guides retain their identity when renamed.          |
-| Status badge                         | Shows whether the guide is a draft or published and whether it has local changes.                                    |
-| View mode toggle                     | Switch between **Edit**, **Preview**, and **JSON**.                                                                  |
-| **Save**, **Publish**, or **Update** | Save a draft or publish changes when server storage is available.                                                    |
-| More actions                         | Start a new guide, open the library, edit guide details, import or export JSON, change display mode, or take a tour. |
-| **Undo** and **Redo**                | Reverse or reapply changes during your editing session.                                                              |
-| Add block                            | Open the palette to add content or interactive steps.                                                                |
+| Area                                 | What it does                                                                                                |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Title                                | Name the guide. The editor generates an ID from its title; saved guides retain their identity when renamed. |
+| Status badge                         | Shows whether the guide is a draft or published and whether it has local changes.                           |
+| View mode toggle                     | Switch between **Edit**, **Preview**, and **JSON**.                                                         |
+| **Save**, **Publish**, or **Update** | Save a draft or publish changes when guide storage is available.                                            |
+| More actions                         | Open the menu described in [The More actions menu](#the-more-actions-menu).                                 |
+| **Undo** and **Redo**                | Reverse or reapply changes during your editing session.                                                     |
+| Add block                            | Open the palette to add content or interactive steps.                                                       |
+
+### The More actions menu
+
+Open **More actions** (the three-dot button in the header) for these items:
+
+| Menu item                                | What it does                                                                                                         |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **New guide**                            | Start an empty guide. The editor asks before it discards unsaved work.                                               |
+| **Select blocks**                        | Turn on selection mode to delete or group several blocks. The item shows in **Edit** view when the guide has blocks. |
+| **Library**                              | Load or delete a saved guide. Requires guide storage.                                                                |
+| **Guide details**                        | Set the author and team. Requires guide storage.                                                                     |
+| **Publish** or **Unpublish**             | Publish a guide that is not yet published, or return a published guide to draft. Requires guide storage.             |
+| **Pop out** or **Dock**, **Full screen** | Change where the editor displays.                                                                                    |
+| **Import**                               | Load guide JSON into the editor.                                                                                     |
+| **Copy JSON**, **Download JSON**         | Copy the guide JSON to the clipboard or download it as a file.                                                       |
+| **Create GitHub PR**                     | Copy the guide JSON and prepare a pull request that contributes the guide to a GitHub repository.                    |
+| **Take tour**                            | Walk through the editor controls.                                                                                    |
 
 ## Create your first guide
 
@@ -70,7 +89,7 @@ Click the title at the top and type a name. Press **Enter** or click away to con
 
 ### 2. Add your first block
 
-Click **Add block** at the bottom of the editor. The block palette opens with every block type available on this instance:
+Click **Add block** at the bottom of the editor. The block palette opens with the block types available on this instance:
 
 Pick **Markdown** for a plain text introduction. Each block type opens its own form:
 
@@ -108,13 +127,13 @@ Click **Save** to save a draft, then **Publish** when the guide is ready for rea
 | Divider     | A visual separator between parts of your guide.                                                                                                                                                |
 | Callout     | A labeled box that highlights a message.                                                                                                                                                       |
 | Image       | An embedded image with optional dimensions.                                                                                                                                                    |
-| Video       | A YouTube embed or a native HTML5 video.                                                                                                                                                       |
+| Video       | A YouTube or Vimeo embed, or a native HTML5 video.                                                                                                                                             |
 | Section     | A container that groups related steps and adds a **Do section** button.                                                                                                                        |
 | Collapsible | A container that hides its content behind a toggle the user expands.                                                                                                                           |
 | Conditional | Two branches of content—show one branch when conditions pass, the other when they fail. Conditions use the same syntax as requirements (for example, `has-datasource:prometheus`, `is-admin`). |
 | Interactive | A single step with **Show me** and **Do it** buttons that highlight or perform an action in Grafana.                                                                                           |
 | Multistep   | A sequence of actions that runs automatically when the user clicks **Do it**.                                                                                                                  |
-| Guided      | A sequence the user performs themselves—Pathfinder highlights each step and waits for the user to act.                                                                                         |
+| Guided      | A sequence the user performs themselves—the guide highlights each step and waits for the user to act.                                                                                          |
 | Quiz        | A knowledge-check with single or multiple-choice answers.                                                                                                                                      |
 | Input       | A prompt that collects a value from the user (text, checkbox, or data source picker) and stores it as a variable for later steps to reference.                                                 |
 | Code block  | A code snippet with copy-to-clipboard and, in supported contexts, an **Insert** button that inserts the code into a supported Grafana code editor.                                             |
@@ -122,7 +141,7 @@ Click **Save** to save a draft, then **Publish** when the guide is ready for rea
 | Grot guide  | A choose-your-own-adventure decision tree where each screen offers options that branch to other screens.                                                                                       |
 | Snippet     | A reference to a published snippet—the guide always renders the latest version of the snippet's content.                                                                                       |
 
-If your administrator has enabled the Coda terminal integration, the palette also exposes **Terminal** (a runnable shell command) and **Terminal connect** (a button that provisions a sandbox VM and opens a terminal panel) blocks. A challenge block only needs the terminal integration when it runs in sandbox VM mode.
+The palette shows **Terminal** (a runnable shell command) and **Terminal connect** (a button that provisions a sandbox VM and opens a terminal panel) only when your administrator has configured the Coda integration. If those blocks are missing, ask your administrator to set up Coda. Refer to [Optional sandbox terminals and live sessions](../administrators-reference/#optional-sandbox-terminals-and-live-sessions). The **Challenge** block has no such requirement. It needs Coda only when it runs in sandbox VM mode.
 
 ## Record interactive steps
 
@@ -133,26 +152,28 @@ You don't have to write selectors by hand. Click **Add and record** on a section
 - Hold **Shift** while clicking to record a `hover` step instead of a click—handy for menus and rows that only show their actions on hover.
 - Hold **Alt** while clicking to force a `formfill` capture on any element.
 
+If you navigate away while recording, click **Return to start** in the banner to go back to the page where recording started. The button is unavailable when you're already on that page.
+
 Click **Stop** in the banner when you're done. Each recorded action becomes a step inside the active block. You can then edit individual steps (drag to reorder, change action type, tweak target, add tooltips) just like manually created ones.
 
 ## Save, publish, and update
 
 The editor saves your work in two places:
 
-- **This browser**: Automatically saves your working copy in this browser. Clearing browser storage removes that copy, so export important work or save it to the library. The **Saved** or **Saving** indicator in the header reflects this browser copy.
-- **Guide library**: Saves drafts and published guides for this stack when the service is available. The status badge shows whether the guide is a draft or published.
+- **This browser**: Automatically saves your working copy in this browser. Clearing browser storage removes that copy, so download important work or save it to guide storage. The **Saved** or **Saving** indicator in the header reflects this browser copy.
+- **Guide storage**: Saves drafts and published guides as `InteractiveGuide` resources in the current Grafana organization when guide storage is available. The status badge shows whether the guide is a draft or published.
 
 ### Lifecycle
 
 | Current state              | Primary button | What it does                                                            |
 | -------------------------- | -------------- | ----------------------------------------------------------------------- |
-| Not saved                  | Save           | Saves to the server as a draft. Assigns a guide ID if one isn't set.    |
+| Not saved                  | Save           | Saves to guide storage as a draft. Assigns a guide ID if one isn't set. |
 | Draft, no changes          | Publish        | Makes the guide live in the Interactive learning sidebar for all users. |
 | Draft, unsaved changes     | Save           | Saves your latest changes to the draft without publishing.              |
 | Published, no changes      | Update         | Saves the guide while keeping it published.                             |
 | Published, unsaved changes | Update         | Pushes your latest changes to the live guide.                           |
 
-Open **More actions** for other available actions, such as **Publish** for a draft or **Unpublish** for a published guide.
+Open **More actions** for other available actions, such as **Publish** for a draft or **Unpublish** for a published guide. These items need guide storage.
 
 ### Edit a published guide
 
@@ -167,20 +188,24 @@ When you save a guide that has no author, the editor attributes it to your Grafa
 
 To set the author or a team yourself, open **More actions** > **Guide details**. The name and team you enter are written the next time you save or publish, and the editor shows them as unsaved changes until then. Clear the name to go back to the default. A guide that already has an author keeps it, unless that author is a placeholder name such as `pathfinder-mcp`, which your name replaces.
 
+### If the saved copy is deleted
+
+If someone deletes the saved copy of the guide you have open, for example from the library, the editor keeps your local draft and shows a notice. The primary button then reads **Save as new**. Select it to save the draft to guide storage as a new guide.
+
 ### Unpublish
 
-Open **More actions** and select **Unpublish**. The guide returns to draft status and is removed from the published catalog. It stays in your library so you can publish it again. Readers might need to refresh to see the updated catalog.
+Open **More actions** and select **Unpublish**. The guide returns to draft status and is removed from the published catalog. It stays in guide storage so you can publish it again. Readers might need to refresh to see the updated catalog.
 
 ## The guide library
 
-Open **More actions** > **Library** to see saved drafts and published guides.
+Open **More actions** > **Library** to see the drafts and published guides saved in guide storage for the current Grafana organization. The library needs guide storage.
 
 ![Editor More actions menu with Library, Publish, display options, Import, and Download JSON.](/media/docs/pathfinder/2026-09-30/editor-actions.jpg)
 
-The menu item appears once there is a saved guide and server storage is available. From the library you can:
+The menu item appears when guide storage is available. It is hidden once guide storage confirms there are no saved guides. From the library you can:
 
-- **Load** a guide into the editor for editing.
-- **Delete** a guide permanently (you'll be asked to confirm).
+- **Load** a guide into the editor for editing. Loading can fail if the stored copy was deleted or is invalid. Use **Refresh** to update the list.
+- **Delete** a guide permanently (you'll be asked to confirm). If you delete the guide you have open, the editor keeps your local draft.
 - **Refresh** the list to pick up changes made by other authors.
 
 Drafts are only visible in the library—they don't appear in the Interactive learning sidebar. Only published guides reach end users.
@@ -229,9 +254,11 @@ Stop recording, edit or delete the unwanted step from the canvas, and start a ne
 
 ### Save and publish controls are missing
 
-These controls require server storage on your stack. Without it, the editor saves your working copy in this browser. Use **More actions** > **Download JSON** to keep a separate copy, and ask your administrator whether server storage is available.
+These controls need guide storage, the Interactive learning App Platform backend. On Grafana Cloud, guide storage needs no setup, so reload the page and check that you're signed in with the Editor or Admin role. On self-managed Grafana, ask your administrator to turn on guide storage. Refer to [Set up guide storage](../administrators-reference/#set-up-guide-storage) for the Grafana version, plugin version, and feature toggles they need.
 
-If a server save reports an error, retry after connectivity is restored. A browser auto-save does not mean that the draft or published guide was updated on the server.
+Until guide storage is available, the editor saves your working copy in this browser. Use **More actions** > **Download JSON** to keep a separate copy. To bring it into another editor, use **More actions** > **Import**.
+
+If a save reports a permission error, you might not have permission to write guides. The Editor and Admin roles include it, but custom role-based access control can remove it. Ask your Grafana administrator to check your role. If a save reports another error, retry after connectivity is restored. A browser auto-save does not mean that the draft or published guide was updated in guide storage.
 
 ### My guide doesn't appear in the Interactive learning sidebar after publishing
 
@@ -239,6 +266,6 @@ Refresh the page. The Interactive learning sidebar reads the list of published c
 
 ## Share or move a guide
 
-To use a guide on another stack, select **More actions** > **Download JSON**, then open the editor on the destination stack and select **More actions** > **Import**. Check selectors, data source names, and links in the destination Grafana before publishing.
+To use a guide on another stack, or to move work between browsers when guide storage is unavailable, select **More actions** > **Download JSON**, then open the editor on the destination stack and select **More actions** > **Import**. Check selectors, data source names, and links in the destination Grafana before publishing.
 
 For advanced authoring details, refer to the repository references for [interactive actions](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/interactive-examples/interactive-types.md), [JSON guide format](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/interactive-examples/json-guide-format.md), and [selectors](https://github.com/grafana/grafana-pathfinder-app/blob/main/docs/developer/interactive-examples/selectors-reference.md).

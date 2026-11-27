@@ -3,7 +3,7 @@ title: Interactive learning architecture
 menuTitle: Architecture
 description: Understand where Interactive learning gets guides, how actions run in Grafana, what contextual data recommendations use, and how guides and progress are stored.
 weight: 40
-review_date: 2026-09-30
+review_date: 2026-11-26
 ---
 
 # Interactive learning architecture
@@ -17,8 +17,10 @@ Interactive learning, also called Pathfinder, displays documentation and guides 
 | Bundled content                | Guides included with the plugin.                                                         | Available through other learning surfaces without recommendations. Explore requires consent and a successful eligible catalog request. |
 | Grafana's public guide catalog | Additional guides, learning paths, and journeys from Grafana's content delivery network. | Explore requires enabled recommendations and access to the recommendation and content services.                                        |
 | Context-aware recommendations  | Suggestions based on the Grafana page and features you are using.                        | Enabled by default in Grafana Cloud; requires administrator opt-in on self-managed Grafana.                                            |
-| Custom guides                  | Content your organization's authors save and publish.                                    | Requires the Pathfinder storage service and appropriate permissions.                                                                   |
+| Custom guides                  | Content your organization's authors save and publish.                                    | Requires guide storage and appropriate permissions.                                                                                    |
 | Grafana documentation          | Reference documentation and tutorials opened in the panel.                               | Requires access to the documentation site.                                                                                             |
+
+Bundled guides target Grafana Cloud or self-managed Grafana through the `targetPlatform` field in their manifest. Recommendations filter bundled guides on that target, and guides that target Grafana Cloud use Cloud UI elements.
 
 Turning off recommendations stops requests to the recommendation service, including public discovery in Explore. It does not turn off Interactive learning. Guides and documentation can still load from their own sources.
 
@@ -65,15 +67,17 @@ The [Terms and conditions](../terms-and-conditions/) page reproduces the recomme
 
 ## Where custom guides are stored
 
-The block editor keeps a working copy in the browser. Saving a draft or publishing a guide writes to a separate Pathfinder storage service through Grafana. The plugin's backend forwards these requests; installing the plugin alone does not provide that storage service.
+The block editor keeps a working copy in the browser. Saving a draft or publishing a guide writes to guide storage, the Interactive learning App Platform backend. The editor sends the save to the plugin's route in the Grafana API server, and the plugin writes it as an `InteractiveGuide` resource in the current Grafana organization, using the signed-in user's permissions. Saving needs permission to write guides, which the Editor role includes.
+
+Guide storage is available on Grafana Cloud without setup. Self-managed Grafana needs a recent Grafana, a plugin release that includes the App Platform migration, and three experimental feature toggles. Refer to [Set up guide storage](../administrators-reference/#set-up-guide-storage).
 
 | Guide state        | Who can use it                                                                                                |
 | ------------------ | ------------------------------------------------------------------------------------------------------------- |
-| Local working copy | The author in that browser. Export a copy to protect against cleared browser storage.                         |
+| Local working copy | The author in that browser. Download a copy to protect against cleared browser storage.                       |
 | Saved draft        | Authors with the required access can load it from the guide library. It is absent from the published catalog. |
 | Published guide    | Users in the same Grafana organization can open it from the custom guide catalog.                             |
 
-Custom guides are scoped to their Grafana organization. Publishing a guide does not publish it on Grafana's public documentation site or copy it to other stacks. To move a guide, export it and import it on the destination instance.
+Custom guides are scoped to their Grafana organization. Publishing a guide does not publish it on Grafana's public documentation site or copy it to other stacks. To move a guide, download its JSON and import it on the destination instance.
 
 For procedures and storage limitations, refer to the [Block editor guide](../block-editor/).
 

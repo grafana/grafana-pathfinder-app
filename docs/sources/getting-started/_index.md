@@ -20,7 +20,7 @@ If **Help** opens the classic menu, your administrator might have disabled Pathf
 
 ## Self-managed Grafana
 
-The current plugin requires Grafana 12.3 or later. You need permission to install plugins and restart Grafana.
+The current plugin requires Grafana 13.3.0 or later. You need permission to install plugins and restart Grafana.
 
 ### Install from the plugin catalog
 
@@ -121,4 +121,4 @@ For broader problems, reload Grafana and reopen the guide. Use **More options** 
 
 ## Create guides for your team
 
-Users with the Editor or Admin role can select **More options** > **Create guide** in the sidebar to open the block editor. Saving and publishing depends on storage availability and permissions on your instance. Refer to the [Block editor guide](../block-editor/) for the full workflow.
+Users with the Editor or Admin role can select **More options** > **Create guide** in the sidebar to open the block editor. Saving and publishing needs guide storage, the Interactive learning App Platform backend, and permission to write guides. Refer to the [Block editor guide](../block-editor/) for the full workflow.
