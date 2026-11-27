@@ -80,6 +80,7 @@ function makeStorage(items = new Map<string, QueuedWrite>()) {
       listeners.forEach((listener) => listener());
       return true;
     },
+    isDurable: (id) => items.has(id),
     remove: (id) => {
       items.delete(id);
       listeners.forEach((listener) => listener());
@@ -477,6 +478,7 @@ function makeLeasedStorage(
       listeners.forEach((l) => l());
       return true;
     },
+    isDurable: (id) => items.has(id),
     remove: (id) => {
       items.delete(id);
       listeners.forEach((l) => l());

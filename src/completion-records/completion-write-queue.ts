@@ -181,22 +181,34 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     return Math.max(0, Math.min(maxBackoffMs, Math.round(base + jitter)));
   }
 
+  function predecessorsOf(body: CompletionWriteBody): QueuedWrite[] {
+    return body.attemptId === undefined
+      ? []
+      : items.filter(
+          (i) =>
+            i.body.attemptId === body.attemptId &&
+            i.id !== inFlightId &&
+            i.body.completionPercent < body.completionPercent
+        );
+  }
+
   function enqueue(body: CompletionWriteBody, options: EnqueueOptions = {}): boolean {
-    if (
-      body.attemptId !== undefined &&
-      items.some((i) => i.body.attemptId === body.attemptId && i.body.completionPercent >= body.completionPercent)
-    ) {
+    const covering =
+      body.attemptId === undefined
+        ? undefined
+        : items.find((i) => i.body.attemptId === body.attemptId && i.body.completionPercent >= body.completionPercent);
+    if (covering) {
+      if (storage.isDurable(covering.id)) {
+        return true;
+      }
+      // Refresh can load a copy held only in the adapter's volatile overlay.
+      if (!storage.put(covering)) {
+        return false;
+      }
+      predecessorsOf(covering.body).forEach(remove);
       return true;
     }
-    const older =
-      body.attemptId === undefined
-        ? []
-        : items.filter(
-            (i) =>
-              i.body.attemptId === body.attemptId &&
-              i.id !== inFlightId &&
-              i.body.completionPercent < body.completionPercent
-          );
+    const older = predecessorsOf(body);
     const createdAt = now();
     const nextAttemptAt =
       body.attemptId !== undefined && body.completionPercent < 100

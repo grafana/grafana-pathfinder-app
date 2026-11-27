@@ -49,6 +49,7 @@ function makeStorage() {
       items.set(item.id, { ...item });
       return true;
     },
+    isDurable: (id) => items.has(id),
     remove: (id) => {
       items.delete(id);
     },

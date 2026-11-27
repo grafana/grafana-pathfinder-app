@@ -85,6 +85,20 @@ describe('completion write cross-tab storage', () => {
     expect(store.list()).toEqual([write]);
   });
 
+  it('reports durability from localStorage only, not the volatile overlay', () => {
+    const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
+    const write = item('volatile');
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new Error('quota exceeded');
+    });
+    store.put(write);
+    expect(store.isDurable(write.id)).toBe(false);
+
+    store.put(write);
+    expect(store.isDurable(write.id)).toBe(true);
+    expect(store.isDurable('missing')).toBe(false);
+  });
+
   it('overlays a failed-persist update over its stale persisted twin', () => {
     const store = createCompletionWriteStorage('user-7:org-3', 'tab-a');
     const original = item('evt'); // attempts: 0, persisted successfully

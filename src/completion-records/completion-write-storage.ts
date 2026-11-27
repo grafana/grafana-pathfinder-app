@@ -26,6 +26,8 @@ export interface QueueStorage<Body> {
   list(): Array<QueuedItem<Body>>;
   /** `true` when the item reached localStorage, `false` on the volatile fallback that a reload loses. */
   put(item: QueuedItem<Body>): boolean;
+  /** `true` when localStorage holds this id. `list()` cannot answer this: it includes volatile items. */
+  isDurable(id: string): boolean;
   remove(id: string): void;
   clear(): void;
   acquireLease(now: number): LeaseResult;
@@ -98,6 +100,14 @@ export function createQueueStorage<Body>(keyPrefix: string, ownerKey: string, ta
       return true;
     } catch {
       volatileItems.set(item.id, { ...item });
+      return false;
+    }
+  }
+
+  function isDurable(id: string): boolean {
+    try {
+      return parseQueuedItem<Body>(localStorage.getItem(`${itemPrefix}${id}`))?.id === id;
+    } catch {
       return false;
     }
   }
@@ -178,7 +188,7 @@ export function createQueueStorage<Body>(keyPrefix: string, ownerKey: string, ta
     return () => window.removeEventListener('storage', onStorage);
   }
 
-  return { list, put, remove, clear, acquireLease, renewLease, releaseLease, subscribe };
+  return { list, put, isDurable, remove, clear, acquireLease, renewLease, releaseLease, subscribe };
 }
 
 export function createCompletionEventId(): string {
