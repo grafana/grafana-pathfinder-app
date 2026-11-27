@@ -10,8 +10,8 @@ import { completionTrend, learningLink, personName } from './insights.helpers';
 
 const originalObserver = global.IntersectionObserver;
 beforeAll(() => {
-  jest.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
-  jest.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
+  jest.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(600);
+  jest.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(800);
   global.IntersectionObserver = class {
     observe() {}
     unobserve() {}

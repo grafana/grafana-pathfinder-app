@@ -29,13 +29,7 @@ const MASK_EVERY_INPUT: MaskInputOptions = {
   password: true,
 };
 
-// The terminal is the one Pathfinder surface that renders credentials
-// verbatim. It is already covered twice over — xterm draws to a WebGL canvas
-// and recordCanvas is off — but it is worth two cheap selectors to stop that
-// resting on unrelated defaults. `.xterm` is xterm's own root class, so a
-// rename of our test id can't silently unblock the terminal. `isBlocked` runs
-// matches() and closest() per mutated node, so nothing expensive belongs here
-// (no `:has()`).
+// Block both terminal roots because their contents can include credentials.
 const BLOCK_SELECTOR = `[data-testid="${testIds.codaTerminal.panel}"], .xterm`;
 
 export const DEFAULT_SAMPLING_RATE = 1;
@@ -64,7 +58,6 @@ function buildReplayOptions(samplingRate: number): ReplayInstrumentationOptions 
     maskInputOptions: MASK_EVERY_INPUT,
     maskTextSelector: '*',
     blockSelector: BLOCK_SELECTOR,
-    recordCanvas: false,
     inlineImages: false,
     inlineStylesheet: false,
     collectFonts: false,

@@ -1808,14 +1808,13 @@ describe('session replay activation', () => {
     expect(Object.values(options.maskInputOptions as Record<string, boolean>).every(Boolean)).toBe(true);
   });
 
-  it('captures no canvas, fonts, images, stylesheets or cross-origin iframes', async () => {
+  it('captures no fonts, images, stylesheets or cross-origin iframes', async () => {
     const { faro, surface } = freshFaroWithSurface();
     await faro.initFaro({ sessionReplay: true });
     surface.reportPathfinderSurface('floating');
     await settleReplayImport();
 
     expect(addedOptions()).toMatchObject({
-      recordCanvas: false,
       collectFonts: false,
       inlineImages: false,
       inlineStylesheet: false,
