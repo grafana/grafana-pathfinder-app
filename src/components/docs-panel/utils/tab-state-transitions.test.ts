@@ -194,6 +194,16 @@ describe('pruneGatedTabState', () => {
 });
 
 describe('projectPersistedTabs', () => {
+  it('does not persist private CDN tab titles or guide references across sessions', () => {
+    const privateTab = {
+      ...tab('private'),
+      title: 'Private guide title',
+      baseUrl: 'private-cdn:builders-observability-foundations',
+      currentUrl: 'private-cdn:builders-observability-foundations',
+    };
+    expect(projectPersistedTabs([privateTab, tab('public')]).map((item) => item.id)).toEqual(['public']);
+  });
+
   it('projects only persisted fields in input order without mutating runtime state', () => {
     const packageInfo = { packageId: 'package-1', packageManifest: { id: 'package-1' } };
     const content = {

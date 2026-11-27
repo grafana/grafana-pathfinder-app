@@ -21,6 +21,9 @@ describe('normalizeTelemetryUrl', () => {
   it('preserves bundled identifiers and anonymizes private identifiers', () => {
     expect(normalizeTelemetryUrl('bundled:welcome-to-pathfinder')).toBe('bundled:welcome-to-pathfinder');
     expect(normalizeTelemetryUrl('backend-guide:my-guide')).toMatch(/^private-guide:[a-f0-9]{32}$/);
+    expect(normalizeTelemetryUrl('private-cdn:builders-observability-foundations')).toMatch(
+      /^private-guide:[a-f0-9]{32}$/
+    );
   });
 
   it('bounds output length', () => {

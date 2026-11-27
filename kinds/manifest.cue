@@ -98,6 +98,14 @@ manifest: {
 // It includes kinds which the v1alpha1 API serves, and the namespaced SDK backend routes.
 v1alpha1: {
  routes: namespaced: {
+"/backend/private-cdn/identity": "GET": {name: "getBackendPrivateCDNIdentity", responseMetadata: typeMeta: false, response: {subject: string, namespace: string}}
+"/backend/private-cdn/catalogue": "GET": {name: "getBackendPrivateCDNCatalogue", responseMetadata: typeMeta: false, response: {entries: [...{id: string, title: string, source: "private-cdn"}]}}
+"/backend/private-cdn/sign": "POST": {
+ name: "createBackendPrivateCDNURL"
+ request: body: {guide: "builders-observability-foundations", asset: "content.json" | "manifest.json"}
+ responseMetadata: typeMeta: false
+ response: {url: string, expiresAt: int, source: "private-cdn"}
+}
 "/backend/api/v1/achievements/events": "POST": {name: "createBackendAchievementEvent", request: {...}, responseMetadata: typeMeta: false, response: {...}}
 "/backend/api/v1/achievements/my": "GET": {name: "getBackendAchievements", responseMetadata: typeMeta: false, response: {...}}
 "/backend/api/v1/achievements/definitions": "GET": {name: "getBackendAchievementDefinitions", responseMetadata: typeMeta: false, response: {...}}

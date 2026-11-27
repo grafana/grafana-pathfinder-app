@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { config } from '@grafana/runtime';
 import { fetchCustomGuideCatalogue } from '../lib/custom-guide-repository-client';
+import { fetchPrivateCDNCatalogue } from '../lib/private-cdn-client';
 import { fetchOnlinePackageRecommendations } from '../lib/package-recommendations-client';
 import { usePackageCatalog } from './package-catalog.hook';
 import { fetchEligibleCatalog } from '../lib/eligible-catalog-client';
@@ -8,6 +9,10 @@ import { fetchEligibleCatalog } from '../lib/eligible-catalog-client';
 jest.mock('@grafana/runtime', () => ({ config: { namespace: 'org-a', bootData: { user: { id: 1, orgId: 1 } } } }));
 jest.mock('./paths-data', () => ({ getPathsData: () => ({ paths: [], guideMetadata: {} }) }));
 jest.mock('../lib/custom-guide-repository-client', () => ({ fetchCustomGuideCatalogue: jest.fn() }));
+jest.mock('../lib/private-cdn-client', () => ({
+  PRIVATE_CDN_REF: 'private-cdn:builders-observability-foundations',
+  fetchPrivateCDNCatalogue: jest.fn(),
+}));
 jest.mock('../lib/eligible-catalog-client', () => ({ fetchEligibleCatalog: jest.fn() }));
 jest.mock('../lib/package-recommendations-client', () => ({
   ...jest.requireActual('../lib/package-recommendations-client'),
@@ -18,6 +23,7 @@ beforeEach(() => {
   config.namespace = 'org-a';
   jest.mocked(fetchOnlinePackageRecommendations).mockResolvedValue({ baseUrl: '', packages: [], available: false });
   jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({ entries: [], available: true });
+  jest.mocked(fetchPrivateCDNCatalogue).mockResolvedValue([]);
   jest.mocked(fetchEligibleCatalog).mockResolvedValue({ items: [], available: true });
 });
 
@@ -189,11 +195,46 @@ it('does not accept a late public discovery response from a previous scope', asy
   expect(result.current.items).toEqual([]);
 });
 
+it('keeps a granted private CDN guide separate from an organization guide with the same ID', async () => {
+  jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({
+    available: true,
+    entries: [{ id: 'builders-observability-foundations', name: 'same-id', status: 'published' }],
+  });
+  jest
+    .mocked(fetchPrivateCDNCatalogue)
+    .mockResolvedValue([{ id: 'builders-observability-foundations', title: 'Private guide', source: 'private-cdn' }]);
+  const { result } = renderHook(usePackageCatalog);
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.items.filter((item) => item.id === 'builders-observability-foundations')).toEqual([
+    expect.objectContaining({ key: 'app-platform:builders-observability-foundations', source: 'organization' }),
+    expect.objectContaining({
+      key: 'private-cdn:builders-observability-foundations',
+      source: 'private-cdn',
+      url: 'private-cdn:builders-observability-foundations',
+    }),
+  ]);
+});
+
+it('removes a private CDN guide after access is withdrawn and the catalogue is refreshed', async () => {
+  jest
+    .mocked(fetchPrivateCDNCatalogue)
+    .mockResolvedValueOnce([
+      { id: 'builders-observability-foundations', title: 'Private guide', source: 'private-cdn' },
+    ])
+    .mockResolvedValueOnce([]);
+  const { result } = renderHook(usePackageCatalog);
+  await waitFor(() => expect(result.current.items.some((item) => item.source === 'private-cdn')).toBe(true));
+  act(() => result.current.retry());
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.items.some((item) => item.source === 'private-cdn')).toBe(false);
+});
+
 it('fetches only public packages in public-only mode', async () => {
   jest.clearAllMocks();
   const { result } = renderHook(() => usePackageCatalog({ publicOnly: true }));
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(fetchOnlinePackageRecommendations).toHaveBeenCalledTimes(1);
   expect(fetchCustomGuideCatalogue).not.toHaveBeenCalled();
+  expect(fetchPrivateCDNCatalogue).not.toHaveBeenCalled();
   expect(result.current.items.every((item) => item.source === 'grafana')).toBe(true);
 });

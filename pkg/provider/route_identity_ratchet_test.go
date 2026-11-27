@@ -93,6 +93,7 @@ func routeRequests() map[string]routeRequest {
 		"PUT /backend/pathfinder-settings":         {body: fmt.Sprintf(ratchetSettings, resourceVersion)},
 		"POST /backend/completion-records":         {body: string(completion)},
 		"POST /backend/api/v1/achievements/events": {body: event},
+		"POST /backend/private-cdn/sign":           {body: `{"guide":"` + privateCDNGuide + `","asset":"content.json"}`},
 	}
 }
 
@@ -183,13 +184,31 @@ func TestProviderRegistersExactlyTheManifestRoutes(t *testing.T) {
 	}
 }
 
-func ratchetApp(t *testing.T) (app.App, *atomic.Int32) {
+func ratchetApp(t *testing.T, namespace string) (app.App, *atomic.Int32) {
 	t.Helper()
 	cfg, upstreamRequests := recordingUpstream(t)
 	noGuides := services.PathGuideSource(func(context.Context, string, string, string) ([]services.AssignmentGuideIdentity, bool, error) {
 		return nil, false, nil
 	})
-	application, err := newApp(app.Config{KubeConfig: cfg}, noGuides, func() services.PathGuideSource { return noGuides }, nil, achievementDefinitionsForTest(t))
+	config, err := appConfig(app.Config{KubeConfig: cfg}, noGuides, func() services.PathGuideSource { return noGuides }, nil, achievementDefinitionsForTest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamRequests.Add(1)
+		if r.URL.Path == "/catalogue" {
+			_, _ = io.WriteString(w, `[]`)
+		} else {
+			_, _ = io.WriteString(w, `{}`)
+		}
+	}))
+	t.Cleanup(signer.Close)
+	client := &privateCDNClient{namespace: namespace, baseURL: signer.URL, httpClient: signer.Client()}
+	for operation, method := range map[string]simple.AppCustomRouteMethod{"identity": simple.AppCustomRouteMethodGet, "catalogue": simple.AppCustomRouteMethodGet, "sign": simple.AppCustomRouteMethodPost} {
+		route := simple.AppVersionRoute{Namespaced: true, Path: "/backend/private-cdn/" + operation, Method: method}
+		config.VersionedCustomRoutes["v1alpha1"][route] = privateCDNHandler(client, operation)
+	}
+	application, err := simple.NewApp(config)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,14 +224,14 @@ func TestEveryTenantRouteRefusesAnUnverifiedCaller(t *testing.T) {
 			tenantRoutes = append(tenantRoutes, route)
 		}
 	}
-	application, upstreamRequests := ratchetApp(t)
+	application, upstreamRequests := ratchetApp(t, "stacks-1")
 	if violations := routesServingAnUnverifiedCaller(application, tenantRoutes, upstreamRequests); len(violations) > 0 {
 		t.Fatalf("Every tenant route must derive its caller with callerNamespace or completionCaller before touching storage.\n  %s\nFix the handler. Only a genuinely public route may be added to publicRoutesWithoutCallerIdentity, and that change needs review. See %s.", strings.Join(violations, "\n  "), routeRecipe)
 	}
 
 	for index, route := range tenantRoutes {
-		application, upstreamRequests := ratchetApp(t)
 		namespace := fmt.Sprintf("stacks-%d", 1000+index)
+		application, upstreamRequests := ratchetApp(t, namespace)
 		recorder, err := callRoute(application, callerIn(namespace), namespace, route)
 		_, readsNoStorage := unprovisionedClientExemptions[route]
 		switch {
@@ -220,7 +239,9 @@ func TestEveryTenantRouteRefusesAnUnverifiedCaller(t *testing.T) {
 			t.Errorf("%s from a verified caller failed: %v", route, err)
 		case readsNoStorage && recorder.Code >= 300:
 			t.Errorf("%s from a verified caller answered %d %s, so its refusal of an unverified caller proves nothing", route, recorder.Code, recorder.Body.String())
-		case !readsNoStorage && upstreamRequests.Load() == 0:
+		case route.path == "/backend/private-cdn/identity" && (recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), namespace)):
+			t.Errorf("%s from a verified caller did not return its verified namespace (%d %s)", route, recorder.Code, recorder.Body.String())
+		case route.path != "/backend/private-cdn/identity" && !readsNoStorage && upstreamRequests.Load() == 0:
 			t.Errorf("%s from a verified caller never reached upstream (%d %s); give it a request in routeRequests that passes validation, or its refusal of an unverified caller proves nothing", route, recorder.Code, recorder.Body.String())
 		}
 	}

@@ -65,12 +65,19 @@ func appConfig(cfg app.Config, online services.PathGuideSource, insightsOnline f
 	if len(definitions) > 0 {
 		achievementDefinitions = definitions[0]
 	}
+	privateCDN, err := privateCDNFromEnvironment()
+	if err != nil {
+		return simple.AppConfig{}, err
+	}
 	assignmentDeps := assignmentDependencies(assignments, completions, guides, online)
 	config := simple.AppConfig{
 		Name:       "pathfinder-backend",
 		KubeConfig: cfg.KubeConfig,
 		VersionedCustomRoutes: map[string]simple.AppVersionRouteHandlers{
 			"v1alpha1": {
+				simple.AppVersionRoute{Namespaced: true, Path: "/backend/private-cdn/identity", Method: simple.AppCustomRouteMethodGet}:            privateCDNHandler(privateCDN, "identity"),
+				simple.AppVersionRoute{Namespaced: true, Path: "/backend/private-cdn/catalogue", Method: simple.AppCustomRouteMethodGet}:           privateCDNHandler(privateCDN, "catalogue"),
+				simple.AppVersionRoute{Namespaced: true, Path: "/backend/private-cdn/sign", Method: simple.AppCustomRouteMethodPost}:               privateCDNHandler(privateCDN, "sign"),
 				simple.AppVersionRoute{Namespaced: true, Path: "/backend/api/v1/achievements/events", Method: simple.AppCustomRouteMethodPost}:     achievementHandler(achievementClients, achievementDefinitions, "events"),
 				simple.AppVersionRoute{Namespaced: true, Path: "/backend/api/v1/achievements/my", Method: simple.AppCustomRouteMethodGet}:          achievementHandler(achievementClients, achievementDefinitions, "my"),
 				simple.AppVersionRoute{Namespaced: true, Path: "/backend/api/v1/achievements/definitions", Method: simple.AppCustomRouteMethodGet}: achievementHandler(achievementClients, achievementDefinitions, "definitions"),

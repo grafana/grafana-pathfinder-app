@@ -99,6 +99,9 @@ export function isAllowedContentUrl(urlString: string): boolean {
   if (urlString.startsWith('backend-guide:') || urlString.startsWith('api:')) {
     return true;
   }
+  if (urlString === 'private-cdn:builders-observability-foundations') {
+    return true;
+  }
 
   // Grafana docs are always allowed
   if (isGrafanaDocsUrl(urlString)) {

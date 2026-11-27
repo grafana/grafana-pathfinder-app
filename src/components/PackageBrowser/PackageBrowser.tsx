@@ -568,6 +568,7 @@ function PackageBrowserContent({
                       { value: 'all', label: t('packageBrowser.allSourcesPill', 'All') },
                       { value: 'grafana', label: t('packageBrowser.official', 'Official') },
                       { value: 'organization', label: t('packageBrowser.organization', 'Your organization') },
+                      { value: 'private-cdn', label: t('packageBrowser.privateGuides', 'Private guides') },
                     ]}
                     value={view.source}
                     onChange={(option) => {
@@ -588,6 +589,7 @@ function PackageBrowserContent({
                         { value: 'all', label: t('packageBrowser.allSourcesPill', 'All') },
                         { value: 'grafana', label: t('packageBrowser.official', 'Official') },
                         { value: 'organization', label: t('packageBrowser.organization', 'Your organization') },
+                        { value: 'private-cdn', label: t('packageBrowser.privateGuides', 'Private guides') },
                       ] as const
                     ).map((source) => (
                       <button

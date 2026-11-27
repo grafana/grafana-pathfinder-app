@@ -221,6 +221,40 @@ API authorizes the record against the authenticated UID. Namespace and UID come
 from signed-in runtime context. Anonymous callers do not read or enroll; failures
 leave the experiment ineligible. This is unrelated to Pathfinder resource CRUD.
 
+## Dev private CDN proxy
+
+The `backend/private-cdn/identity`, `backend/private-cdn/catalogue`, and `backend/private-cdn/sign` routes are a dev-only exception to resource-store access.
+They do not use the public recommendation cache.
+Set `PATHFINDER_PRIVATE_CDN_NAMESPACE` to one concrete stack namespace to enable them.
+All other namespaces are denied.
+Leave it unset outside the PoC.
+
+The routes require an SDK-verified user identity with a signed caller token.
+The identity route returns only that caller's subject and namespace for grant configuration.
+It does not return a token or confer a guide grant.
+The catalogue response has an `entries` array.
+The sign route accepts only `builders-observability-foundations` and `content.json` or `manifest.json`.
+Both upstream routes use the SDK's token-exchange transport with the dedicated `pathfinder-private-cdn-signer` audience.
+Existing resource clients and their audiences remain unchanged.
+The transport reads the SDK's `GF_API_ACCESS_CAP_TOKEN` and `GF_API_ACCESS_TOKEN_EXCHANGE_URL` settings, with the SDK-compatible legacy names as fallbacks.
+No shared-bearer fallback is accepted.
+
+The destination is fixed to the signer Service in `dev-us-central-0/docs`.
+Requests have a 10-second deadline, redirects are refused, and responses are bounded to 64 KiB.
+Only the new delegated credential reaches the signer.
+Browser cookies and identity headers are not forwarded.
+Errors do not expose upstream bodies, and all responses use `Cache-Control: no-store`.
+A denial or outage never falls back to the upserted guide or the public CDN.
+
+Before the live test, apply the dev-only CAP audience and network policy changes from the signer deployment PR.
+Publish this backend through the supported dev plugin workflow and confirm its shared-operator impact with the team.
+Use the identity route from the selected user's authenticated browser session to obtain the grant subject.
+Keep that subject and the signer configuration in restricted Vault storage, not in the PR.
+Then test the catalogue and signing routes through the same session.
+The signing request body is `{"guide":"builders-observability-foundations","asset":"content.json"}`.
+Verify the returned URL without storing it in application state or logs.
+The signer verifies user grants independently of these proxy identity checks.
+
 ## Local acceptance
 
 The dedicated instance is http://localhost:3302 (admin/admin). Do not repurpose

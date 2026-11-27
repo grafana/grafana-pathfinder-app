@@ -11,8 +11,8 @@ type CatalogInteraction =
   | { action: 'view'; view: 'explore' | 'all'; previousView: 'explore' | 'all' }
   | {
       action: 'source';
-      source: 'all' | 'grafana' | 'organization';
-      previousSource: 'all' | 'grafana' | 'organization';
+      source: 'all' | 'grafana' | 'organization' | 'private-cdn';
+      previousSource: 'all' | 'grafana' | 'organization' | 'private-cdn';
     };
 
 const SEARCH_TOPICS = {

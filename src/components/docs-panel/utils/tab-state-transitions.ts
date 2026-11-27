@@ -69,7 +69,13 @@ function persistedPackageInfo(packageInfo: PackageOpenInfo | undefined): Package
 
 export function projectPersistedTabs(tabs: LearningJourneyTab[]): PersistedTabData[] {
   return tabs
-    .filter((tab) => tab.type !== 'recommendations' && tab.type !== 'browse')
+    .filter(
+      (tab) =>
+        tab.type !== 'recommendations' &&
+        tab.type !== 'browse' &&
+        !tab.baseUrl.startsWith('private-cdn:') &&
+        !tab.currentUrl.startsWith('private-cdn:')
+    )
     .map((tab) => ({
       id: tab.id,
       title: tab.title,
