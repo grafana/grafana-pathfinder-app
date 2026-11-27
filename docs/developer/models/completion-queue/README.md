@@ -91,7 +91,7 @@ check_extension StorageFailureFault StorageFailure
 
 The [focused implementation replay](../../../../src/completion-records/completion-write-queue.takeover.test.ts) holds the old or partial send while the other queue changes storage. It checks reset and re-completion, both late 50% outcomes, deterministic attempt keys, a failed replacement followed by a fresh storage adapter simulating reload, and a duplicate enqueue after volatile refresh, both while storage still rejects the write and after it recovers. The owner-wide case asserts a current limitation, not desired behavior. Run it with the focused Jest command above; the four focused queue and adapter suites passed with 82 tests after the durable-duplicate fix.
 
-These extensions abstract the lease steps, retry delay, partial capability check, backoff metadata, storage-event timing and server effects. The storage-failure model has one replacement write, one duplicate retry of that write and one reload; it does not combine a failed write with a concurrent reset or response. The passing invariants therefore do not establish those unmodeled combinations.
+These extensions abstract the lease steps, retry delay, partial capability check, backoff metadata, storage-event timing and server effects. The storage-failure model has one replacement write, one duplicate retry of that write and one reload; it does not combine a failed write with a concurrent reset or response, or with a duplicate that arrives after another tab has removed the row. The passing invariants therefore do not establish those unmodeled combinations.
 
 ## Read and replay a trace
 
