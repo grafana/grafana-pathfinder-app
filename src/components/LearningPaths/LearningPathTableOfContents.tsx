@@ -1,6 +1,14 @@
-import { milestoneCountText } from '../LearningContentCard/learning-effort';
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
-import { useStyles2, Icon, TabsBar, Tab } from '@grafana/ui';
+import { moduleCountText } from '../LearningContentCard/learning-effort';
+import { getLearningTopicMetadata } from '../LearningContentCard/learning-topic-visual';
+import { LearningCardPreview } from '../LearningContentCard/LearningCardPreview';
+import { getLearningPreview } from '../LearningContentCard/learning-previews';
+import { catalogTopic } from '../../lib/catalog-discovery';
+import { prefixRoute } from '../../utils/utils.routing';
+import { ROUTES } from '../../constants';
+import React, { useEffect, useId, useState, useSyncExternalStore } from 'react';
+import { useStyles2, Icon, TabsBar, Tab, Button, Badge, Combobox, InlineLabel, Link } from '@grafana/ui';
+import { css, cx } from '@emotion/css';
+import type { GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
 
 import type { CoverPageTrack, Milestone } from '../../types/content.types';
@@ -9,9 +17,10 @@ import { FOUNDATIONS_TRACK_ID } from '../../types/package.types';
 import { journeyMilestonePercentages, percentagesToProgress } from '../../docs-retrieval';
 import { getGuideProgressRevision, subscribeGuideProgressRevision } from '../../global-state/progress-events';
 import { testIds } from '../../constants/testIds';
-import { getBadgeForPath } from '../../learning-paths';
+import { findPathByUrl, getBadgeForPath } from '../../learning-paths';
 import { GuideList } from './GuideList';
 import { ProgressRing } from './ProgressRing';
+import { SegmentedProgressBar } from './SegmentedProgressBar';
 import { BadgeIcon } from './BadgeIcon';
 import { getTableOfContentsStyles } from './learning-paths.styles';
 
@@ -25,6 +34,10 @@ import { getTableOfContentsStyles } from './learning-paths.styles';
 const FOUNDATIONS_TAB_ID = FOUNDATIONS_TRACK_ID;
 
 export interface LearningPathTableOfContentsProps {
+  fullPage?: boolean;
+  category?: string;
+  organization?: boolean;
+  estimatedMinutes?: number;
   milestones: Milestone[];
   baseUrl: string;
   /** Package manifest ID, when known — used to look up a completion badge to preview. */
@@ -36,14 +49,12 @@ export interface LearningPathTableOfContentsProps {
   /**
    * Named, independently-ordered guide sequences from the manifest's `tracks`
    * field (Path Tracks RFC), each already resolved to Milestone rows the same
-   * way `milestones` is. When present and non-empty, each track gets its own
-   * tab alongside the default Foundations sequence (`milestones`); when
-   * absent or empty, rendering is unchanged from before tracks existed —
-   * a single flat list, no tabs.
+   * way `milestones` is. The full-page dropdown and compact tabs include each
+   * track alongside the default sequence (`milestones`).
    */
   tracks?: CoverPageTrack[];
   /**
-   * Notified whenever the selected track tab changes, including once on
+   * Notified whenever the selected track changes, including once on
    * mount — `null`/`null` for the default Foundations sequence, a track's
    * own `trackId` plus its resolved guides otherwise. Lets Next/Previous
    * resolve within the selected track past the cover page too (see
@@ -61,9 +72,14 @@ export interface LearningPathTableOfContentsProps {
    * track in `tracks` (a different path's leftover selection).
    */
   initialActiveTrackId?: string | null;
+  renderSections?: (header: React.ReactNode, modules: React.ReactNode) => React.ReactNode;
 }
 
 export function LearningPathTableOfContents({
+  fullPage = false,
+  category,
+  organization = false,
+  estimatedMinutes,
   milestones,
   baseUrl,
   pathId,
@@ -72,9 +88,17 @@ export function LearningPathTableOfContents({
   tracks,
   onActiveTrackChange,
   initialActiveTrackId,
+  renderSections,
 }: LearningPathTableOfContentsProps) {
-  const styles = useStyles2(getTableOfContentsStyles);
-  const badge = pathId ? getBadgeForPath(pathId) : undefined;
+  const compactStyles = useStyles2(getTableOfContentsStyles);
+  const fullPageStyles = useStyles2(getFullPageStyles);
+  const trackControlId = useId();
+  const styles = fullPage ? { ...compactStyles, ...fullPageStyles } : compactStyles;
+  const badge = !fullPage && pathId ? getBadgeForPath(pathId) : undefined;
+  const topicId = catalogTopic({ id: pathId ?? '', title: title ?? '', category });
+  const topic = getLearningTopicMetadata(topicId, 'path');
+  const showTopic = fullPage && topicId !== 'uncategorized' && topicId !== 'other' && topic.label;
+  const previewId = fullPage && !organization ? (pathId ?? findPathByUrl(baseUrl)?.id) : undefined;
 
   const hasTracks = tracks !== undefined && tracks.length > 0;
   const [activeTabId, setActiveTabId] = useState<string>(() =>
@@ -111,6 +135,14 @@ export function LearningPathTableOfContents({
   // ordering only (COMPLETION-MODEL.md), so its ring must read as "progress
   // through this track," never as path-wide completion.
   const activeSequenceLabel = activeTrack?.label ?? t('coverPage.foundationsTab', 'Fundamentals');
+  const altitudeLabel = t('coverPage.altitudeLabel', 'Altitude');
+  const altitudeTracks = [...(tracks ?? [])];
+  const sellerIndex = altitudeTracks.findIndex((track) => track.trackId === 'seller');
+  const engineerIndex = altitudeTracks.findIndex((track) => track.trackId === 'engineer');
+  if (engineerIndex >= 0 && sellerIndex > engineerIndex) {
+    const [seller] = altitudeTracks.splice(sellerIndex, 1);
+    altitudeTracks.splice(engineerIndex, 0, seller!);
+  }
 
   // The segments below read each milestone's percentage out of storage, so the
   // store's announcement is what keeps them from painting a stale fill —
@@ -178,52 +210,134 @@ export function LearningPathTableOfContents({
   const ctaTarget = cursor >= 0 ? activeMilestones[cursor] : undefined;
   const ctaLabel = progress === 0 ? t('coverPage.getStarted', 'Get started') : t('coverPage.resume', 'Resume');
 
-  // Sum of authored per-milestone estimates — only when every milestone has
-  // one, matching estimatedMinutes' own "never a guessed default" contract.
-  // A partial sum across e.g. 3 of 10 authored milestones would understate
-  // the real total rather than approximate it.
   const totalEstimatedMinutes =
     activeMilestones.length > 0 && activeMilestones.every((m) => typeof m.estimatedMinutes === 'number')
       ? activeMilestones.reduce((sum, m) => sum + m.estimatedMinutes!, 0)
-      : undefined;
+      : fullPage &&
+          activeTabId === FOUNDATIONS_TAB_ID &&
+          typeof estimatedMinutes === 'number' &&
+          Number.isFinite(estimatedMinutes) &&
+          estimatedMinutes > 0
+        ? estimatedMinutes
+        : undefined;
 
-  return (
+  const ctaProps = {
+    'data-journey-start': 'true',
+    'data-milestone-url': ctaTarget?.url,
+    ...(ctaTarget?.id != null && { 'data-milestone-id': ctaTarget.id }),
+    'data-interaction-location': progress === 0 ? 'get_started_cta' : 'resume_cta',
+    'data-testid': testIds.learningPaths.tableOfContentsCta,
+  };
+
+  const heroContent = (
     <>
-      {(title || description || badge) && (
-        <div className={styles.hero} data-testid={testIds.learningPaths.coverHero}>
-          {title && <h1 className={styles.heroTitle}>{title}</h1>}
-          {description && <p className={styles.heroDescription}>{description}</p>}
-          <div className={styles.heroMeta}>
-            <span className={styles.heroMetaItem}>
-              <Icon name="list-ul" size="sm" />
-              {milestoneCountText(activeMilestones.length)}
-            </span>
-            {totalEstimatedMinutes != null && (
-              <span className={styles.heroMetaItem}>
-                <Icon name="clock-nine" size="sm" />
-                {totalEstimatedMinutes < 60
-                  ? t('coverPage.totalMinutes', '{{count}} min', { count: totalEstimatedMinutes })
-                  : t('coverPage.totalHours', '~{{count}} hr', { count: Math.round(totalEstimatedMinutes / 60) })}
-              </span>
-            )}
-            {badge && (
-              <span className={styles.heroMetaItem}>
-                <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="sm" />
-                {t('coverPage.earnsBadge', 'Earns {{badge}} badge', { badge: badge.title })}
-              </span>
-            )}
+      {fullPage ? (
+        <div className={fullPageStyles.heroHeading}>
+          {showTopic && (
+            <Link
+              href={`${prefixRoute(ROUTES.Browse)}?${new URLSearchParams({ topic: topicId })}`}
+              className={fullPageStyles.eyebrow}
+            >
+              <Icon name={topic.icon} size="sm" />
+              {topic.label}
+            </Link>
+          )}
+          <div className={fullPageStyles.titleRow}>
+            {title && <h1 className={styles.heroTitle}>{title}</h1>}
+            {organization && <Badge color="darkgrey" text={t('learningCard.organization', 'Your organization')} />}
           </div>
         </div>
+      ) : (
+        title && <h1 className={styles.heroTitle}>{title}</h1>
       )}
-      {hasTracks && (
-        <TabsBar className={styles.tracksTabs} data-testid={testIds.learningPaths.tracksTabs}>
+      {description && <p className={styles.heroDescription}>{description}</p>}
+      {(!fullPage || totalEstimatedMinutes != null) && (
+        <div className={styles.heroMeta}>
+          {!fullPage && (
+            <span className={styles.heroMetaItem}>
+              <Icon name="list-ul" size="sm" />
+              {moduleCountText(activeMilestones.length)}
+            </span>
+          )}
+          {totalEstimatedMinutes != null && (
+            <span className={styles.heroMetaItem}>
+              <Icon name="clock-nine" size={fullPage ? 'md' : 'sm'} />
+              {totalEstimatedMinutes < 60
+                ? t('coverPage.totalMinutes', '{{count}} min', { count: totalEstimatedMinutes })
+                : t('coverPage.totalHours', '~{{count}} hr', { count: Math.round(totalEstimatedMinutes / 60) })}
+            </span>
+          )}
+          {!fullPage && badge && (
+            <span className={styles.heroMetaItem}>
+              <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="sm" />
+              {t('coverPage.earnsBadge', 'Earns {{badge}} badge', { badge: badge.title })}
+            </span>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const showHeroContent = Boolean(title || description || badge);
+
+  const header = (
+    <>
+      {(showHeroContent || (fullPage && hasTracks)) && (
+        <div
+          className={cx(styles.hero, renderSections && fullPageStyles.heroWithTabs)}
+          data-testid={testIds.learningPaths.coverHero}
+        >
+          {fullPage ? (
+            <>
+              {showHeroContent && (
+                <>
+                  <LearningCardPreview
+                    kind="path"
+                    topic={topicId}
+                    preview={previewId ? getLearningPreview(previewId) : undefined}
+                    className={fullPageStyles.heroPreview}
+                  />
+                  <div className={fullPageStyles.heroMain}>{heroContent}</div>
+                </>
+              )}
+              {hasTracks && (
+                <div className={fullPageStyles.trackFilter}>
+                  <InlineLabel width="auto" htmlFor={trackControlId} className={fullPageStyles.trackFilterLabel}>
+                    {altitudeLabel}
+                  </InlineLabel>
+                  <Combobox
+                    id={trackControlId}
+                    aria-label={altitudeLabel}
+                    width="auto"
+                    minWidth={12}
+                    maxWidth={24}
+                    value={activeTrack?.trackId ?? FOUNDATIONS_TAB_ID}
+                    options={[
+                      {
+                        value: FOUNDATIONS_TAB_ID,
+                        label: t('coverPage.defaultTrack', 'Fundamentals (default)'),
+                      },
+                      ...altitudeTracks.map((track) => ({ value: track.trackId, label: track.label })),
+                    ]}
+                    onChange={(option) => setActiveTabId(option.value)}
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            heroContent
+          )}
+        </div>
+      )}
+      {hasTracks && !fullPage && (
+        <TabsBar className={compactStyles.tracksTabs} data-testid={testIds.learningPaths.tracksTabs}>
           <Tab
             label={t('coverPage.foundationsTab', 'Fundamentals')}
             active={activeTabId === FOUNDATIONS_TAB_ID}
             onChangeTab={() => setActiveTabId(FOUNDATIONS_TAB_ID)}
             data-testid={testIds.learningPaths.tracksTab(FOUNDATIONS_TAB_ID)}
           />
-          {tracks!.map((track) => (
+          {tracks.map((track) => (
             <Tab
               key={track.trackId}
               label={track.label}
@@ -234,51 +348,204 @@ export function LearningPathTableOfContents({
           ))}
         </TabsBar>
       )}
-      <div
-        className={styles.container}
-        data-testid={testIds.learningPaths.tableOfContents}
-        // Testing contract: readable at 0%, where the ring below is hidden.
-        // Unconditional — progress is synchronous (see the comment above), so
-        // there is no "not loaded yet" window to gate on. See
-        // E2E_TESTING_CONTRACT.md.
-        data-test-path-percent={progress}
-      >
-        <div className={styles.header}>
+    </>
+  );
+
+  const modules = (
+    <div
+      className={styles.container}
+      data-testid={testIds.learningPaths.tableOfContents}
+      // Testing contract: readable at 0%, where the ring below is hidden.
+      // Unconditional — progress is synchronous (see the comment above), so
+      // there is no "not loaded yet" window to gate on. See
+      // E2E_TESTING_CONTRACT.md.
+      data-test-path-percent={progress}
+    >
+      <div className={styles.header}>
+        {fullPage ? (
+          <div className={fullPageStyles.progressRow}>
+            <div className={fullPageStyles.progressSummary}>
+              <span className={fullPageStyles.progressCount}>
+                {t('coverPage.completedOfTotal', '{{completed}} of {{total}} completed', {
+                  completed: guides.filter((guide) => guide.completed).length,
+                  total: milestonePercentages.length,
+                })}
+              </span>
+              <span className={fullPageStyles.progressLabel}>({Math.round(progress)}%)</span>
+            </div>
+            <div
+              className={fullPageStyles.progressBar}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+              aria-label={t('coverPage.progressAriaLabel', '{{percent}}% through {{sequence}}', {
+                percent: Math.round(progress),
+                sequence: activeSequenceLabel,
+              })}
+            >
+              <SegmentedProgressBar
+                highContrast
+                currentColor="primary"
+                segments={milestonePercentages.map(({ percent, milestone }) =>
+                  percent === 100 ? 'done' : milestone.url === ctaTarget?.url ? 'current' : 'upcoming'
+                )}
+              />
+            </div>
+          </div>
+        ) : (
           <h2 className={styles.heading}>
             <Icon name="list-ul" size="md" className={styles.headingIcon} />
             {t('coverPage.tableOfContents', 'In this path')}
           </h2>
-          <div className={styles.headerActions}>
-            {progress > 0 && (
-              <ProgressRing
-                progress={progress}
-                size={40}
-                strokeWidth={3}
-                isCompleted={progress >= 100}
-                ariaLabel={t('coverPage.progressAriaLabel', '{{percent}}% through {{sequence}}', {
-                  percent: Math.round(progress),
-                  sequence: activeSequenceLabel,
-                })}
-              />
-            )}
-            {ctaTarget && (
-              <button
-                type="button"
-                className={styles.ctaButton}
-                data-journey-start="true"
-                data-milestone-url={ctaTarget.url}
-                {...(ctaTarget.id != null && { 'data-milestone-id': ctaTarget.id })}
-                data-interaction-location={progress === 0 ? 'get_started_cta' : 'resume_cta'}
-                data-testid={testIds.learningPaths.tableOfContentsCta}
-              >
+        )}
+        <div className={styles.headerActions}>
+          {!fullPage && progress > 0 && (
+            <ProgressRing
+              progress={progress}
+              size={40}
+              strokeWidth={3}
+              isCompleted={progress >= 100}
+              ariaLabel={t('coverPage.progressAriaLabel', '{{percent}}% through {{sequence}}', {
+                percent: Math.round(progress),
+                sequence: activeSequenceLabel,
+              })}
+            />
+          )}
+
+          {ctaTarget &&
+            (fullPage ? (
+              <Button icon="play" {...ctaProps}>
+                {ctaLabel}
+              </Button>
+            ) : (
+              <button type="button" className={styles.ctaButton} {...ctaProps}>
                 <Icon name="play" size="sm" />
                 {ctaLabel}
               </button>
-            )}
-          </div>
+            ))}
         </div>
-        <GuideList guides={guides} enableRowLinks />
       </div>
+      <GuideList guides={guides} enableRowLinks fullPage={fullPage} />
+    </div>
+  );
+
+  return renderSections ? (
+    renderSections(header, modules)
+  ) : (
+    <>
+      {header}
+      {modules}
     </>
   );
 }
+
+const getFullPageStyles = (theme: GrafanaTheme2) => ({
+  hero: css({
+    display: 'flex',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: theme.spacing(2, 3),
+    padding: theme.spacing(3, 0, 0),
+    margin: theme.spacing(0, 0, 5),
+  }),
+  heroWithTabs: css({ marginBottom: theme.spacing(3) }),
+  heroMain: css({
+    display: 'flex',
+    flexDirection: 'column',
+    flex: '1 1 280px',
+    gap: theme.spacing(1),
+    minWidth: 0,
+    paddingTop: theme.spacing(1),
+  }),
+  heroPreview: css({
+    width: theme.spacing(27),
+    maxWidth: '100%',
+    margin: 0,
+  }),
+  heroHeading: css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(0.5) }),
+  titleRow: css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: theme.spacing(1.5) }),
+  eyebrow: css({
+    ...theme.typography.sm,
+    color: theme.colors.text.secondary,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    marginBottom: 0,
+    textDecoration: 'none',
+    '&:hover': { color: theme.colors.text.secondary, textDecoration: 'underline' },
+  }),
+  heroTitle: css({
+    ...theme.typography.xxl,
+    color: theme.colors.text.primary,
+    margin: 0,
+    border: 0,
+    padding: 0,
+  }),
+  heroDescription: css({
+    ...theme.typography.md,
+    fontWeight: theme.typography.fontWeightRegular,
+    color: theme.colors.text.secondary,
+    maxWidth: '75ch',
+    margin: 0,
+  }),
+  heroMeta: css({
+    marginTop: theme.spacing(1),
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: theme.spacing(2),
+    ...theme.typography.base,
+    color: theme.colors.text.secondary,
+  }),
+  headerActions: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(2), flexWrap: 'wrap' }),
+  progressRow: css({
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: theme.spacing(1),
+    width: theme.spacing(32),
+    maxWidth: '100%',
+  }),
+  progressBar: css({ width: theme.spacing(32), maxWidth: '100%' }),
+  progressSummary: css({ display: 'flex', alignItems: 'baseline', gap: theme.spacing(0.5), flexWrap: 'wrap' }),
+  progressCount: css({ ...theme.typography.sm, color: theme.colors.text.primary, whiteSpace: 'nowrap' }),
+  progressLabel: css({ ...theme.typography.sm, color: theme.colors.text.secondary, whiteSpace: 'nowrap' }),
+  trackFilter: css({
+    display: 'flex',
+    marginLeft: 'auto',
+    minWidth: 0,
+    maxWidth: '100%',
+    '& input': { borderTopLeftRadius: 0, borderBottomLeftRadius: 0 },
+  }),
+  trackFilterLabel: css({
+    marginRight: 0,
+    border: `1px solid ${theme.components.input.borderColor}`,
+    borderRadius: `${theme.shape.radius.default} 0 0 ${theme.shape.radius.default}`,
+    position: 'relative',
+    right: -1,
+  }),
+  container: css({
+    margin: theme.spacing(0, 0, 3),
+    borderRadius: theme.shape.radius.lg,
+    background: theme.colors.background.primary,
+    boxShadow: theme.shadows.z1,
+  }),
+  header: css({
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: theme.spacing(2),
+    padding: theme.spacing(2),
+    marginBottom: 0,
+  }),
+  heading: css({
+    ...theme.typography.md,
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    margin: 0,
+    color: theme.colors.text.primary,
+  }),
+});

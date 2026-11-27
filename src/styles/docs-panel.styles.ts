@@ -843,20 +843,6 @@ export const getMilestoneStyles = (theme: GrafanaTheme2) => ({
     width: '100%',
     marginTop: theme.spacing(1),
   }),
-  progressSegment: css({
-    flex: 1,
-    height: '3px',
-    borderRadius: '2px',
-    backgroundColor: theme.colors.background.secondary,
-    transition: 'background-color 0.2s ease',
-
-    '&[data-segment-state="done"]': {
-      backgroundColor: theme.colors.success.main,
-    },
-    '&[data-segment-state="current"]': {
-      backgroundColor: theme.colors.warning.main,
-    },
-  }),
 });
 
 // Header bar styles removed - now integrated into tab bar

@@ -1,4 +1,4 @@
-import { milestoneCountText } from '../../LearningContentCard/learning-effort';
+import { catalogModuleCountText } from '../../LearningContentCard/learning-effort';
 import React from 'react';
 import { Icon } from '@grafana/ui';
 import { t } from '@grafana/i18n';
@@ -69,9 +69,9 @@ export function ContinueLearningSection({
             organization={item.source === 'organization'}
             progress={progress.get(item.key)?.percent}
             effort={[
-              item.memberIds
-                ? milestoneCountText(item.memberIds.length)
-                : item.activityCount !== undefined
+              item.format === 'path'
+                ? catalogModuleCountText(item)
+                : typeof item.activityCount === 'number' && item.activityCount > 0
                   ? t('packageBrowser.activities', '{{count}} activities', { count: item.activityCount })
                   : undefined,
               item.estimatedMinutes
@@ -84,8 +84,8 @@ export function ContinueLearningSection({
             launching={launchingKey === item.key}
             launchDisabled={launchDisabled}
             launchError={launchError?.key === item.key ? launchError.message : undefined}
-            disclosureLabel={item.memberIds?.length ? t('learningCard.showModules', 'Show milestones') : undefined}
-            collapseLabel={item.memberIds?.length ? t('learningCard.hideModules', 'Hide milestones') : undefined}
+            disclosureLabel={item.memberIds?.length ? t('learningCard.showModules', 'Show modules') : undefined}
+            collapseLabel={item.memberIds?.length ? t('learningCard.hideModules', 'Hide modules') : undefined}
             details={
               item.memberIds?.length ? (
                 <CatalogDetails item={item} items={catalogItems} scope={scope} progress={progress} />

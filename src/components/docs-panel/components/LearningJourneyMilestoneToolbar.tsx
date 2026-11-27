@@ -24,6 +24,8 @@ import React, { useSyncExternalStore } from 'react';
 import { Button, Dropdown, Menu, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
+import { SegmentedProgressBar, type ProgressSegmentState } from '../../LearningPaths/SegmentedProgressBar';
+
 import {
   reportAppInteraction,
   UserInteraction,
@@ -258,7 +260,7 @@ export function LearningJourneyMilestoneToolbar({
     milestonePercentages.filter(({ percent }) => percent === 100).map(({ milestone }) => milestone.number)
   );
 
-  const segments = Array.from({ length: activeMilestoneContext.totalMilestones }, (_, i) => {
+  const segments: ProgressSegmentState[] = Array.from({ length: activeMilestoneContext.totalMilestones }, (_, i) => {
     const number = i + 1;
     if (number === activeMilestoneContext.currentMilestone) {
       return 'current';
@@ -321,9 +323,7 @@ export function LearningJourneyMilestoneToolbar({
           )}
         </div>
         <div className={styles.progressSegments}>
-          {segments.map((state, index) => (
-            <div key={index} className={styles.progressSegment} data-segment-state={state} />
-          ))}
+          <SegmentedProgressBar segments={segments} />
         </div>
       </div>
     </div>

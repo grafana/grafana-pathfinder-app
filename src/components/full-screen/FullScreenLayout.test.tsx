@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { FullScreenLayout } from './FullScreenLayout';
 import { testIds } from '../../constants/testIds';
 import { reportAppInteraction } from '../../lib/analytics';
@@ -84,6 +84,7 @@ describe('FullScreenLayout', () => {
 
     fireEvent.click(screen.getByTestId(testIds.fullScreenMode.exitButton));
     expect(onExit).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId(testIds.fullScreenMode.exitButton)).not.toHaveAttribute('title');
   });
 
   it('shows the step counter as an explicit "Step X of Y" label when stepProgress is provided', () => {
@@ -241,4 +242,44 @@ describe('FullScreenLayout', () => {
       expect(reportAppInteraction).not.toHaveBeenCalled();
     });
   });
+});
+
+it('sizes the reader to the page viewport and updates it after resizing even when the outer page was scrolled', () => {
+  let pageHeight = 900;
+  const page = document.createElement('main');
+  Object.defineProperty(page, 'clientHeight', { get: () => pageHeight });
+  page.scrollTop = 200;
+  document.body.appendChild(page);
+  const originalObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+  const measure = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement
+  ) {
+    const top = this.tagName === 'MAIN' ? 48 : -151;
+    return { x: 0, y: top, top, left: 0, width: 800, height: 900, right: 800, bottom: top + 900, toJSON: () => ({}) };
+  });
+  try {
+    const view = render(
+      <FullScreenLayout title="Course" hasActiveGuide onExit={() => undefined}>
+        <p>Course content</p>
+      </FullScreenLayout>,
+      { container: page }
+    );
+    const reader = screen.getByRole('region', { name: 'Interactive learning full screen' });
+    expect(screen.getByText('Course content')).toBeInTheDocument();
+    expect(reader).toHaveStyle({ height: '899px' });
+    pageHeight = 600;
+    act(() => window.dispatchEvent(new Event('resize')));
+    expect(reader).toHaveStyle({ height: '599px' });
+    expect(screen.getByRole('button', { name: 'Back to sidebar' })).toBeInTheDocument();
+    view.unmount();
+  } finally {
+    measure.mockRestore();
+    globalThis.ResizeObserver = originalObserver;
+    page.remove();
+  }
 });

@@ -8,7 +8,7 @@ import { useBooleanFlag } from '../../utils/openfeature';
 import { prefixRoute } from '../../utils/utils.routing';
 import { ROUTES } from '../../constants';
 import { PackageBrowser } from './PackageBrowser';
-import { openGuideInSidebar } from '../docs-panel/utils/open-prepared-guide';
+import { openPreparedGuide } from '../docs-panel/utils/open-prepared-guide';
 
 export class BrowsePanel extends SceneObjectBase<SceneObjectState> {
   public static Component = BrowsePanelRenderer;
@@ -31,7 +31,7 @@ function BrowsePanelRenderer() {
         </Button>
       </nav>
       {enabled ? (
-        <PackageBrowser page onOpenGuide={openGuideInSidebar} />
+        <PackageBrowser page onOpenGuide={openPreparedGuide} />
       ) : (
         <p>{t('packageBrowser.disabled', 'Learning exploration is currently unavailable.')}</p>
       )}

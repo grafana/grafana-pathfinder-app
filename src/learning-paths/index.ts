@@ -7,12 +7,14 @@
 
 // Main hook
 export { useLearningPaths, useGuideCompletion } from './learning-paths.hook';
+export { pathSequences } from './path-sequences';
 
 // Discover More (external package index)
 export { useDiscoverMore, toDiscoverMoreItem } from './useDiscoverMore';
 export type { DiscoverMoreItem, UseDiscoverMoreReturn } from './useDiscoverMore';
 
 // Badge utilities
+export { getCourseCompletionBadges } from './course-badges';
 export {
   BADGES,
   getBadgesToAward,
@@ -39,7 +41,7 @@ export {
 } from './streak-tracker';
 
 // Path data (runtime platform selection)
-export { getPathsData } from './paths-data';
+export { findPathByUrl, getPathsData } from './paths-data';
 export type { PathsDataSet } from './paths-data';
 
 // Guide-completion coordinator (badge eval + analytics + event dispatch)

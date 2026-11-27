@@ -20,6 +20,7 @@ jest.mock('@grafana/scenes', () => ({
 }));
 
 jest.mock('../../learning-paths', () => ({
+  pathSequences: jest.requireActual('../../learning-paths/path-sequences').pathSequences,
   catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
   usePackageCatalog: jest.requireActual('../../learning-paths/package-catalog.hook').usePackageCatalog,

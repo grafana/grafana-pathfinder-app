@@ -668,7 +668,7 @@ describe('ContextPanelRenderer sidebar hub', () => {
       setup({ featured: [detailed('top')], recommendations: [pkg('two')] });
 
       const toggle = screen.getByTestId(testIds.sidebarHub.featuredToggle);
-      expect(toggle).toHaveTextContent('Show milestones');
+      expect(toggle).toHaveTextContent('Show modules');
       expect(toggle).toHaveAttribute('aria-expanded', 'false');
       expect(screen.queryByTestId(testIds.sidebarHub.featuredDetails)).not.toBeInTheDocument();
       await click(toggle);
@@ -690,9 +690,9 @@ describe('ContextPanelRenderer sidebar hub', () => {
       setup({ featured: [detailed('top', { summaryExpanded: true })], recommendations: [pkg('two')] });
 
       const details = screen.getByTestId(testIds.sidebarHub.featuredDetails);
-      expect(screen.getByTestId(testIds.sidebarHub.featuredToggle)).toHaveTextContent('Hide milestones');
+      expect(screen.getByTestId(testIds.sidebarHub.featuredToggle)).toHaveTextContent('Hide modules');
       expect(within(details).getByText('Have a data source')).toBeInTheDocument();
-      expect(within(details).getByRole('heading', { name: 'Milestones' })).toBeInTheDocument();
+      expect(within(details).getByRole('heading', { name: 'Modules' })).toBeInTheDocument();
 
       await click(screen.getByTestId(testIds.sidebarHub.featuredModule(1)));
 
@@ -791,7 +791,7 @@ describe('ContextPanelRenderer sidebar hub', () => {
       expect(
         within(screen.getByTestId(testIds.sidebarHub.rowDetails(0))).getByText('Have a data source')
       ).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: 'Milestones' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Modules' })).not.toBeInTheDocument();
     });
 
     it('never lists modules for a docs page or shows a skeleton once modules are in', async () => {
@@ -849,9 +849,9 @@ describe('ContextPanelRenderer sidebar hub', () => {
         ],
       });
 
-      expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveTextContent('Hide milestones');
+      expect(screen.getByTestId(testIds.sidebarHub.rowToggle(0))).toHaveTextContent('Hide modules');
       expect(screen.getByTestId(testIds.sidebarHub.rowDetailsLoading(0))).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: 'Milestones' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Modules' })).not.toBeInTheDocument();
     });
 
     it('lets a docs row expand to its summary without a modules list', async () => {
@@ -992,9 +992,9 @@ describe('ContextPanelRenderer sidebar hub', () => {
         setup({ recommendations: [pkg('one')] });
 
         const toggle = screen.getByTestId(testIds.sidebarHub.customRowToggle(0));
-        expect(toggle).toHaveAccessibleName('Show milestones');
+        expect(toggle).toHaveAccessibleName('Show modules');
         expect(toggle).toHaveAttribute('aria-expanded', 'false');
-        expect(screen.getByTestId(testIds.sidebarHub.customRow(0))).toHaveTextContent('12 milestones');
+        expect(screen.getByTestId(testIds.sidebarHub.customRow(0))).toHaveTextContent('12 modules');
         expect(mockResolvePackageMilestones).not.toHaveBeenCalled();
 
         const details = await expand();
@@ -1050,7 +1050,7 @@ describe('ContextPanelRenderer sidebar hub', () => {
         publish(workshop());
         setup({ recommendations: [pkg('one')], assignments: [assignment('workshop', { trackId: 'logs' })] });
 
-        expect(screen.getByTestId(testIds.sidebarHub.customRow(0))).toHaveTextContent('4 milestones');
+        expect(screen.getByTestId(testIds.sidebarHub.customRow(0))).toHaveTextContent('1 module');
         const details = await expand();
         const track = within(details).getByRole('combobox', { name: 'Track' });
         expect(track).toHaveValue('Logs');
@@ -1102,7 +1102,7 @@ describe('ContextPanelRenderer sidebar hub', () => {
 
         const details = await expand();
         const alert = await within(details).findByRole('alert');
-        expect(alert).toHaveTextContent('Could not load milestone details.');
+        expect(alert).toHaveTextContent('Could not load module details.');
 
         await click(within(alert).getByRole('button', { name: 'Retry' }));
 

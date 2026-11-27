@@ -5,16 +5,12 @@ import { ROUTES } from '../constants';
 import { FullScreenPanel } from '../components/full-screen';
 
 export const fullScreenPage = new SceneAppPage({
-  // Title is required by SceneAppPage but suppressed at render time —
-  // PageLayoutType.Custom skips the standard page chrome (h1, breadcrumbs)
-  // so the FullScreenLayout's own header reads as the page title and we
-  // don't get the redundant "Full screen" h1 stacked above it.
-  title: 'Full screen',
+  title: 'Learning path',
   url: prefixRoute(ROUTES.FullScreen),
   // routePath must be relative (not prefixed) — Grafana 12's RRv6 routing strips the plugin base URL
   routePath: ROUTES.FullScreen,
   layout: PageLayoutType.Custom,
-  hideFromBreadcrumbs: true,
+  hideFromBreadcrumbs: false,
   getScene: fullScreenScene,
 });
 

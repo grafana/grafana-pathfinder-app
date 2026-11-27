@@ -539,7 +539,7 @@ it('keeps zero-percent radial progress and metadata on unstarted catalogue path 
   expect(screen.getByText('0%')).toBeInTheDocument();
   expect(screen.getByText('Learning path')).toBeInTheDocument();
   expect(screen.getByText('Dashboards')).toBeInTheDocument();
-  expect(screen.getByText('7 guides')).toBeInTheDocument();
+  expect(screen.queryByText('7 guides')).not.toBeInTheDocument();
   expect(screen.getByText('20 min')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Start path' })).not.toBeInTheDocument();
 });

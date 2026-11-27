@@ -747,7 +747,7 @@ export function MyLearningTab({ onOpenGuide, homepage = false, header: Header }:
               progress={catalogProgress.get(item.key)?.percent}
               estimatedMinutes={item.estimatedMinutes}
               effort={
-                item.activityCount !== undefined
+                typeof item.activityCount === 'number' && item.activityCount > 0
                   ? t('packageBrowser.activities', '{{count}} activities', { count: item.activityCount })
                   : undefined
               }

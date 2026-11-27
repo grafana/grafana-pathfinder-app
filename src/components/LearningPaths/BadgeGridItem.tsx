@@ -73,15 +73,15 @@ export function BadgeGridItem({
       onClick={() => onSelect(badge)}
       data-selected={selected || undefined}
       aria-current={selected || undefined}
-      aria-label={summary && isEarned ? badge.title : undefined}
+      aria-label={summary ? badge.title : undefined}
       style={{ animationDelay: `${index * 50}ms` }}
       title={isLegacy ? 'This badge was earned in a previous version' : undefined}
       data-testid={testIds.learningPaths.badgeItem(badge.id)}
     >
       <BadgeMedallion badge={badge} size={gallery ? 'lg' : 'sm'} />
 
-      {(!summary || !isEarned) && details}
+      {!summary && details}
     </button>
   );
-  return summary && isEarned ? <Tooltip content={badge.title}>{item}</Tooltip> : item;
+  return summary ? <Tooltip content={badge.title}>{item}</Tooltip> : item;
 }

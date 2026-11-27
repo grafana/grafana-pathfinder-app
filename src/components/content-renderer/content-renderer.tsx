@@ -12,6 +12,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder, Button, useStyles2 } from '@grafana/ui';
 import { getSelectionStyles } from './content-renderer.styles';
+import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 
 import { RawContent, ContentParseResult, GuideCountingSource, Milestone } from '../../types/content.types';
 import { logger } from '../../lib/logging';
@@ -101,7 +102,13 @@ import { computeGuideBlockIndex } from '../../lib/guide-stats';
 import { createChoiceProgressModel } from '../../lib/guide-stats/choice-progress';
 import { selectCountingTree } from '../../lib/guide-counting-source';
 import { StorageEvents } from '../../lib/event-names';
-import { LearningPathTableOfContents } from '../LearningPaths/LearningPathTableOfContents';
+import {
+  LearningPathTableOfContents,
+  type LearningPathTableOfContentsProps,
+} from '../LearningPaths/LearningPathTableOfContents';
+import { LearningPathBadges } from '../LearningPaths/LearningPathBadges';
+import { LearningPathOverviewTabs } from '../LearningPaths/LearningPathOverviewTabs';
+import { getCourseCompletionBadges } from '../../learning-paths';
 import { Prerequisites } from '../Prerequisites';
 import { MarkCompleteFooter } from '../mark-complete';
 import { getUserScope } from '../../lib/user-scope';
@@ -182,6 +189,7 @@ function recordCompletion(
 }
 
 interface ContentRendererProps {
+  fullPageOverview?: boolean;
   content: RawContent;
   onContentReady?: () => void;
   completion: ContentRendererCompletion;
@@ -232,6 +240,7 @@ const stripTrailingSlashes = (key: string): string => key.replace(/\/+$/, '');
 const COMPLETION_SETTLE_MS = 200;
 
 const ContentRendererInner = React.memo(function ContentRendererInner({
+  fullPageOverview = false,
   content,
   onContentReady,
   completion,
@@ -628,23 +637,32 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
       ? undefined
       : packageManifest?.prerequisites;
   const hasPrerequisites = Array.isArray(prerequisites) && prerequisites.length > 0;
-  const hasCoverContents = Boolean(isCoverPage && journey && journey.milestones.length > 0);
+  const organization = (content.metadata.repository ?? packageManifest?.repository) === 'app-platform';
+  const pathContents =
+    isCoverPage && journey?.milestones.length
+      ? {
+          fullPage: fullPageOverview,
+          organization,
+          estimatedMinutes:
+            typeof packageManifest?.estimatedMinutes === 'number' ? packageManifest.estimatedMinutes : undefined,
+          category: typeof packageManifest?.category === 'string' ? packageManifest.category : undefined,
+          milestones: journey.milestones,
+          baseUrl: journey.baseUrl,
+          pathId,
+          title: content.metadata.title,
+          description: pathDescription,
+          tracks: journey.tracks,
+          onActiveTrackChange,
+          initialActiveTrackId,
+        }
+      : undefined;
+  const overview =
+    fullPageOverview && pathContents ? { path: pathContents, hashFragment: content.hashFragment } : undefined;
   const beforeContent =
-    hasPrerequisites || hasCoverContents ? (
+    hasPrerequisites || (pathContents && !overview) ? (
       <>
         <Prerequisites prerequisites={prerequisites} />
-        {hasCoverContents && journey && (
-          <LearningPathTableOfContents
-            milestones={journey.milestones}
-            baseUrl={journey.baseUrl}
-            pathId={pathId}
-            title={content.metadata.title}
-            description={pathDescription}
-            tracks={journey.tracks}
-            onActiveTrackChange={onActiveTrackChange}
-            initialActiveTrackId={initialActiveTrackId}
-          />
-        )}
+        {pathContents && !overview && <LearningPathTableOfContents {...pathContents} />}
       </>
     ) : null;
 
@@ -750,7 +768,8 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
                 selectionState={selectionState}
                 documentContext={documentContext}
                 beforeContent={beforeContent}
-                coverTocSuppliesTitle={hasCoverContents}
+                coverTocSuppliesTitle={Boolean(pathContents)}
+                overview={overview}
                 afterContent={afterContent}
                 fullScreenFallbackLocation={fullScreenFallbackLocation}
               />
@@ -761,6 +780,11 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     </GuideContentKeyContext.Provider>
   );
 });
+
+interface LearningPathOverview {
+  path: LearningPathTableOfContentsProps;
+  hashFragment?: string;
+}
 
 /** Inner component that has access to GuideResponseContext for variable substitution */
 interface ContentWithVariablesProps {
@@ -778,6 +802,7 @@ interface ContentWithVariablesProps {
   documentContext: ReturnType<typeof buildDocumentContext>;
   beforeContent?: React.ReactNode;
   coverTocSuppliesTitle: boolean;
+  overview?: LearningPathOverview;
   afterContent?: React.ReactNode;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
@@ -797,10 +822,12 @@ function ContentWithVariables({
   documentContext,
   beforeContent,
   coverTocSuppliesTitle,
+  overview,
   afterContent,
   fullScreenFallbackLocation,
 }: ContentWithVariablesProps) {
   const selectionStyle = useStyles2(getSelectionStyles);
+  const overviewArticleStyles = useStyles2(getOverviewArticleStyles);
   // Get responses for variable substitution - passed to renderer, NOT used for pre-parsing
   // This avoids breaking JSON structure when user values contain special characters
   const { responses, isLoading: responsesLoading } = useGuideResponses();
@@ -863,6 +890,12 @@ function ContentWithVariables({
     color: inherit;
   `;
 
+  const overviewArticleClassName = overview
+    ? contentType === 'learning-journey'
+      ? overviewArticleStyles.journey
+      : overviewArticleStyles.docs
+    : undefined;
+
   return (
     <div
       ref={activeRef}
@@ -889,6 +922,8 @@ function ContentWithVariables({
         responses={responses}
         responsesLoading={responsesLoading}
         fullScreenFallbackLocation={fullScreenFallbackLocation}
+        overviewArticleClassName={overviewArticleClassName}
+        overview={overview}
       />
       {afterContent}
       {selectionState.isValid && (
@@ -915,6 +950,40 @@ interface ContentProcessorProps {
   responsesLoading: boolean;
   /** Resolved step/milestone/course location for the full-screen → sidebar handoff. See interactive.hook.ts. */
   fullScreenFallbackLocation?: string;
+  overviewArticleClassName?: string;
+  overview?: LearningPathOverview;
+}
+
+const overviewMediaElements = new Set(['img', 'audio', 'video', 'svg', 'iframe', 'canvas']);
+
+function hasOverviewBody(element: ParsedElement | string): boolean {
+  if (typeof element === 'string') {
+    return element.trim().length > 0;
+  }
+  return (
+    overviewMediaElements.has(element.type) || element.type.includes('-') || element.children.some(hasOverviewBody)
+  );
+}
+
+function getOverviewHeadingOffset(elements: Array<ParsedElement | string>): number {
+  let offset = 0;
+  for (const element of elements) {
+    if (typeof element === 'string') {
+      continue;
+    }
+    const headingOffset = element.type === 'h1' ? 2 : element.type === 'h2' ? 1 : 0;
+    offset = Math.max(offset, headingOffset, getOverviewHeadingOffset(element.children));
+  }
+  return offset;
+}
+
+function nestOverviewHeading(element: ParsedElement, offset: number): ParsedElement {
+  const match = /^h([1-6])$/.exec(element.type);
+  return {
+    ...element,
+    type: match ? `h${Math.min(6, Number(match[1]) + offset)}` : element.type,
+    children: element.children.map((child) => (typeof child === 'string' ? child : nestOverviewHeading(child, offset))),
+  };
 }
 
 function ContentProcessor({
@@ -924,6 +993,8 @@ function ContentProcessor({
   responses,
   responsesLoading,
   fullScreenFallbackLocation,
+  overviewArticleClassName,
+  overview,
   onReady,
 }: ContentProcessorProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -1216,20 +1287,63 @@ function ContentProcessor({
     return { standaloneGroupMap: groupMap, totalStandaloneSteps: standaloneCount };
   }, [parseResult]);
 
+  const hasOverviewContent = Boolean(
+    overviewArticleClassName && parseResult.isValid && parseResult.data?.elements.some(hasOverviewBody)
+  );
+  const hasBadges = overview && getCourseCompletionBadges(overview.path).length > 0;
+  const renderContent = (children: React.ReactNode) => {
+    const article = (
+      <div ref={ref} className={overviewArticleClassName}>
+        {hasOverviewContent && (
+          <h2 className="course-about-heading">{t('coverPage.aboutThisPath', 'About this path')}</h2>
+        )}
+        {children}
+        {hasBadges && <LearningPathBadges path={overview.path} nested={hasOverviewContent} />}
+      </div>
+    );
+
+    if (!overview) {
+      return article;
+    }
+    return (
+      <LearningPathTableOfContents
+        {...overview.path}
+        renderSections={(header, modules) => (
+          <>
+            {header}
+            <LearningPathOverviewTabs
+              key={overview.hashFragment}
+              modules={
+                hasOverviewContent ? (
+                  modules
+                ) : (
+                  <>
+                    {modules}
+                    {article}
+                  </>
+                )
+              }
+              details={hasOverviewContent ? article : null}
+              openDetails={Boolean(overview.hashFragment)}
+            />
+          </>
+        )}
+      />
+    );
+  };
+
   // Single decision point: either we have valid React components or we display errors
   if (!parseResult.isValid) {
     // Parser details can contain private guide content; only the typed outcome is reported.
-    return (
-      <div ref={ref}>
-        <ContentParsingError
-          errors={parseResult.errors}
-          warnings={parseResult.warnings}
-          fallbackHtml={html}
-          onRetry={() => {
-            window.location.reload();
-          }}
-        />
-      </div>
+    return renderContent(
+      <ContentParsingError
+        errors={parseResult.errors}
+        warnings={parseResult.warnings}
+        fallbackHtml={html}
+        onRetry={() => {
+          window.location.reload();
+        }}
+      />
     );
   }
 
@@ -1238,31 +1352,25 @@ function ContentProcessor({
 
   if (!parsedContent) {
     logger.error('[DocsPlugin] Parsing succeeded but no data returned');
-    return (
-      <div ref={ref}>
-        <ContentParsingError
-          errors={[
-            {
-              type: 'html_parsing',
-              message: 'Parsing succeeded but no content data was returned',
-              location: 'ContentProcessor',
-            },
-          ]}
-          warnings={parseResult.warnings}
-          fallbackHtml={html}
-        />
-      </div>
+    return renderContent(
+      <ContentParsingError
+        errors={[
+          {
+            type: 'html_parsing',
+            message: 'Parsing succeeded but no content data was returned',
+            location: 'ContentProcessor',
+          },
+        ]}
+        warnings={parseResult.warnings}
+        fallbackHtml={html}
+      />
     );
   }
 
   // A guide composed entirely of snippet refs has no renderable elements until
   // those refs resolve; show a loading state rather than the empty-content splash.
   if (parsedContent.elements.length === 0 && isResolvingSnippets) {
-    return (
-      <div ref={ref}>
-        <LoadingPlaceholder text="Loading snippets" />
-      </div>
-    );
+    return renderContent(<LoadingPlaceholder text="Loading snippets" />);
   }
 
   // Check for empty content where parsing succeeded but produced no renderable elements.
@@ -1294,47 +1402,43 @@ function ContentProcessor({
         (w) => !w.includes('Failed to parse') && !w.includes('Empty HTML block')
       );
 
-      return (
-        <div ref={ref}>
-          <ContentParsingError errors={promotedErrors} warnings={remainingWarnings} fallbackHtml={html} />
-        </div>
+      return renderContent(
+        <ContentParsingError errors={promotedErrors} warnings={remainingWarnings} fallbackHtml={html} />
       );
     }
 
-    return (
-      <div ref={ref}>
-        <ContentParsingError
-          errors={[
-            {
-              type: 'html_parsing',
-              message:
-                'Content was parsed successfully but produced no renderable elements. The content may be empty, contain only whitespace, or use an unsupported format.',
-              location: 'ContentProcessor',
-            },
-          ]}
-          warnings={parseResult.warnings}
-          fallbackHtml={html}
-        />
-      </div>
+    return renderContent(
+      <ContentParsingError
+        errors={[
+          {
+            type: 'html_parsing',
+            message:
+              'Content was parsed successfully but produced no renderable elements. The content may be empty, contain only whitespace, or use an unsupported format.',
+            location: 'ContentProcessor',
+          },
+        ]}
+        warnings={parseResult.warnings}
+        fallbackHtml={html}
+      />
     );
   }
 
-  return (
-    <div ref={ref}>
-      {parsedContent.elements.map((element, index) => {
-        // Look up standalone step position from precomputed document layout
-        const groupInfo = documentLayout.standaloneGroupMap.get(index);
-        const stepPosition = groupInfo ? getDocumentStepPosition(groupInfo.groupId, groupInfo.indexInGroup) : undefined;
-        return renderParsedElement(
-          element,
-          `element-${index}`,
-          baseUrl,
-          responses,
-          stepPosition,
-          fullScreenFallbackLocation
-        );
-      })}
-    </div>
+  const headingOffset = overviewArticleClassName ? getOverviewHeadingOffset(parsedContent.elements) : 0;
+
+  return renderContent(
+    parsedContent.elements.map((element, index) => {
+      // Look up standalone step position from precomputed document layout
+      const groupInfo = documentLayout.standaloneGroupMap.get(index);
+      const stepPosition = groupInfo ? getDocumentStepPosition(groupInfo.groupId, groupInfo.indexInGroup) : undefined;
+      return renderParsedElement(
+        headingOffset > 0 ? nestOverviewHeading(element, headingOffset) : element,
+        `element-${index}`,
+        baseUrl,
+        responses,
+        stepPosition,
+        fullScreenFallbackLocation
+      );
+    })
   );
 }
 
@@ -2098,3 +2202,33 @@ function renderParsedElement(
       }
   }
 }
+
+const getOverviewArticleStyles = (theme: GrafanaTheme2) => {
+  const layout = {
+    padding: 0,
+    overflow: 'visible',
+    flex: 'none',
+    '&:has(> .course-about-heading)': { marginTop: theme.spacing(1) },
+    '& h2, & h3, & h4, & h5, & h6': {
+      marginTop: theme.spacing(4),
+      marginBottom: theme.spacing(1),
+      '&:first-child': { marginTop: theme.spacing(4) },
+    },
+    '& h2.course-about-heading': {
+      fontSize: theme.typography.xl.fontSize,
+      margin: theme.spacing(0, 0, 1),
+    },
+    '& h3': { fontSize: theme.typography.lg.fontSize },
+    '& h4': { fontSize: theme.typography.md.fontSize },
+    '& .orange-outline-list .icon-heading h3': { margin: 0 },
+    '& p:has(+ :is(ul, ol))': { marginBottom: theme.spacing(1) },
+    '& :is(ul, ol) > li': {
+      marginBottom: theme.spacing(0.5),
+      '&:last-child, & > p:last-child': { marginBottom: 0 },
+    },
+  };
+  return {
+    journey: css(journeyContentHtml(theme), layout),
+    docs: css(docsContentHtml(theme), layout),
+  };
+};

@@ -187,6 +187,8 @@ describe('panelModeManager', () => {
   describe('priorPath capture', () => {
     it('round-trips a captured prior path once via consume', () => {
       panelModeManager.capturePriorPath('/dashboards?tab=foo');
+      expect(panelModeManager.getPriorPath()).toBe('/dashboards?tab=foo');
+      expect(panelModeManager.getPriorPath()).toBe('/dashboards?tab=foo');
       expect(panelModeManager.consumePriorPath()).toBe('/dashboards?tab=foo');
       // Cleared after consume so a future Exit doesn't replay a stale path.
       expect(panelModeManager.consumePriorPath()).toBeNull();
