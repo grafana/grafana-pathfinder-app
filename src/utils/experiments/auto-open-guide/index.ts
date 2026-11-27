@@ -91,17 +91,25 @@ function findOffer(
   return index === -1 ? null : { index, guide: targeting.experiences[index]!.guide };
 }
 
-function canPopOut(): boolean {
+function popOutBlockReason() {
+  if (document.visibilityState !== 'visible') {
+    return 'tab_hidden';
+  }
+  if (isPathfinderOpen()) {
+    return 'pathfinder_open';
+  }
+  if (isExtensionSidebarInUse()) {
+    return 'sidebar_in_use';
+  }
+  if (kioskState.getSnapshot()) {
+    return 'kiosk_mode';
+  }
   const params = parsePathfinderDeepLink(window.location.search);
-  return (
-    document.visibilityState === 'visible' &&
-    !isPathfinderOpen() &&
-    !isExtensionSidebarInUse() &&
-    !kioskState.getSnapshot() &&
-    !params.doc &&
-    !params.controller &&
-    !params.pathfinderKiosk
-  );
+  return params.doc || params.controller || params.pathfinderKiosk ? 'deep_link' : undefined;
+}
+
+function canPopOut(): boolean {
+  return popOutBlockReason() === undefined;
 }
 
 export async function startAutoOpenGuideExperiment(): Promise<() => void> {
@@ -239,6 +247,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
   let cancelAutoLaunch = () => {};
   let cancelAutoOpen = () => {};
 
+  let appliedThisLoad = false;
   const apply = (offer: Offer, variant: EnrolledVariant, targeting: AutoOpenGuideConfig) => {
     if (
       requiresEligibility &&
@@ -257,6 +266,7 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
       ...(requiresCohort ? { isCurrent: membership!.isCurrent } : {}),
     });
     notifyEnrollment();
+    appliedThisLoad = true;
     markAutoOpenGuideShown(markerScope, offer.guide);
     writeConsumedVisit(markerScope, consumedVisit);
     const docPage = findDocPage(offer.guide);
@@ -347,12 +357,59 @@ export async function startAutoOpenGuideExperiment(): Promise<() => void> {
     }
   };
 
+  const reportedBlocks = new Set<string>();
+  const reportBlockedVisit = () => {
+    if (
+      !pageTargeting ||
+      (requiresCohort && !membership?.isCurrent()) ||
+      (requiresExploring && !hasSavedExploringIntent()) ||
+      contextKey !== getOnboardingIntentContextKey()
+    ) {
+      return;
+    }
+    const path = getCurrentPath();
+    const known = !requiresCohort || membership?.hasResult() === true;
+    const candidates = pageTargeting.experiences
+      .map((experience, index) => ({ experience, index }))
+      .filter(({ experience }) => matchesExperience(experience, path) && (!known || experienceEligible(experience)));
+    const first = candidates[0];
+    if (!first) {
+      return;
+    }
+    const visit = visitKey(eligibleExperiences(pageTargeting), path);
+    if (appliedThisLoad && visit && consumedVisit === visit) {
+      return;
+    }
+    const reason =
+      popOutBlockReason() ??
+      (candidates.every(({ experience }) => alreadyShown(experience.guide)) ? 'guide_already_offered' : undefined);
+    if (!reason) {
+      return;
+    }
+    const key = [first.index, reason, known].join('/');
+    if (!reportedBlocks.has(key)) {
+      reportedBlocks.add(key);
+      reportAppInteraction(
+        UserInteraction.AutoOpenGuideBlocked,
+        {
+          reason,
+          experience_index: first.index,
+          ...(requiresCohort && { membership_status: known ? 'matched' : 'unknown' }),
+          experiment_id: experimentId,
+          configured_variant: pageTargeting.variant,
+        },
+        { mirrorToFaro: false }
+      );
+    }
+  };
+
   // Each visit gets at most one activation, whatever it resolves to, so a result that
   // offers nothing can never re-trigger itself.
   const check = () => {
     if (stopped) {
       return;
     }
+    reportBlockedVisit();
     if (
       requiresCohort &&
       document.visibilityState === 'visible' &&

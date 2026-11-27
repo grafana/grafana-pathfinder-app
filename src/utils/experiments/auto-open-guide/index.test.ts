@@ -54,6 +54,7 @@ jest.mock('../../../lib/telemetry/surface', () => ({ isPathfinderOpen: () => moc
 jest.mock('../../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   UserInteraction: {
+    AutoOpenGuideBlocked: 'auto_open_guide_blocked',
     CohortAutoOpenEligible: 'cohort_auto_open_eligible',
     AutoOpenGuideEligible: 'auto_open_guide_eligible',
     OnboardingExploringEligible: 'onboarding_exploring_auto_open_eligible',
@@ -489,6 +490,14 @@ describe('blocked eligibility', () => {
   it('skips while Pathfinder is already open', async () => {
     mockPathfinderOpen = true;
     await start('/explore', { variant: 'treatment', experiences: EXPERIENCES });
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.AutoOpenGuideBlocked,
+      expect.objectContaining({
+        experiment_id: AUTO_OPEN_GUIDE_EXPERIMENT_ID,
+        reason: 'pathfinder_open',
+      }),
+      { mirrorToFaro: false }
+    );
     expect(reportExperimentView).not.toHaveBeenCalled();
   });
 
@@ -540,6 +549,20 @@ describe('saved exploring cohort', () => {
     stop = await startAutoOpenGuideExperiment();
     await settle();
   }
+
+  it('reports the same blocked event for a saved exploring visit', async () => {
+    saved();
+    mockPathfinderOpen = true;
+    await startExploring();
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.AutoOpenGuideBlocked,
+      expect.objectContaining({
+        experiment_id: ONBOARDING_EXPLORING_EXPERIMENT_ID,
+        reason: 'pathfinder_open',
+      }),
+      { mirrorToFaro: false }
+    );
+  });
 
   it('keeps treatment telemetry active when the open handler synchronously opens the panel', async () => {
     (attemptAutoOpen as jest.Mock).mockImplementationOnce((_delay: number, shouldOpen: () => boolean) => {
@@ -1074,12 +1097,42 @@ describe('remote cohort child experiment', () => {
     expect(cohortOffers()[0][1]).toEqual(expect.objectContaining({ experience_index: 2 }));
   });
 
+  it.each(['control', 'treatment'])('reports a docked sidebar once without activating %s', async (variant) => {
+    localStorage.setItem('grafana.navigation.extensionSidebarDocked', 'grafana-assistant-app');
+    await startCohort(variant, '/dashboards');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await settle();
+    const blocks = (reportAppInteraction as jest.Mock).mock.calls.filter(
+      ([event]) => event === UserInteraction.AutoOpenGuideBlocked
+    );
+    expect(blocks).toEqual([
+      [
+        UserInteraction.AutoOpenGuideBlocked,
+        {
+          experiment_id: COHORT_AUTO_OPEN_EXPERIMENT_ID,
+          configured_variant: variant,
+          experience_index: 1,
+          reason: 'sidebar_in_use',
+          membership_status: 'unknown',
+        },
+        { mirrorToFaro: false },
+      ],
+    ]);
+    expect(reportExperimentView).not.toHaveBeenCalled();
+    expect(mockCohortFetch).not.toHaveBeenCalled();
+  });
+
   it('respects earlier experiment suppression without restoring earlier attribution', async () => {
     localStorage.setItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:alerts', 'true');
     localStorage.setItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:billing', 'true');
     localStorage.setItem('grafana-pathfinder-auto-open-guide-shown-localhost:bundled:billing-second', 'true');
     await startCohort();
     await settle();
+    expect(reportAppInteraction).toHaveBeenCalledWith(
+      UserInteraction.AutoOpenGuideBlocked,
+      expect.objectContaining({ reason: 'guide_already_offered' }),
+      { mirrorToFaro: false }
+    );
     expect(mockCohortFetch).not.toHaveBeenCalled();
     expect(getAutoOpenGuideEnrollment()).toBeNull();
     expect(attemptAutoOpen).not.toHaveBeenCalled();
