@@ -189,7 +189,7 @@ func TestPrivateCDNReadsOperatorSDKEnvironment(t *testing.T) {
 	t.Setenv("API_ACCESS_TOKEN_EXCHANGE_URL", "http://exchange.invalid")
 	client, err := privateCDNFromEnvironment()
 	require.NoError(t, err)
-	require.Equal(t, privateCDNURL, client.baseURL)
+	require.Equal(t, "http://pathfinder-private-cdn-signer.grafana-pathfinder-app.svc.cluster.local.:8080", client.baseURL)
 	t.Setenv(sdkplugin.EnvVarAPIAccessCAPToken, "synthetic-prefixed-cap")
 	require.Equal(t, "synthetic-prefixed-cap", privateCDNSDKEnv(sdkplugin.EnvVarAPIAccessCAPToken))
 }

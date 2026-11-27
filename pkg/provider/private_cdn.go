@@ -22,7 +22,7 @@ import (
 
 const (
 	privateCDNAudience = "pathfinder-private-cdn-signer"
-	privateCDNURL      = "http://pathfinder-private-cdn-signer.docs.svc.cluster.local.:8080"
+	privateCDNURL      = "http://pathfinder-private-cdn-signer.grafana-pathfinder-app.svc.cluster.local.:8080"
 	privateCDNGuide    = "builders-observability-foundations"
 )
 
