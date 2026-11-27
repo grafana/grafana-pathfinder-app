@@ -48,13 +48,20 @@ func TestBundledTutorialAllowlistParity(t *testing.T) {
 	if err := json.Unmarshal(data, &index); err != nil {
 		t.Fatal(err)
 	}
-	if len(index.Interactives) != len(ids) {
-		t.Fatal("bundled index and shared allowlist differ")
-	}
+	indexed := make(map[string]bool, len(index.Interactives))
 	for _, entry := range index.Interactives {
-		if !constants.IsBundledTutorial(entry.ID) {
-			t.Fatalf("backend allowlist missing frontend tutorial %q", entry.ID)
+		indexed[entry.ID] = true
+		if entry.ID != "create-your-first-guide" && !constants.IsBundledTutorial(entry.ID) {
+			t.Fatalf("unexpected bundled tutorial %q", entry.ID)
 		}
+	}
+	for _, id := range ids {
+		if !indexed[id] || !constants.IsBundledTutorial(id) {
+			t.Fatalf("migrated tutorial missing from index or backend allowlist: %q", id)
+		}
+	}
+	if constants.IsBundledTutorial("create-your-first-guide") {
+		t.Fatal("local authoring lesson must not become a migrated assignment tutorial")
 	}
 	for _, id := range []string{"first-dashboard-rss", "block-editor-tutorial", "e2e-framework-test", "first-dashboard/content.json", "unknown"} {
 		if constants.IsBundledTutorial(id) {

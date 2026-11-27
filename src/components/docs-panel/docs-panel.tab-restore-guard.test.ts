@@ -239,6 +239,7 @@ jest.mock('../../hooks', () => ({}));
 import { isDevModeEnabled } from '../../utils/dev-mode';
 import { tabStorage } from '../../lib/user-storage';
 import { CombinedLearningJourneyPanel } from './docs-panel';
+import { closeCompanionGuide, getCompanionGuide } from '../../global-state/companion-guide';
 import type { LearningJourneyTab } from '../../types/content-panel.types';
 import { loadDocsTabContentResult, shouldUseDocsLoader } from './utils';
 import { resolveActiveMilestoneSequence } from '../../docs-retrieval';
@@ -285,6 +286,68 @@ describe('CombinedLearningJourneyPanel — tab restoration guard (#782)', () => 
     jest.requireMock('../../utils/openfeature').getFeatureFlagValue.mockReturnValue(true);
     (isDevModeEnabled as jest.Mock).mockReturnValue(false);
     setupRestoreMocks();
+  });
+
+  it.each(['bundled:create-your-first-guide', 'bundled:create-your-first-guide/content.json'])(
+    'opens the authoring recommendation beside the existing editor (%s)',
+    async (url) => {
+      const user = jest.requireMock('@grafana/runtime').config.bootData.user;
+      const previousRole = user.orgRole;
+      user.orgRole = 'Editor';
+      closeCompanionGuide();
+      try {
+        const panel = new CombinedLearningJourneyPanel({}, { persistTabs: false });
+        panel.openEditorTab();
+        panel.updateEditorTabTitle('Existing draft');
+        const tabs = panel.state.tabs;
+        const openDocs = jest.spyOn(panel, 'openDocsPage');
+        await (panel as any).openRecommendation(
+          url,
+          'Create your first interactive guide',
+          'recommender',
+          undefined,
+          true
+        );
+        expect(panel.state.tabs).toBe(tabs);
+        expect(panel.state.tabs.find((tab) => tab.id === panel.state.activeTabId)?.title).toBe('Existing draft');
+        expect(openDocs).not.toHaveBeenCalled();
+        expect(getCompanionGuide()?.currentUrl).toBe('bundled:create-your-first-guide/content.json');
+      } finally {
+        closeCompanionGuide();
+        user.orgRole = previousRole;
+      }
+    }
+  );
+
+  it('keeps the editor active when an earlier reader restoration finishes late', async () => {
+    let finish!: (id: string) => void;
+    mockRestoreActiveTabFromStorage.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const panel = new CombinedLearningJourneyPanel();
+    const restoring = panel.restoreTabsAsync();
+    await Promise.resolve();
+    panel.openEditorTab();
+    finish('tab-guide-1');
+    await restoring;
+    expect(panel.state.activeTabId).toBe('editor');
+    expect(panel.state.tabs.find((tab) => tab.id === 'tab-guide-1')).toBeDefined();
+  });
+
+  it('does not persist an ephemeral reader over the editor workspace', async () => {
+    const panel = new CombinedLearningJourneyPanel({}, { persistTabs: false });
+    await panel.saveTabsToStorage();
+    expect(tabStorage.setTabs).not.toHaveBeenCalled();
+    expect(tabStorage.setActiveTab).not.toHaveBeenCalled();
+  });
+
+  it('keeps normal workspace persistence enabled by default', async () => {
+    const panel = new CombinedLearningJourneyPanel();
+    await panel.saveTabsToStorage();
+    expect(tabStorage.setTabs).toHaveBeenCalledTimes(1);
+    expect(tabStorage.setActiveTab).toHaveBeenCalledTimes(1);
   });
 
   it('should restore tabs on the first call to restoreTabsAsync', async () => {

@@ -44,7 +44,7 @@ export function BlockPreview({ guide, showTitle = true, hideResetButton = false 
   const prismStyles = useStyles2(getPrismStyles);
 
   const progressKey = `block-editor://preview/${guide.id}`;
-  usePublishSurfaceContentKey(progressKey);
+  usePublishSurfaceContentKey(progressKey, { restorePrevious: true });
   const { hasProgress: hasInteractiveProgress, reset } = useGuidePreviewProgress(progressKey);
 
   // Force ContentRenderer remount when progress is cleared (locally or by a sibling

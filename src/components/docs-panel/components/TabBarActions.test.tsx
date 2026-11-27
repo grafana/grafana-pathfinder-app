@@ -373,6 +373,20 @@ describe('TabBarActions', () => {
     });
   });
 
+  it.each([
+    makeTab(),
+    makeTab({
+      baseUrl: 'bundled:create-your-first-guide/content.json',
+      currentUrl: 'bundled:create-your-first-guide/content.json',
+    }),
+  ])('never offers companion mode in a reader menu, including the authoring lesson', (tab) => {
+    const onOpenEditorTab = jest.fn();
+    render(<TabBarActions activeTab={tab} isEditorUser onOpenEditorTab={onOpenEditorTab} />);
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.queryByText('Open beside guide editor')).not.toBeInTheDocument();
+    expect(onOpenEditorTab).not.toHaveBeenCalled();
+  });
+
   describe('guide editor menu item', () => {
     const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'More options' }));
 

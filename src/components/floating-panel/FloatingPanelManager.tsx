@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import { ThemeContext } from '@grafana/data';
 import { config, locationService } from '@grafana/runtime';
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
@@ -16,6 +16,8 @@ import { PANEL_MODE_CHANGE_EVENT, REQUEST_FLOATING_GUIDE_EVENT } from '../../lib
 import { buildFullScreenRouteUrl } from '../../utils/pathfinder-search-params';
 import { FloatingPanel } from './FloatingPanel';
 import { FloatingPanelContent } from './FloatingPanelContent';
+import { CompanionGuidePanel } from './CompanionGuidePanel';
+import { getCompanionGuide, subscribeCompanionGuide, closeCompanionGuide } from '../../global-state/companion-guide';
 import { enrollInteractiveLearningBannerExperiment } from '../../utils/experiments/interactive-learning-banner';
 import { SkeletonLoader } from '../SkeletonLoader';
 import { reportPathfinderSurface } from '../../lib/telemetry/surface';
@@ -39,6 +41,7 @@ const EDITOR_FLOATING_TITLE = 'Guide editor';
 export function FloatingPanelManager() {
   const [mode, setMode] = useState<PanelMode>(() => panelModeManager.getMode());
   const theme = useGrafanaTheme();
+  const companionGuide = useSyncExternalStore(subscribeCompanionGuide, getCompanionGuide);
 
   // Listen for mode changes
   useEffect(() => {
@@ -51,6 +54,12 @@ export function FloatingPanelManager() {
       document.removeEventListener(PANEL_MODE_CHANGE_EVENT, handleModeChange as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    if (mode !== 'sidebar') {
+      closeCompanionGuide();
+    }
+  }, [mode]);
 
   // Re-sync from the singleton on a floating launch. A quiet transient-Back exit
   // (#1448) clears the session without emitting PANEL_MODE_CHANGE_EVENT, so our
@@ -68,14 +77,14 @@ export function FloatingPanelManager() {
     };
   }, []);
 
-  if (mode !== 'floating') {
+  if (mode !== 'floating' && !(mode === 'sidebar' && companionGuide)) {
     return null;
   }
 
   return (
     <ThemeContext.Provider value={theme}>
       <PathfinderFeatureProvider>
-        <FloatingPanelInner />
+        {mode === 'sidebar' && companionGuide ? <CompanionGuidePanel guide={companionGuide} /> : <FloatingPanelInner />}
       </PathfinderFeatureProvider>
     </ThemeContext.Provider>
   );

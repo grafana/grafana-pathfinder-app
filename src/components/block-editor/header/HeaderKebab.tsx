@@ -4,6 +4,7 @@ import type { ViewMode } from '../types';
 import { testIds } from '../../../constants/testIds';
 import { usePanelModeControls } from '../../../global-state/use-panel-mode';
 import { getHeaderStyles } from './header.styles';
+import { openAuthoringGuide } from '../../../global-state/companion-guide';
 
 export interface HeaderKebabProps {
   /** Whether the Pathfinder backend API is available; gates publish shortcut + Library. */
@@ -154,6 +155,9 @@ export function HeaderKebab({
       <Menu.Item label="Download JSON" icon="download-alt" onClick={onDownload} />
       <Menu.Item label="Create GitHub PR" icon="github" onClick={onOpenGitHubPR} />
       <Menu.Divider />
+      {panelMode === 'sidebar' && (
+        <Menu.Item label="Create your first guide" icon="book-open" onClick={openAuthoringGuide} />
+      )}
       <Menu.Item label="Take tour" icon="question-circle" onClick={onOpenTour} />
     </Menu>
   );

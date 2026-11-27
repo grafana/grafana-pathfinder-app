@@ -88,7 +88,9 @@ import { config, getAppEvents, locationService } from '@grafana/runtime';
 import { coerceLaunchSource, toAnalyticsLaunchSource, type LaunchSource } from '../../recovery';
 import { currentUserIsAdmin } from '../../utils/current-user-role';
 import { SessionProvider, useSession, ActionReplaySystem, ActionCaptureSystem } from '../../integrations/workshop';
-import { panelModeManager } from '../../global-state/panel-mode';
+import { panelModeManager, requestSidebarHandoffAndWait } from '../../global-state/panel-mode';
+import { openAuthoringGuide } from '../../global-state/companion-guide';
+import { contentFileName } from '../../lib/guide-content-file';
 import { cancelCatalogActivation } from '../../global-state/package-browser';
 import { shouldOpenAsLearningJourney } from '../../utils/pathfinder-search-params';
 import { testIds } from '../../constants/testIds';
@@ -213,7 +215,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     return true;
   }
 
-  public constructor(pluginConfig: PathfinderPluginConfig = {}) {
+  private readonly persistTabs: boolean;
+
+  public constructor(pluginConfig: PathfinderPluginConfig = {}, options: { persistTabs?: boolean } = {}) {
     // Initialize with the recommendations home tab
     const defaultTabs: LearningJourneyTab[] = [
       {
@@ -254,6 +258,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
       contextPanel,
       pluginConfig,
     });
+    this.persistTabs = options.persistTabs ?? true;
 
     // Wire the composite PackageResolver into docs-retrieval so that
     // fetchPackageContent() and fetchPackageById() can resolve bundled and
@@ -287,6 +292,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   private async restoreTabWorkspace(): Promise<void> {
+    const initialActiveTabId = this.state.activeTabId;
     await pendingTabStorageWrite;
     const { allowDevTools: isDevMode } = resolveTabGates(this.state.pluginConfig);
 
@@ -301,7 +307,7 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
 
     this.setState({
       tabs: restoredTabs,
-      activeTabId,
+      activeTabId: this.state.activeTabId !== initialActiveTabId ? this.state.activeTabId : activeTabId,
     });
 
     this.initializeRestoredActiveTab();
@@ -398,6 +404,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public saveTabsToStorage(): Promise<void> {
+    if (!this.persistTabs) {
+      return Promise.resolve();
+    }
     const write = this.writeTabsToStorage();
     pendingTabStorageWrite = write;
     // Only the newest write clears the barrier; an older one settling late must
@@ -434,6 +443,18 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     packageInfo: PackageOpenInfo | undefined,
     prepare: boolean
   ): Promise<void> {
+    if (
+      ['bundled:create-your-first-guide', `bundled:create-your-first-guide/${contentFileName()}`].includes(url) &&
+      isCurrentUserEditor()
+    ) {
+      this.openEditorTab();
+      if (panelModeManager.getMode() !== 'sidebar') {
+        await this.saveTabsToStorage();
+        await requestSidebarHandoffAndWait();
+      }
+      openAuthoringGuide();
+      return;
+    }
     const { openGuideInSidebar } = await import('./utils/open-prepared-guide');
     if (!prepare) {
       if (panelModeManager.getMode() !== 'sidebar') {

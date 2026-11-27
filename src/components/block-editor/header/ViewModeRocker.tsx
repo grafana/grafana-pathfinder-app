@@ -46,6 +46,7 @@ export function ViewModeRocker({ viewMode, onSetViewMode }: ViewModeRockerProps)
         options={LABELED_OPTIONS}
         value={viewMode}
         onChange={onSetViewMode}
+        onClick={onSetViewMode}
       />
       <RadioButtonGroup
         className={styles.viewModeRockerIconOnly}
@@ -53,6 +54,7 @@ export function ViewModeRocker({ viewMode, onSetViewMode }: ViewModeRockerProps)
         options={ICON_ONLY_OPTIONS}
         value={viewMode}
         onChange={onSetViewMode}
+        onClick={onSetViewMode}
       />
     </div>
   );

@@ -165,6 +165,7 @@ export interface BundledInteractive {
   summary: string;
   filename: string;
   exportName: string;
+  requiresEditor?: boolean;
   url: string | string[]; // Can be single URL or array of URLs
   targetPlatform?: 'oss' | 'cloud'; // Optional: filter by platform (defaults to both if not specified)
 }

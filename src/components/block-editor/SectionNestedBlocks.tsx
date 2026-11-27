@@ -209,6 +209,7 @@ export function SectionNestedBlocks({
           <BlockPalette
             onSelect={(type) => onInsertBlockInSection(type, block.id)}
             excludeTypes={['section']}
+            triggerTestId={testIds.blockEditor.sectionNestedAddButton}
             embedded
           />
         )}

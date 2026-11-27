@@ -1,7 +1,8 @@
 import { isGrafanaDocsUrl } from '../security';
 import { logger } from '../lib/logging';
 import { formatSlug, getInteractiveLearningUrlTitle } from './doc-page-title';
-import { canonicalContentFileUrl } from '../lib/guide-content-file';
+import { canonicalContentFileUrl, CANONICAL_CONTENT_FILE } from '../lib/guide-content-file';
+import { loadBundledContent } from '../lib/bundled-package-files';
 
 export interface DocPage {
   type: 'docs-page' | 'learning-journey' | 'interactive';
@@ -52,6 +53,10 @@ function findCanonicalDocPage(param: string): DocPage | null {
 
   // Case 1: Bundled interactive
   if (param.startsWith('bundled:')) {
+    if (param === `bundled:create-your-first-guide/${CANONICAL_CONTENT_FILE}`) {
+      const content = loadBundledContent('create-your-first-guide');
+      return content.ok ? { type: 'docs-page', url: param, title: content.data.title } : null;
+    }
     try {
       const indexData = require('../bundled-interactives/index.json');
       const interactiveId = param.replace('bundled:', '');

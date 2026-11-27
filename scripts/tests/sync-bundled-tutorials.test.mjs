@@ -57,6 +57,16 @@ test('sync is idempotent and ignores unrelated upstream changes', (t) => {
   assert.equal(readFileSync(join(f.root, 'src/constants/bundled-tutorials-source.json'), 'utf8'), lock);
 });
 
+test('preserves app-owned recommendation entries during tutorial sync', (t) => {
+  const f = fixture(t);
+  const entry = { id: 'create-your-first-guide', url: ['/'], requiresEditor: true };
+  f.write(join(f.root, 'src/bundled-interactives/index.json'), { interactives: [entry] });
+  syncBundledTutorials(f.source, f);
+  const index = JSON.parse(readFileSync(join(f.root, 'src/bundled-interactives/index.json')));
+  assert.deepEqual(index.interactives[0], entry);
+  assert.deepEqual(syncBundledTutorials(f.source, f).changed, []);
+});
+
 test('copies asset and manifest changes and adapts repository provenance', (t) => {
   const f = fixture(t);
   f.write(join(f.source, 'intro/content.json'), {

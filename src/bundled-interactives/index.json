@@ -1,6 +1,14 @@
 {
   "interactives": [
     {
+      "id": "create-your-first-guide",
+      "title": "Create your first interactive guide",
+      "summary": "Create a team guide with recorded actions, explanatory text, and a show-only highlight.",
+      "filename": "create-your-first-guide/content.json",
+      "url": ["/"],
+      "requiresEditor": true
+    },
+    {
       "id": "welcome-to-grafana",
       "title": "Welcome to Grafana",
       "summary": "Take a guided tour of Grafana's key areas. Perfect for getting started and understanding where everything is located.",

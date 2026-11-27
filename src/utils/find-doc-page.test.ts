@@ -6,6 +6,21 @@ jest.mock('../security', () => ({
 import { findDocPage } from './find-doc-page';
 
 describe('findDocPage', () => {
+  it('opens a bundled authoring package without adding it to recommendation fallbacks', () => {
+    expect(findDocPage('bundled:create-your-first-guide/content.json')).toEqual({
+      type: 'docs-page',
+      url: 'bundled:create-your-first-guide/content.json',
+      title: 'Create your first interactive guide',
+    });
+    expect(findDocPage('bundled:welcome-to-grafana/content.json')).toBeNull();
+    expect(findDocPage('bundled:welcome-to-grafana')).toMatchObject({
+      url: 'bundled:welcome-to-grafana',
+      type: 'docs-page',
+    });
+    expect(findDocPage('bundled:missing-guide/content.json')).toBeNull();
+    expect(findDocPage('bundled:../create-your-first-guide/content.json')).toBeNull();
+  });
+
   describe('api: prefix (custom backend guides)', () => {
     it('returns a backend-guide DocPage for a valid resource name', () => {
       expect(findDocPage('api:my-guide-a3f9')).toEqual({

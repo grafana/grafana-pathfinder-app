@@ -1,4 +1,5 @@
-import { config } from '@grafana/runtime';
+import { isCurrentUserEditor } from '../../../lib/author-role';
+export { isCurrentUserEditor } from '../../../lib/author-role';
 import type { PathfinderPluginConfig } from '../../../constants';
 import { getFeatureFlagValue } from '../../../utils/openfeature';
 import { isDevModeEnabled } from '../../../utils/dev-mode';
@@ -8,12 +9,6 @@ export interface TabGates {
   allowEditor: boolean;
   allowDevTools: boolean;
   allowBrowse: boolean;
-}
-
-/** Editor-role predicate shared by the model gate and the renderer's menu gate. */
-export function isCurrentUserEditor(): boolean {
-  const user = config.bootData?.user;
-  return user?.orgRole === 'Editor' || user?.orgRole === 'Admin' || user?.isGrafanaAdmin === true;
 }
 
 export function resolveTabGates(pluginConfig: PathfinderPluginConfig | undefined): TabGates {

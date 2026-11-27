@@ -1,0 +1,338 @@
+{
+  "id": "create-your-first-guide",
+  "title": "Create your first interactive guide",
+  "blocks": [
+    {
+      "type": "markdown",
+      "content": "Turn a team procedure into a guide that a colleague can follow inside Grafana. Build a small practice guide with text, recorded actions, and an explanation of a page control.\n\n**You need:** Editor or Admin access. No dashboards, data sources, or integrations are required. Allow about 15 minutes.\n\nKeep these instructions floating beside the editor. Drag this window away from a control when necessary.\n\n**Protect existing work:** Use an empty practice guide. If the editor contains another guide, save or download it first. Then choose **More actions → New guide**. Opening this lesson does not replace your work."
+    },
+    {
+      "type": "section",
+      "id": "explain-the-task",
+      "title": "Explain the task to your reader",
+      "requirements": ["is-editor"],
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Imagine that your team needs a short guide for new colleagues: find dashboards by name. Start with the outcome, not a list of Grafana features.\n\nUse the example values in this lesson. Later, adapt the guide to your team's names and procedures. **Do it** enters the example. **Show me** points to the control."
+        },
+        {
+          "type": "interactive",
+          "action": "formfill",
+          "reftarget": "input[aria-label='Guide title']",
+          "targetvalue": "Find your team's dashboards",
+          "content": "Name the practice guide **Find your team's dashboards**.",
+          "tooltip": "Use a title that describes what the reader will accomplish.",
+          "requirements": ["exists-reftarget"]
+        },
+        {
+          "type": "guided",
+          "id": "add-introduction",
+          "content": "Add a short introduction with a **Markdown** block. Explain when a colleague needs this guide.",
+          "completeEarly": true,
+          "steps": [
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-palette'] [data-testid='block-editor-add-block-button']",
+              "description": "Choose Add block."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-type-markdown']",
+              "description": "Choose Markdown."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-raw-markdown-tab']",
+              "description": "Choose Raw to enter Markdown text."
+            },
+            {
+              "action": "formfill",
+              "reftarget": "[data-testid='block-editor-markdown-textarea']",
+              "targetvalue": "Use this guide when you need a dashboard for your team's service. Search by a service or dashboard name. An empty result means that no visible dashboard matches your search.",
+              "description": "Enter a short introduction. For example: Use this guide to find dashboards for your team's service. Search by service or dashboard name."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-submit-button']",
+              "description": "Add the Markdown block."
+            }
+          ]
+        },
+        {
+          "type": "markdown",
+          "content": "The introduction adds context rather than repeating the title. For a company guide, link to the authoritative runbook or standard instead of copying a long document."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "record-an-activity",
+      "title": "Record one activity",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "A section groups the steps for one activity. Here, the activity is a dashboard search.\n\n**Recording captures live actions, not video.** Recorded clicks and input affect your current stack. This exercise only changes a search filter."
+        },
+        {
+          "type": "interactive",
+          "action": "navigate",
+          "reftarget": "/dashboards",
+          "content": "Open **Dashboards** before recording.",
+          "verify": "on-page:/dashboards"
+        },
+        {
+          "type": "guided",
+          "id": "create-search-section",
+          "content": "Create a section named **Search the dashboard list**, then start recording into it.",
+          "requirements": ["on-page:/dashboards"],
+          "completeEarly": true,
+          "steps": [
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-palette'] [data-testid='block-editor-add-block-button']",
+              "description": "Choose Add block."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-type-section']",
+              "description": "Choose Section."
+            },
+            {
+              "action": "formfill",
+              "reftarget": "[data-testid='block-editor-section-title-input']",
+              "targetvalue": "Search the dashboard list",
+              "description": "Enter Search the dashboard list as the section title. Keep the generated section ID."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-add-and-record-button']",
+              "description": "Choose Add and record. The recording toolbar will appear."
+            }
+          ]
+        },
+        {
+          "type": "markdown",
+          "content": "No matching dashboards? That is fine. The exercise uses the search control, not any existing dashboard."
+        },
+        {
+          "type": "guided",
+          "id": "record-search",
+          "content": "Record the search, then stop the recording.",
+          "requirements": ["on-page:/dashboards"],
+          "completeEarly": true,
+          "steps": [
+            {
+              "action": "formfill",
+              "reftarget": "input[placeholder='Search for dashboards and folders']",
+              "targetvalue": "team",
+              "description": "Enter team in the dashboard search field. Then press Tab to capture the input."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-record-stop']",
+              "description": "Press Tab to finish the input. After the toolbar reports 1 block, choose Stop."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "improve-the-recording",
+      "title": "Make the recording useful",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Recording supplies a starting point, not a finished explanation. Give the search action a useful instruction and a page requirement."
+        },
+        {
+          "type": "guided",
+          "id": "refine-recorded-search",
+          "content": "Improve the recorded search action. Follow the highlighted controls into its editor form.",
+          "requirements": ["on-page:/dashboards"],
+          "stepTimeout": 180000,
+          "completeEarly": true,
+          "steps": [
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-content'] [data-block-id$='-nested-0'] button[aria-label='Edit block']",
+              "description": "Edit the recorded search action inside Search the dashboard list."
+            },
+            {
+              "action": "formfill",
+              "reftarget": "[data-testid='block-editor-form-modal'] textarea",
+              "targetvalue": "Search for a service or dashboard name. Try team for this practice guide.",
+              "validateInput": true,
+              "description": "Replace the description with: Search for a service or dashboard name. Try team for this practice guide."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-form-modal'] button:contains('Test')",
+              "description": "Choose Test. Check that the highlight identifies the dashboard search field."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-form-modal'] *:text('on-page:/dashboards')",
+              "description": "Select the suggested on-page:/dashboards requirement. This requirement keeps the action on the Dashboards page."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-form-modal'] button:contains('Update block')",
+              "description": "Choose Update block to keep your instruction and page requirement."
+            }
+          ]
+        },
+        {
+          "type": "markdown",
+          "content": "Prefer built-in **grafana:** selectors or selectors based on **data-testid**, accessible names, and stable attributes. Long class names and numbered positions can break after a UI change.\n\nFor longer procedures, use one interactive block per action. Use a **Guided** block when the reader must perform a sequence."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "explain-a-control",
+      "title": "Explain without another click",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Not every step needs automation. Add a show-only highlight that explains what the dashboard search can find."
+        },
+        {
+          "type": "guided",
+          "id": "add-search-explanation",
+          "content": "Pick the search field, explain it, and give the reader a Show me button without a Do it button.",
+          "requirements": ["on-page:/dashboards"],
+          "stepTimeout": 180000,
+          "completeEarly": true,
+          "steps": [
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-section-add-nested-block']",
+              "description": "Add a block inside Search the dashboard list."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-type-interactive']",
+              "description": "Choose Interactive. Keep the default Highlight action."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-form-modal'] button:contains('Pick element')",
+              "description": "Choose Pick element. Next, select the center of the dashboard search field, away from its icon."
+            },
+            {
+              "action": "formfill",
+              "reftarget": "[data-testid='block-editor-form-modal'] textarea",
+              "targetvalue": "This search matches dashboards and folders that you can access. An empty result can mean that you need a different name or more permissions.",
+              "validateInput": true,
+              "description": "Enter: This search matches dashboards and folders that you can access. An empty result can mean that you need a different name or more permissions."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-form-modal'] button:contains('Test')",
+              "description": "Choose Test. Check that the selected target is the search field, not its icon."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-form-modal'] label:contains(\"Show 'Do it' button\")",
+              "targetstate": "false",
+              "description": "Clear Show 'Do it' button. Keep Show 'Show me' button selected."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-form-modal'] button:contains('Add block')",
+              "description": "Add the explanatory highlight to your section."
+            }
+          ]
+        },
+        {
+          "type": "markdown",
+          "content": "The element picker captures a selector. **Test** helps you check its target. **exists-reftarget** prevents the step from running without that target."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "try-the-guide",
+      "title": "Try it as your colleague",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "Preview uses the live Grafana page. Try the action and the explanation as your colleague will see them."
+        },
+        {
+          "type": "guided",
+          "id": "preview-your-guide",
+          "content": "Prepare a clean search, then open your guide in Preview.",
+          "requirements": ["on-page:/dashboards"],
+          "stepTimeout": 180000,
+          "completeEarly": true,
+          "steps": [
+            {
+              "action": "button",
+              "reftarget": "button:contains('Clear')",
+              "description": "Clear the dashboard search filter. Your recorded action will enter the search term again."
+            },
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-view-mode-toggle'] input[title='Preview']",
+              "targetstate": "true",
+              "description": "Select Preview to read your guide without the editor forms."
+            }
+          ]
+        },
+        {
+          "type": "markdown",
+          "content": "In Preview, try **Show me** on your search action to check its target. Use **Do it** to enter **team** again.\n\nTry **Show me** on the explanation. It must have no **Do it** button.\n\nReturn to **Edit** after the check. If you repeat the check, use **Reset guide** in Preview first."
+        },
+        {
+          "type": "markdown",
+          "content": "Before you share a company guide, ask a colleague to try it with the intended reader's permissions. An Admin test does not prove that a Viewer can complete it.\n\nCheck resource access, links, and any values that can expose sensitive information."
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "id": "save-your-work",
+      "title": "Save a draft, not a practice publication",
+      "blocks": [
+        {
+          "type": "markdown",
+          "content": "The editor automatically keeps your current work in this browser. **Save** also stores a draft in the guide library when the backend is available.\n\nReturn to **Edit** before saving. Keep this exercise as a draft. You do not need to publish it to complete the lesson."
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "[data-testid='block-editor-save-draft-button']",
+          "content": "Choose **Save** to store the practice guide as a draft.",
+          "tooltip": "A draft is not a published guide for your colleagues.",
+          "requirements": ["exists-reftarget"],
+          "skippable": true,
+          "hint": "If Save is unavailable, use More actions → Download JSON to keep a separate copy."
+        },
+        {
+          "type": "guided",
+          "id": "download-practice-guide",
+          "content": "Open a separate JSON copy of your practice guide.",
+          "steps": [
+            {
+              "action": "button",
+              "reftarget": "[data-testid='block-editor-more-actions-button']",
+              "description": "Open More actions to find the export controls."
+            },
+            {
+              "action": "button",
+              "reftarget": "[role='menuitem']:contains('Download JSON')",
+              "description": "Choose Download JSON to open a JSON copy in a new browser tab. Your guide stays unpublished."
+            }
+          ]
+        },
+        {
+          "type": "markdown",
+          "content": "Save the JSON copy from your browser to keep it as a file.\n\nAfter a server save, check that the editor shows **Draft**. You can reopen server-saved guides through **More actions → Library**.\n\nFor your first company guide, replace the sample with one real team procedure. Add links to your standards. Ask a colleague to try it before you publish.\n\nWhen Grafana or your procedure changes, reopen the guide and repeat the Preview test. Recording does not maintain the guide for you."
+        }
+      ]
+    }
+  ]
+}
