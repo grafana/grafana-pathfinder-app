@@ -66,7 +66,7 @@ describe('projection-conformance check', () => {
   });
 
   it('rejects an entry for a block type outside the table', () => {
-    for (const type of ['quiz', 'challenge', 'html', 'callout']) {
+    for (const type of ['quiz', 'challenge', 'html', 'callout', 'grot-guide', 'terminal', 'snippet-ref']) {
       expect(codes([{ type, id: 'b' }], { b: { content: 'x' } })).toEqual(['sidecar_block_type_not_translatable']);
     }
   });
