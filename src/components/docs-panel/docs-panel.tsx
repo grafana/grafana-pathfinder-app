@@ -474,6 +474,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
     if (isPackageContentUrl(url)) {
       return this.openDocsPage(url, title, options);
     }
+    if (this._tabRestorePromise) {
+      await this._tabRestorePromise.catch(() => undefined);
+    }
     // Honour an explicit options.source by recording it first, so any
     // legacy stash is overwritten and we have a single source of truth for
     // the drain below.
@@ -999,6 +1002,9 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
   }
 
   public async openDocsPage(url: string, title?: string, options?: OpenDocsOptions): Promise<string> {
+    if (this._tabRestorePromise) {
+      await this._tabRestorePromise.catch(() => undefined);
+    }
     const { source, skipReadyToBegin, packageInfo, preparedContent, explicitGuideId } = options ?? {};
 
     // Make the launch source explicit at the call site if provided. This
