@@ -259,7 +259,15 @@ function PackageBrowserContent({
     }
     const merged = new Map(catalog.items.map((item) => [catalogIdentity(item), item]));
     for (const entry of pathEntries) {
-      if (!merged.has(entry.key)) {
+      const catalogItem = merged.get(entry.key);
+      const estimatedMinutes = entry.path.estimatedMinutes;
+      if (
+        catalogItem?.format === 'path' &&
+        estimatedMinutes !== undefined &&
+        estimatedMinutes !== catalogItem.estimatedMinutes
+      ) {
+        merged.set(entry.key, { ...catalogItem, estimatedMinutes });
+      } else if (!catalogItem) {
         merged.set(entry.key, {
           key: `assigned:${entry.key}`,
           id: entry.path.id,
@@ -269,6 +277,7 @@ function PackageBrowserContent({
           source: entry.path.isPrivate ? 'organization' : 'grafana',
           url: entry.path.url ?? '',
           category: entry.topic,
+          estimatedMinutes,
           memberIds: entry.path.guides,
           curatedPath: entry.path,
           packageInfo: entry.path.isPrivate

@@ -18,6 +18,9 @@ jest.mock('@grafana/ui', () => ({
   useStyles2: () => ({}),
   useTheme2: () => ({}),
   IconButton: () => null,
+  Text: ({ element: Element = 'p', children }: { element?: 'p' | 'h1'; children: React.ReactNode }) => (
+    <Element>{children}</Element>
+  ),
 }));
 
 const mockTab = {
@@ -74,7 +77,6 @@ jest.mock('../docs-panel/link-handler.hook', () => ({ useLinkClickHandler: jest.
 jest.mock('../../hooks', () => ({
   useGuideProgressState: () => ({ hasInteractiveProgress: false, progressKey: null }),
   useAutoLaunchTutorial: jest.fn(),
-  useStepProgressFromEvents: () => undefined,
   usePublishSurfaceContentKey: jest.fn(),
 }));
 jest.mock('../../utils/experiments/interactive-learning-banner', () => ({
@@ -92,9 +94,16 @@ jest.mock('../../docs-retrieval', () => ({
   resolveActiveMilestoneSequence: () => undefined,
   isJourneyCoverPage: () => false,
 }));
-jest.mock('../content-renderer/content-renderer', () => ({ ContentRenderer: () => null }));
+jest.mock('../content-renderer/content-renderer', () => ({
+  ContentRenderer: ({ showGeneratedTitle }: { showGeneratedTitle?: boolean }) => (
+    <div data-testid="guide-content" data-show-generated-title={showGeneratedTitle} />
+  ),
+}));
+jest.mock('../reader-assistant/ReaderAssistant', () => ({ ReaderAssistant: () => <button>Ask Assistant</button> }));
 jest.mock('../InteractiveLearningBanner', () => ({ InteractiveLearningBanner: () => null }));
-jest.mock('../guide-progress', () => ({ GuideProgressBar: () => null }));
+jest.mock('../guide-progress', () => ({
+  GuideProgressBar: ({ inToolbar }: { inToolbar?: boolean }) => <div role="progressbar" data-in-toolbar={inToolbar} />,
+}));
 
 jest.mock('../guide-language', () => ({
   GuideLanguageSlot: ({ guideUrl }: { guideUrl?: string }) => (
@@ -115,5 +124,10 @@ describe('FullScreenPanel guide language slots', () => {
 
     expect(screen.getByTestId('guide-language-slot')).toHaveAttribute('data-guide-url', mockTab.baseUrl);
     expect(screen.getByTestId('translation-notice-slot')).toHaveAttribute('data-guide-url', mockTab.baseUrl);
+    expect(screen.getByRole('heading', { level: 1, name: 'Remote guide' })).toBeInTheDocument();
+    expect(screen.queryByText(mockTab.title)).not.toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toHaveAttribute('data-in-toolbar', 'true');
+    expect(screen.getByTestId('guide-content')).toHaveAttribute('data-show-generated-title', 'false');
+    expect(screen.getByRole('button', { name: 'Ask Assistant' })).toBeInTheDocument();
   });
 });

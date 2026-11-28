@@ -136,6 +136,7 @@ function replacementHarness(options: ReplacementHarnessOptions) {
     first: jest.fn(),
   };
   const resetButton = options.resetTestIdAvailable === false ? roleResetButton : testIdResetButton;
+  Object.assign(resetButton, { isVisible: jest.fn().mockResolvedValue(true) });
   testIdResetButton.or.mockReturnValue(resetButton);
   testIdResetButton.first.mockReturnValue(testIdResetButton);
   roleResetButton.first.mockReturnValue(roleResetButton);

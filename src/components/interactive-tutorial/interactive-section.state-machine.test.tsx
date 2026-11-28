@@ -220,7 +220,9 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
 
       await click(complete(STEP_NOGATE));
 
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_NOGATE))).toHaveClass('completed')
+      );
       expect(screen.queryByTestId(markButton(SECTION_NOGATE))).not.toBeInTheDocument();
     });
   });
@@ -233,16 +235,17 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
 
       await click(complete(STEP_GATED));
 
-      // After completing the only interactive step, the gate fires:
-      // Mark button visible; Reset NOT yet visible (we aren't done yet).
+      // The acknowledgement gate still replaces Do Section after the last step.
       await waitFor(() => expect(screen.getByTestId(markButton(SECTION_GATED))).toBeInTheDocument());
-      expect(screen.queryByTestId(resetButton(SECTION_GATED))).not.toBeInTheDocument();
+      expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeEnabled();
       expect(screen.queryByTestId(doButton(SECTION_GATED))).not.toBeInTheDocument();
 
       await click(markButton(SECTION_GATED));
 
-      // Mark click promotes the section to done(ack): Reset button replaces Mark.
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      // Mark acknowledges and completes the section.
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_GATED))).toHaveClass('completed')
+      );
       expect(screen.queryByTestId(markButton(SECTION_GATED))).not.toBeInTheDocument();
     });
 
@@ -258,18 +261,20 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
   });
 
   describe('all-passive sections', () => {
-    it('3. init (no interactive children) shows only the Mark button; Mark → done(ack)', async () => {
+    it('3. all-passive sections offer Mark and Reset; Mark → done(ack)', async () => {
       renderAllPassiveSection();
 
       await waitFor(() => expect(screen.getByTestId(markButton(SECTION_PASSIVE))).toBeInTheDocument());
       // Do Section is suppressed entirely — the user has no interactive
       // work to do, only acknowledgement.
       expect(screen.queryByTestId(doButton(SECTION_PASSIVE))).not.toBeInTheDocument();
-      expect(screen.queryByTestId(resetButton(SECTION_PASSIVE))).not.toBeInTheDocument();
+      expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeEnabled();
 
       await click(markButton(SECTION_PASSIVE));
 
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_PASSIVE))).toHaveClass('completed')
+      );
       expect(screen.queryByTestId(markButton(SECTION_PASSIVE))).not.toBeInTheDocument();
     });
 
@@ -280,11 +285,22 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       renderAllPassiveSection();
 
       await click(markButton(SECTION_PASSIVE));
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_PASSIVE))).toHaveClass('completed')
+      );
 
-      // The button must not be disabled.
       const reset = screen.getByTestId(resetButton(SECTION_PASSIVE));
-      expect(reset).not.toBeDisabled();
+      const toggle = testIds.interactive.sectionToggle(SECTION_PASSIVE);
+      expect(reset).toBeEnabled();
+      expect(reset).toBeVisible();
+
+      await click(toggle);
+      expect(screen.getByTestId(toggle)).toHaveAttribute('aria-expanded', 'false');
+      expect(reset).not.toBeVisible();
+      expect(screen.getByText('First paragraph.')).not.toBeVisible();
+
+      await click(toggle);
+      expect(reset).toBeVisible();
 
       // Clicking it clears completion + ack → the section returns to
       // awaiting-ack (its only available init state for all-passive).
@@ -293,7 +309,7 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       });
 
       await waitFor(() => expect(screen.getByTestId(markButton(SECTION_PASSIVE))).toBeInTheDocument());
-      expect(screen.queryByTestId(resetButton(SECTION_PASSIVE))).not.toBeInTheDocument();
+      expect(screen.getByTestId(resetButton(SECTION_PASSIVE))).toBeEnabled();
       // Ack storage should also be cleared.
       expect(memoryStore.get(`section-ack::${NON_PREVIEW_KEY}::${SECTION_PASSIVE}`)).toBeUndefined();
     });
@@ -306,16 +322,18 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       // Walk to done(ack).
       await click(complete(STEP_GATED));
       await click(markButton(SECTION_GATED));
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_GATED))).toHaveClass('completed')
+      );
 
       // Click Redo on the only step. The reducer's RESET_STEP transition
       // clears ack alongside completion.
       await click(redo(STEP_GATED));
 
-      // Back to init: Do Section visible, Mark and Reset gone.
+      // Back to init: Do Section visible and the acknowledgement gate cleared.
       await waitFor(() => expect(screen.getByTestId(doButton(SECTION_GATED))).toBeInTheDocument());
       expect(screen.queryByTestId(markButton(SECTION_GATED))).not.toBeInTheDocument();
-      expect(screen.queryByTestId(resetButton(SECTION_GATED))).not.toBeInTheDocument();
+      expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeEnabled();
 
       // Re-complete the step. The gate MUST re-fire — Mark, not Reset.
       // This is the Bug 1 regression assertion: a silent transition back
@@ -323,7 +341,7 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       await click(complete(STEP_GATED));
 
       await waitFor(() => expect(screen.getByTestId(markButton(SECTION_GATED))).toBeInTheDocument());
-      expect(screen.queryByTestId(resetButton(SECTION_GATED))).not.toBeInTheDocument();
+      expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeEnabled();
     });
   });
 
@@ -357,7 +375,9 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       try {
         // Mount-restore + migration: completed contains the step, ack
         // is true → derived state is done(ack), Reset button visible.
-        await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+        await waitFor(() =>
+          expect(screen.getByTestId(testIds.interactive.section(SECTION_GATED))).toHaveClass('completed')
+        );
 
         await click(resetButton(SECTION_GATED));
 
@@ -382,7 +402,9 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       const { unmount } = renderTrailingGateSection();
       await click(complete(STEP_GATED));
       await click(markButton(SECTION_GATED));
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_GATED))).toHaveClass('completed')
+      );
 
       // Nothing should have landed in storage under the preview key.
       expect(memoryStore.get(`section-steps::${PREVIEW_KEY_OVERRIDE}::${SECTION_GATED}`)).toBeUndefined();
@@ -395,7 +417,7 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
 
       renderTrailingGateSection();
       await waitFor(() => expect(screen.getByTestId(doButton(SECTION_GATED))).toBeInTheDocument());
-      expect(screen.queryByTestId(resetButton(SECTION_GATED))).not.toBeInTheDocument();
+      expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeEnabled();
     });
   });
 
@@ -408,7 +430,9 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
 
       // Migration auto-acks: the user does NOT see the gate; Reset is
       // surfaced directly. Pre-#842 finished work stays finished.
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_GATED))).toHaveClass('completed')
+      );
       expect(screen.queryByTestId(markButton(SECTION_GATED))).not.toBeInTheDocument();
 
       // The migration also writes ack=true back to storage so the next
@@ -425,7 +449,9 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::${SECTION_GATED}`, new Set([STEP_GATED]));
 
       const { rerender } = renderTrailingGateSection();
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_GATED))).toHaveClass('completed')
+      );
 
       // Mutate storage out from under the section, then trigger a
       // re-render. If mount-restore re-fired the section would pick
@@ -441,7 +467,7 @@ describe('InteractiveSection state machine — #842 acknowledgement gate', () =>
       );
 
       // Still done — restore did not re-fire.
-      expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument();
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_GATED))).toHaveClass('completed');
     });
   });
 });
@@ -630,7 +656,9 @@ describe('InteractiveSection — hydrated completion versus a reader completion 
   it('announces a real completion as a change exactly once', async () => {
     renderNoGateSection();
     await click(complete(STEP_NOGATE));
-    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_NOGATE))).toHaveClass('completed')
+    );
     await settle();
 
     expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
@@ -639,13 +667,17 @@ describe('InteractiveSection — hydrated completion versus a reader completion 
   it('does not announce a remounted completed section as a change', async () => {
     const first = renderNoGateSection();
     await click(complete(STEP_NOGATE));
-    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_NOGATE))).toHaveClass('completed')
+    );
     first.unmount();
     evictAllContentCaches();
     mockRefreshSpy.mockClear();
 
     renderNoGateSection();
-    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_NOGATE))).toHaveClass('completed')
+    );
     await settle();
 
     expect(announcedAsChange()).toEqual([]);
@@ -656,7 +688,9 @@ describe('InteractiveSection — hydrated completion versus a reader completion 
     const { events, unsubscribe } = collectSectionEvents();
     try {
       renderNoGateSection();
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_NOGATE))).toHaveClass('completed')
+      );
       await settle();
 
       expect(announcedAsChange()).toEqual([]);
@@ -681,7 +715,9 @@ describe('InteractiveSection — hydrated completion versus a reader completion 
     const { events, unsubscribe } = collectSectionEvents();
     try {
       renderTrailingGateSection();
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_GATED))).toHaveClass('completed')
+      );
       await settle();
 
       expect(announcedAsChange()).toEqual([]);
@@ -698,7 +734,9 @@ describe('InteractiveSection — hydrated completion versus a reader completion 
       renderTrailingGateSection();
       await click(complete(STEP_GATED));
       await click(markButton(SECTION_GATED));
-      await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_GATED))).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId(testIds.interactive.section(SECTION_GATED))).toHaveClass('completed')
+      );
       await settle();
 
       expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
@@ -711,14 +749,18 @@ describe('InteractiveSection — hydrated completion versus a reader completion 
   it('announces a completion made after a reset as a change even when the section mounted complete', async () => {
     memoryStore.set(`section-steps::${NON_PREVIEW_KEY}::${SECTION_NOGATE}`, new Set([STEP_NOGATE]));
     renderNoGateSection();
-    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_NOGATE))).toHaveClass('completed')
+    );
     await settle();
     expect(announcedAsChange()).toEqual([]);
 
     await click(redo(STEP_NOGATE));
     await waitFor(() => expect(screen.getByTestId(doButton(SECTION_NOGATE))).toBeInTheDocument());
     await click(complete(STEP_NOGATE));
-    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_NOGATE))).toHaveClass('completed')
+    );
     await settle();
 
     expect(announcedAsChange()).toEqual([[NON_PREVIEW_KEY, 'change']]);
@@ -775,7 +817,9 @@ describe('InteractiveSection — objectives without a completion coordinator', (
     renderObjectiveSection();
     await click(complete(STEP_OBJECTIVE));
 
-    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_OBJECTIVE))).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+    );
     expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed');
     expect(screen.queryByTestId(testIds.interactive.completionWaiting(SECTION_OBJECTIVE))).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /check completion/i })).not.toBeInTheDocument();
@@ -788,7 +832,9 @@ describe('InteractiveSection — objectives without a completion coordinator', (
     memoryStore.set(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`, true);
     renderObjectiveSection();
 
-    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_OBJECTIVE))).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_OBJECTIVE))).toHaveClass('completed')
+    );
     await settle();
     expect(screen.queryByTestId(testIds.interactive.completionWaiting(SECTION_OBJECTIVE))).not.toBeInTheDocument();
     expect(memoryStore.get(`section-done::${NON_PREVIEW_KEY}::${SECTION_OBJECTIVE}`)).toBe(true);
@@ -1004,7 +1050,9 @@ describe('InteractiveSection — Do section with a step already waiting on its o
     await act(async () => {
       coordinator.recheck();
     });
-    await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_NOGATE))).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId(testIds.interactive.section(SECTION_NOGATE))).toHaveClass('completed')
+    );
     expect(executeInteractiveActionCalls).toHaveLength(0);
     coordinator.stop();
   });

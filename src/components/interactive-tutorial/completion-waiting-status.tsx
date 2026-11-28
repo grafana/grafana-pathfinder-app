@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@grafana/ui';
+import { Button, Icon } from '@grafana/ui';
 
 import { getPostVerifyExplanation } from '../../requirements-manager';
 import { t } from '@grafana/i18n';
@@ -20,7 +20,10 @@ export function CompletionWaitingStatus({ id, unmet, onCheck }: CompletionWaitin
       role="status"
       data-testid={testIds.interactive.completionWaiting(id)}
     >
-      <span>
+      <span className="interactive-notice-icon" aria-hidden="true">
+        <Icon name="info-circle" size="md" />
+      </span>
+      <span className="interactive-section-recovery-label">
         {friendlyExplanation
           ? t('completion.waiting-reason', 'Waiting for completion: {{- reason}}', { reason: friendlyExplanation })
           : t('completion.waiting', 'Waiting for completion')}

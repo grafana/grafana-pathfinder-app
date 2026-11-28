@@ -87,26 +87,6 @@ describe('FullScreenLayout', () => {
     expect(screen.getByTestId(testIds.fullScreenMode.exitButton)).not.toHaveAttribute('title');
   });
 
-  it('shows the step counter as an explicit "Step X of Y" label when stepProgress is provided', () => {
-    render(
-      <FullScreenLayout title="My guide" hasActiveGuide={true} stepProgress="3/7" onExit={() => {}}>
-        <div />
-      </FullScreenLayout>
-    );
-
-    expect(screen.getByText('Step 3 of 7')).toBeInTheDocument();
-  });
-
-  it('omits the step counter when stepProgress is undefined', () => {
-    render(
-      <FullScreenLayout title="My guide" hasActiveGuide={true} onExit={() => {}}>
-        <div />
-      </FullScreenLayout>
-    );
-
-    expect(screen.queryByText(/^Step \d+ of \d+$/)).not.toBeInTheDocument();
-  });
-
   it('hides the copy-link button when guideUrl is missing', () => {
     render(
       <FullScreenLayout title="Editor" hasActiveGuide={false} onExit={() => {}}>

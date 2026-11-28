@@ -17,16 +17,26 @@ import { testIds } from '../../../constants/testIds';
 export interface AlignmentPromptProps {
   /** The path the guide expects to start on */
   startingLocation: string;
+  bottomSpacing?: number;
   /** Confirm: caller is responsible for navigation */
   onConfirm: () => void;
   /** Cancel: caller clears the pending state without navigating */
   onCancel: () => void;
 }
 
-export const AlignmentPrompt: React.FC<AlignmentPromptProps> = ({ startingLocation, onConfirm, onCancel }) => {
+export const AlignmentPrompt: React.FC<AlignmentPromptProps> = ({
+  startingLocation,
+  bottomSpacing,
+  onConfirm,
+  onCancel,
+}) => {
   return (
     <div data-testid={testIds.alignmentPrompt.container}>
-      <Alert severity="info" title={t('alignmentPrompt.title', 'Navigate to start this guide?')}>
+      <Alert
+        bottomSpacing={bottomSpacing}
+        severity="info"
+        title={t('alignmentPrompt.title', 'Navigate to start this guide?')}
+      >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <p style={{ margin: 0 }}>
             {t('alignmentPrompt.message', 'This guide starts on')} <code>{startingLocation}</code>.

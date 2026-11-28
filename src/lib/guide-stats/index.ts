@@ -21,6 +21,7 @@ export {
   furthestEvidencedPosition,
   guideProgress,
   guideProgressAtPosition,
+  guideStepCompletionPercent,
   type CompletionEvidence,
   type CompletionEvidenceKind,
   type GuideProgress,

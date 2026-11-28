@@ -3,6 +3,26 @@ import { GrafanaTheme2 } from '@grafana/data';
 
 export const getGuideContentPadding = (theme: GrafanaTheme2) => theme.spacing(3);
 
+const guideHeading = ':is(h1, h2, h3, h4, h5, h6)';
+const guideMarkupBlock = ':is(.markdown-block, .html-block)';
+const guideBodyBlock = `:not(${guideHeading}, ${guideMarkupBlock}, .orange-outline-list)`;
+const guideComponent = `:is(
+  .callout, [data-guide-admonition], .code-block, .guide-table-scroll, .journey-quiz, .journey-collapse,
+  .interactive-section, .interactive-step, [data-test-step-kind], [data-guide-component],
+  .journey-video-wrapper, .video-container, blockquote, details, figure, iframe, img, pre, table, video
+)`;
+const followedByComponent = `:has(+ ${guideComponent}, + ${guideMarkupBlock} > ${guideComponent}:first-child)`;
+const followedByReveal = `:has(+ .journey-collapse, + ${guideMarkupBlock} > .journey-collapse:first-child)`;
+const followedByParagraph = `:has(+ p, + ${guideMarkupBlock} > p:first-child)`;
+const headingWithParagraph = `${guideHeading}:where(${followedByParagraph}, ${guideMarkupBlock}${followedByParagraph} > :last-child)`;
+const nextGuideHeading = `& + ${guideHeading},
+  & + ${guideMarkupBlock} > ${guideHeading}:first-child,
+  & + .orange-outline-list > .icon-heading:first-child h2`;
+
+export const guideArticleHeadings = `:scope > ${guideHeading},
+  :scope > ${guideMarkupBlock} > ${guideHeading},
+  :scope > .orange-outline-list > .icon-heading:first-child h2`;
+
 const getGuideAdmonitionColors = (theme: GrafanaTheme2, tone: 'info' | 'warning' | 'success') => {
   const color = theme.colors[tone];
   const refresh = theme.flags.visualDesignRefresh;
@@ -89,42 +109,6 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     '& li': {
       marginBottom: theme.spacing(1),
       lineHeight: 1.6,
-    },
-  },
-
-  '&:where([data-guide-content-root]:not([data-journey-cover-page])) [data-guide-article]': {
-    '& h1': theme.typography.xxl,
-    '& h2': theme.typography.xl,
-    '& h3': theme.typography.lg,
-    '& :is(h1, h2, h3, h4, h5, h6)': {
-      marginBottom: theme.spacing(1.5),
-    },
-    [`& p:has(+ ul, + :is(.markdown-block, .html-block) > ul:first-child),
-      & :is(.markdown-block, .html-block):has(+ ul, + :is(.markdown-block, .html-block) > ul:first-child) > p:last-child`]:
-      {
-        marginBottom: theme.spacing(1),
-      },
-    '& .journey-quiz': {
-      margin: `${theme.spacing(2)} 0`,
-      '&:has(+ .journey-collapse)': { marginBottom: theme.spacing(1.5) },
-      '& + .journey-collapse': { marginTop: theme.spacing(1.5) },
-      '& + .journey-collapse + .journey-quiz': { marginTop: theme.spacing(4) },
-    },
-    [`& :is(h2, h3):not(:first-child),
-      & .orange-outline-list:not(:first-child) .icon-heading h2,
-      & > :is(.markdown-block, .html-block):not(:first-child) > :is(h2, h3):first-child`]: {
-      marginTop: theme.spacing(5.5),
-    },
-    '& :is(h2, .orange-outline-list:has(h2), .markdown-block:has(> h2:last-child), .html-block:has(> h2:last-child))': {
-      '& + h3, & + :is(.markdown-block, .html-block) > h3:first-child': {
-        marginTop: theme.spacing(3),
-      },
-    },
-    '& ol > li:not(:last-child)': {
-      marginBottom: theme.spacing(0.5),
-    },
-    '& :is(ul, ol) > li > p:last-child': {
-      marginBottom: 0,
     },
   },
 
@@ -587,7 +571,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
 
   '& .guide-admonition-icon': { display: 'none' },
 
-  '&[data-guide-admonitions] [data-guide-admonition]': {
+  '&[data-guide-admonitions] [data-guide-admonition], & .callout[data-guide-admonition="neutral"]': {
     display: 'grid',
     gridTemplateColumns: 'auto minmax(0, 1fr)',
     columnGap: theme.spacing(1.5),
@@ -607,6 +591,16 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     '&[data-guide-admonition="info"]': getGuideAdmonitionColors(theme, 'info'),
     '&[data-guide-admonition="warning"]': getGuideAdmonitionColors(theme, 'warning'),
     '&[data-guide-admonition="success"]': getGuideAdmonitionColors(theme, 'success'),
+    '&[data-guide-admonition="neutral"]': {
+      '--guide-admonition-border': theme.colors.border.weak,
+      '--guide-admonition-text': theme.colors.text.secondary,
+      backgroundColor: theme.colors.background.secondary,
+      backgroundImage: 'none',
+      display: 'block',
+      padding: theme.spacing(2),
+
+      '& > .callout-content > .callout-label': { color: theme.colors.text.primary },
+    },
 
     '& > .guide-admonition-icon': {
       display: 'inline-flex',
@@ -623,7 +617,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
     },
 
     '& > :not(.guide-admonition-icon)': { gridColumn: 2 },
-    '& > blockquote': {
+    '& > :is(blockquote, .callout-content)': {
       font: 'inherit',
       color: 'inherit',
       margin: 0,
@@ -631,7 +625,7 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
       border: 0,
       background: 'transparent',
 
-      '& > :is(.title, .admonition-title)': {
+      '& > :is(.title, .admonition-title, .callout-label)': {
         font: 'inherit',
         fontWeight: theme.typography.fontWeightMedium,
         color: 'inherit',
@@ -642,88 +636,42 @@ const getBaseContentStyles = (theme: GrafanaTheme2) => ({
       },
 
       '& p': { font: 'inherit', color: 'inherit' },
-      '& > :first-child, & > :is(.title, .admonition-title) + *': { marginTop: 0 },
+      '& > :first-child, & > :is(.title, .admonition-title, .callout-label) + *': { marginTop: 0 },
       '& > :last-child': { marginBottom: 0 },
     },
+    [`& > .callout-content > ${guideMarkupBlock}:last-child > :last-child`]: { marginBottom: 0 },
   },
 
-  // Callout blocks (JSON-guide `callout` blocks, rendered by CalloutBlock).
-  // Distinct from the `.admonition-*` classes above, which style
-  // externally-sourced docs HTML from a different content pipeline. The
-  // label is author-authored free text, so it's bold but not uppercased —
-  // uppercase reads fine on a short system word, not on a sentence.
-  '& .callout': {
-    margin: `${theme.spacing(2)} 0`,
-    padding: theme.spacing(2),
-    borderRadius: theme.shape.radius.default,
-    borderLeft: `4px solid ${theme.colors.warning.main}`,
-    backgroundColor: theme.colors.warning.transparent,
-
-    '& .callout-label': {
-      fontSize: theme.typography.body.fontSize,
-      fontWeight: theme.typography.fontWeightBold,
-      color: theme.colors.warning.text,
-      marginBottom: theme.spacing(1),
-    },
-
-    '& p:last-child': {
-      marginBottom: 0,
-    },
-  },
-
-  // Tables
-  '& table': {
-    width: '100%',
-    borderCollapse: 'collapse',
-    fontSize: theme.typography.body.fontSize,
-    lineHeight: 1.5,
-    margin: `${theme.spacing(2)} 0`,
+  '& .guide-table-scroll': {
+    margin: theme.spacing(2, 0),
+    maxWidth: '100%',
+    overflowX: 'auto',
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.default,
-    overflow: 'hidden',
 
-    '& thead': {
-      backgroundColor: theme.colors.background.canvas,
-      borderBottom: `2px solid ${theme.colors.border.medium}`,
+    '& > table': {
+      width: '100%',
+      borderCollapse: 'collapse',
+      ...theme.typography.base,
+      color: theme.colors.text.primary,
 
-      '& th': {
-        padding: theme.spacing(1.5),
-        textAlign: 'left',
-        fontWeight: theme.typography.fontWeightBold,
-        color: theme.colors.text.primary,
-        fontSize: theme.typography.body.fontSize,
-        borderRight: `1px solid ${theme.colors.border.weak}`,
-
-        '&:last-child': {
-          borderRight: 'none',
-        },
-      },
-    },
-
-    '& tbody': {
-      '& tr': {
-        borderBottom: `1px solid ${theme.colors.border.weak}`,
-        transition: 'background-color 0.2s ease',
-
-        '&:hover': {
-          backgroundColor: theme.colors.action.hover,
-        },
-
-        '&:last-child': {
-          borderBottom: 'none',
-        },
-      },
-
-      '& td': {
-        padding: theme.spacing(1.5),
+      '& th, & td': {
+        minWidth: theme.spacing(10),
+        padding: theme.spacing(1, 2),
         verticalAlign: 'top',
-        borderRight: `1px solid ${theme.colors.border.weak}`,
-        color: theme.colors.text.primary,
-
-        '&:last-child': {
-          borderRight: 'none',
-        },
+        overflowWrap: 'anywhere',
       },
+
+      '& thead': {
+        backgroundColor: theme.colors.background.primary,
+        borderBottom: `1px solid ${theme.colors.border.weak}`,
+
+        '& th': { fontWeight: theme.typography.fontWeightMedium },
+        '& th:not([align])': { textAlign: 'start' },
+      },
+
+      '& tbody tr:not(:last-child)': { borderBottom: `1px solid ${theme.colors.border.weak}` },
+      '& tbody tr:hover': { backgroundColor: theme.colors.action.hover },
     },
   },
 
@@ -1623,15 +1571,73 @@ const getSharedUtilityStyles = (theme: GrafanaTheme2) => ({
   },
 });
 
+const getLessonContentStyles = (theme: GrafanaTheme2) => ({
+  '&[data-guide-content-root]:where(:not([data-journey-cover-page])) [data-guide-article]': {
+    '& h1': { ...theme.typography.xxl },
+    '& h2': { ...theme.typography.xl },
+    '& h3': { ...theme.typography.lg },
+    [`& ${guideHeading}`]: {
+      marginBottom: theme.spacing(1.5),
+    },
+    [`& ${headingWithParagraph},
+      & > .orange-outline-list:where(${followedByParagraph}) .icon-heading h2`]: {
+      marginBottom: theme.spacing(1),
+    },
+    '& .journey-quiz': {
+      margin: `${theme.spacing(2)} 0`,
+    },
+    [`& > ${guideBodyBlock}, & > :where(${guideMarkupBlock}) > ${guideBodyBlock}`]: {
+      marginTop: 0,
+      marginBottom: theme.spacing(2),
+    },
+    [`& > ${guideComponent}:where(${followedByComponent}),
+      & > :where(${guideMarkupBlock}) > ${guideComponent}:where(${followedByComponent}),
+      & > :where(${guideMarkupBlock}${followedByComponent}) > ${guideComponent}:where(:last-child)`]: {
+      marginBottom: theme.spacing(3),
+    },
+    [`& > :is(iframe, video), & > ${guideMarkupBlock} > :is(iframe, video)`]: { display: 'block' },
+    [`& p:has(+ ul, + :is(.markdown-block, .html-block) > ul:first-child),
+      & :is(.markdown-block, .html-block):has(+ ul, + :is(.markdown-block, .html-block) > ul:first-child) > p:last-child`]:
+      {
+        marginBottom: theme.spacing(1),
+      },
+    [`& .journey-quiz:where(${followedByReveal}, ${guideMarkupBlock}${followedByReveal} > :last-child)`]: {
+      marginBottom: theme.spacing(1.5),
+    },
+    '& .journey-quiz + .journey-collapse': { marginTop: theme.spacing(1.5) },
+    '& .journey-quiz + .journey-collapse + .journey-quiz': { marginTop: theme.spacing(4) },
+    [`& > *, & > ${guideMarkupBlock} > *`]: {
+      [nextGuideHeading]: {
+        marginTop: theme.spacing(7),
+        '&[data-guide-subheading]': { marginTop: theme.spacing(5) },
+      },
+    },
+    [`& :is(${guideHeading}, .orange-outline-list:has(> .icon-heading:only-child h2),
+      ${guideMarkupBlock}:has(> ${guideHeading}:last-child))`]: {
+      [nextGuideHeading]: {
+        marginTop: theme.spacing(3),
+      },
+    },
+    '& :is(ul, ol):not(.interactive-section-content) > li:not(:last-child)': {
+      marginBottom: theme.spacing(0.5),
+    },
+    '& :is(ul, ol) > li > p:last-child': {
+      marginBottom: 0,
+    },
+  },
+});
+
 // Main export functions that combine base + specific styles
 export const journeyContentHtml = (theme: GrafanaTheme2) => css`
   ${css(getBaseContentStyles(theme) as any)}
   ${css(getJourneySpecificStyles(theme) as any)}
   ${css(getSharedUtilityStyles(theme) as any)}
+  ${css(getLessonContentStyles(theme))}
 `;
 
 export const docsContentHtml = (theme: GrafanaTheme2) => css`
   ${css(getBaseContentStyles(theme) as any)}
   ${css(getDocsSpecificStyles(theme) as any)}
   ${css(getSharedUtilityStyles(theme) as any)}
+  ${css(getLessonContentStyles(theme))}
 `;

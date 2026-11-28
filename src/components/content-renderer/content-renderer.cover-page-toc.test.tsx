@@ -65,6 +65,7 @@ describe('ContentRenderer cover-page table of contents', () => {
         <div class="orange-outline-list"><div class="icon-heading"><h2>Introduction</h2></div></div>
         <p>List lead-in</p>
         <ul><li>First bullet</li><li>Second bullet</li></ul>
+        <ol><li>First numbered item</li><li>Second numbered item</li></ol>
         <h2>More detail</h2>
         <h3>Example</h3>
         <p>First subsection body</p>
@@ -77,6 +78,9 @@ describe('ContentRenderer cover-page table of contents', () => {
         <div class="markdown-block"><p>Previous section body</p><h2>HTML group</h2></div>
         <div class="html-block"><h3>First in HTML group</h3><p>Subsection body</p></div>
         <h1>Summary</h1>
+        <h2>Key takeaways</h2><p>Start with a signal you can observe.</p>
+        <h4>Learn more</h4>
+        <h4>Further reading</h4>
       `,
       metadata: {
         ...cover.metadata,
@@ -95,28 +99,191 @@ describe('ContentRenderer cover-page table of contents', () => {
     const example = screen.getByRole('heading', { name: 'Example', level: 3 });
     const secondExample = screen.getByRole('heading', { name: 'Second example', level: 3 });
     const wrappedExample = screen.getByRole('heading', { name: 'Wrapped example', level: 3 });
+    const takeaways = screen.getByRole('heading', { name: 'Key takeaways' });
     expect(getComputedStyle(summary).fontSize).toBe(theme.typography.xxl.fontSize);
+    expect(getComputedStyle(summary).marginTop).toBe(theme.spacing(7));
+    expect(getComputedStyle(takeaways).marginTop).toBe(theme.spacing(3));
+    expect(getComputedStyle(takeaways).marginBottom).toBe(theme.spacing(1));
+    expect(getComputedStyle(screen.getByRole('heading', { name: 'Learn more' })).marginTop).toBe(theme.spacing(5));
+    expect(getComputedStyle(screen.getByRole('heading', { name: 'Further reading' })).marginTop).toBe(theme.spacing(3));
     expect(getComputedStyle(objective).fontSize).toBe(theme.typography.xl.fontSize);
     expect(getComputedStyle(example).fontSize).toBe(theme.typography.lg.fontSize);
     expect(getComputedStyle(example).marginTop).toBe(theme.spacing(3));
-    expect(getComputedStyle(secondExample).marginTop).toBe(theme.spacing(5.5));
-    expect(getComputedStyle(secondExample).marginBottom).toBe(theme.spacing(1.5));
-    expect(getComputedStyle(wrappedExample).marginTop).toBe(theme.spacing(5.5));
-    expect(getComputedStyle(screen.getByRole('heading', { name: 'HTML section' })).marginTop).toBe(theme.spacing(5.5));
+    expect(getComputedStyle(secondExample).marginTop).toBe(theme.spacing(7));
+    expect(getComputedStyle(secondExample).marginBottom).toBe(theme.spacing(1));
+    expect(getComputedStyle(wrappedExample).marginTop).toBe(theme.spacing(7));
+    expect(getComputedStyle(screen.getByRole('heading', { name: 'HTML section' })).marginTop).toBe(theme.spacing(7));
     expect(getComputedStyle(screen.getByRole('heading', { name: 'First in Markdown group' })).marginTop).toBe(
       theme.spacing(3)
     );
     expect(getComputedStyle(screen.getByRole('heading', { name: 'First in HTML group' })).marginTop).toBe(
       theme.spacing(3)
     );
-    expect(getComputedStyle(objective).marginBottom).toBe(theme.spacing(1.5));
+    expect(getComputedStyle(objective).marginBottom).toBe(theme.spacing(1));
     expect(getComputedStyle(screen.getByText('First paragraph')).marginBottom).toBe(theme.spacing(2));
     expect(getComputedStyle(screen.getByText('Second paragraph')).marginBottom).toBe(theme.spacing(2));
     expect(getComputedStyle(screen.getByText('Third paragraph')).marginBottom).toBe(theme.spacing(2));
     expect(getComputedStyle(screen.getByText('List lead-in')).marginBottom).toBe(theme.spacing(1));
-    expect(getComputedStyle(introduction).marginTop).toBe(theme.spacing(5.5));
-    expect(getComputedStyle(moreDetail).marginTop).toBe(theme.spacing(5.5));
-    expect(getComputedStyle(screen.getByText('First bullet')).marginBottom).toBe(theme.spacing(1));
+    expect(getComputedStyle(introduction).marginTop).toBe(theme.spacing(7));
+    expect(getComputedStyle(moreDetail).marginTop).toBe(theme.spacing(7));
+    expect(getComputedStyle(screen.getByText('First bullet')).marginBottom).toBe(theme.spacing(0.5));
+    expect(getComputedStyle(screen.getByText('First numbered item')).marginBottom).toBe(theme.spacing(0.5));
+  });
+
+  it('tightens the section gap when moving into a subheading after text, lists, or components', () => {
+    const cover = makeContent();
+    const theme = createTheme();
+    const content = makeContent({
+      content: `
+        <h1>First heading</h1><p>First paragraph</p>
+        <h1>Level one</h1><p>Section body</p>
+        <h2>Level two</h2><p>Section body</p>
+        <div class="markdown-block"><h3>Level three</h3><p>Section body</p></div>
+        <div class="html-block"><p>Previous section body</p><h4>Level four</h4></div><p>Section body</p>
+        <ul><li>Previous list item</li></ul>
+        <h5>Level five</h5><div class="markdown-block"><p>Section body</p><p>Another paragraph</p></div>
+        <div class="journey-quiz"><h6>Knowledge check</h6></div>
+        <div class="html-block"><h6>Level six</h6><p>Section body</p></div>
+        <div class="callout">Remember how these signals fit together.</div>
+        <h4>Heading without a paragraph</h4>
+        <ul><li>Section list item</li></ul>
+      `,
+      metadata: {
+        ...cover.metadata,
+        learningJourney: { ...cover.metadata.learningJourney!, currentMilestone: 1 },
+      },
+    });
+
+    render(
+      <ContentRenderer className={journeyContentHtml(theme)} completion={UNTRACKED_COMPLETION} content={content} />
+    );
+
+    const sameLevel = screen.getByRole('heading', { name: 'Level one' });
+    expect(getComputedStyle(sameLevel).marginTop).toBe(theme.spacing(7));
+    for (const heading of screen.getAllByRole('heading', { name: /^Level (two|three|four|five|six)$/ })) {
+      expect(getComputedStyle(heading).marginTop).toBe(theme.spacing(5));
+      expect(getComputedStyle(heading).marginBottom).toBe(theme.spacing(1));
+    }
+    expect(getComputedStyle(screen.getByRole('heading', { name: 'First heading' })).marginTop).toBe('0px');
+    const headingBeforeList = screen.getByRole('heading', { name: 'Heading without a paragraph' });
+    expect(getComputedStyle(headingBeforeList).marginTop).toBe(theme.spacing(7));
+    expect(getComputedStyle(headingBeforeList).marginBottom).toBe(theme.spacing(1.5));
+  });
+
+  it('uses shared spacing for lesson blocks and keeps quiz and reveal pairs close', () => {
+    const cover = makeContent();
+    const theme = createTheme();
+    const content = makeContent({
+      content: `
+        <p>Before the exercise</p>
+        <hr class="guide-divider">
+        <div class="html-block">
+          <div class="callout">A useful tip</div>
+          <pre><code>example()</code></pre>
+        </div>
+        <div class="journey-quiz">First quiz</div>
+        <div class="journey-collapse">Show answer</div>
+        <div class="journey-quiz">Second quiz</div>
+        <div class="html-block">
+          <div class="journey-collapse">Show the second answer</div>
+          <p>After the exercise</p>
+        </div>
+        <div class="html-block">
+          <p>Before the last quiz</p>
+          <div class="journey-quiz">Third quiz</div>
+        </div>
+        <div class="journey-collapse">Show the third answer</div>
+        <div class="interactive-step">Run the example</div>
+        <div class="html-block">
+          <div class="callout">A follow-up tip</div>
+          <p>Continue reading</p>
+          <table>
+            <thead><tr><th>Signal</th><th>During the spike</th></tr></thead>
+            <tbody><tr><td><a href="https://grafana.com/docs/">Latency</a></td><td>600 ms</td></tr></tbody>
+          </table>
+        </div>
+        <div class="callout">After the table</div>
+      `,
+      metadata: {
+        ...cover.metadata,
+        learningJourney: { ...cover.metadata.learningJourney!, currentMilestone: 1 },
+      },
+    });
+
+    render(
+      <ContentRenderer className={journeyContentHtml(theme)} completion={UNTRACKED_COMPLETION} content={content} />
+    );
+
+    for (const block of [
+      screen.getByRole('separator'),
+      screen.getByText('Before the exercise'),
+      screen.getByText('After the exercise'),
+      screen.getByText('A follow-up tip'),
+    ]) {
+      expect(getComputedStyle(block).marginTop).toBe('0px');
+      expect(getComputedStyle(block).marginBottom).toBe(theme.spacing(2));
+    }
+    for (const component of [
+      screen.getByText('A useful tip'),
+      screen.getByText('example()').closest('.code-block')!,
+      screen.getByText('Show the third answer'),
+      screen.getByText('Run the example'),
+    ]) {
+      expect(getComputedStyle(component).marginBottom).toBe(theme.spacing(3));
+    }
+    for (const quiz of ['First quiz', 'Second quiz', 'Third quiz']) {
+      expect(getComputedStyle(screen.getByText(quiz)).marginBottom).toBe(theme.spacing(1.5));
+    }
+    expect(getComputedStyle(screen.getByText('First quiz')).marginTop).toBe('0px');
+    expect(getComputedStyle(screen.getByText('Show answer')).marginTop).toBe(theme.spacing(1.5));
+    expect(getComputedStyle(screen.getByText('Second quiz')).marginTop).toBe(theme.spacing(4));
+    expect(getComputedStyle(screen.getByText('Show the second answer')).marginTop).toBe('0px');
+    expect(getComputedStyle(screen.getByText('Show the third answer')).marginTop).toBe('0px');
+
+    const tableRegion = screen.getByRole('region', { name: 'Scrollable table' });
+    const table = within(tableRegion).getByRole('table');
+    expect(tableRegion).toHaveAttribute('tabindex', '0');
+    expect(getComputedStyle(tableRegion).overflowX).toBe('auto');
+    expect(getComputedStyle(tableRegion).marginBottom).toBe(theme.spacing(3));
+    expect(getComputedStyle(screen.getByText('Continue reading')).marginBottom).toBe(theme.spacing(2));
+    expect(within(table).getByRole('columnheader', { name: 'Signal' })).toBeInTheDocument();
+    expect(within(table).getByRole('link', { name: 'Latency' })).toBeInTheDocument();
+  });
+
+  it('renders a JSON callout as a neutral banner with its authored title and body', () => {
+    const cover = makeContent();
+    const theme = createTheme();
+    const content = makeContent({
+      content: JSON.stringify({
+        id: 'callout-demo',
+        title: 'Callout demo',
+        blocks: [
+          {
+            type: 'callout',
+            id: 'keep-time-range',
+            title: 'Keep the time range fixed',
+            content: 'Use the **shared time picker** before comparing values.',
+          },
+        ],
+      }),
+      metadata: {
+        ...cover.metadata,
+        learningJourney: { ...cover.metadata.learningJourney!, currentMilestone: 1 },
+      },
+    });
+
+    render(
+      <ContentRenderer className={journeyContentHtml(theme)} completion={UNTRACKED_COMPLETION} content={content} />
+    );
+
+    const callout = screen.getByTestId('callout-block');
+    expect(callout).toHaveAttribute('id', 'keep-time-range');
+    expect(callout).toHaveAttribute('data-guide-admonition', 'neutral');
+    expect(callout.querySelector('.guide-admonition-icon')).toBeNull();
+    expect(within(callout).getByText('Keep the time range fixed')).toBeInTheDocument();
+    expect(within(callout).getByText('shared time picker', { selector: 'strong' })).toBeInTheDocument();
+    expect(getComputedStyle(callout).display).toBe('block');
+    expect(getComputedStyle(callout).padding).toBe(theme.spacing(2));
   });
 
   it.each([
@@ -205,6 +372,23 @@ describe('ContentRenderer cover-page table of contents', () => {
     expect(screen.getByRole('heading', { level: 4, name: 'More detail' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Outline' }));
     expect(toc).toBeVisible();
+  });
+
+  it('includes panel actions in the course header and omits the preview image', () => {
+    render(
+      <ContentRenderer
+        fullPageOverview
+        panelOverviewActions={<button>Course actions</button>}
+        completion={UNTRACKED_COMPLETION}
+        content={makeContent()}
+      />
+    );
+
+    const hero = screen.getByTestId(testIds.learningPaths.coverHero);
+    expect(within(hero).getByRole('heading', { name: 'Demo', level: 1 })).toBeVisible();
+    expect(within(hero).getByRole('button', { name: 'Course actions' })).toBeVisible();
+    expect(hero.querySelector('[data-learning-card-preview]')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Outline' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('disables Details when a path has an empty cover body', () => {

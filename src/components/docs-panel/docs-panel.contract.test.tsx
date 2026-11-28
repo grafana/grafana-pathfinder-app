@@ -185,13 +185,10 @@ const SOURCE_CONTRACT: Array<{ file: string; references: string[] }> = [
     file: 'components/PanelModeActionButtons.tsx',
     references: ['testIds.docsPanel.popOutButton', 'testIds.docsPanel.fullScreenButton'],
   },
+  { file: 'components/ReaderActionsMenu.tsx', references: ['testIds.docsPanel.milestoneMoreActionsButton'] },
   {
     file: 'components/LearningJourneyMilestoneToolbar.tsx',
-    references: [
-      'testIds.docsPanel.milestoneMoreActionsButton',
-      'testIds.docsPanel.nextMilestoneButton',
-      'testIds.docsPanel.previousMilestoneButton',
-    ],
+    references: ['testIds.docsPanel.nextMilestoneButton', 'testIds.docsPanel.previousMilestoneButton'],
   },
 ];
 

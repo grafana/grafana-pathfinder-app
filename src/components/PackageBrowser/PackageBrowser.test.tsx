@@ -879,13 +879,49 @@ it('includes started and completed path-member guides in the page status views',
 
 it('uses the same local path progress as the homepage even when catalogue progress is missing', () => {
   mockLocalPaths = [
-    { id: 'local-path', title: 'Started local path', description: 'A local path', guides: ['dashboard'], badgeId: '' },
+    {
+      id: 'local-path',
+      title: 'Started local path',
+      description: 'A local path',
+      guides: ['dashboard'],
+      badgeId: '',
+      estimatedMinutes: 15,
+    },
   ];
   mockLocalPercent = 28;
   render(<PackageBrowser page onOpenGuide={jest.fn()} />);
   fireEvent.click(screen.getByRole('radio', { name: 'In progress' }));
   expect(screen.getByRole('heading', { name: 'Started local path' })).toBeInTheDocument();
   expect(screen.getByText('28%')).toBeInTheDocument();
+  expect(screen.getByText('15 min')).toBeInTheDocument();
+});
+
+it.each([undefined, 25])('uses the Home course estimate when the Explore catalog estimate is %s', (catalogEstimate) => {
+  mockLocalPaths = [
+    {
+      id: 'local-path',
+      title: 'Local course',
+      description: '',
+      guides: [],
+      badgeId: '',
+      estimatedMinutes: 15,
+    },
+  ];
+  mockItems.push({
+    key: 'bundled:local-path',
+    id: 'local-path',
+    title: 'Catalog course',
+    format: 'path',
+    source: 'grafana',
+    url: 'bundled:local-path',
+    estimatedMinutes: catalogEstimate,
+  });
+
+  render(<PackageBrowser page onOpenGuide={jest.fn()} />);
+
+  const card = screen.getByRole('heading', { name: 'Catalog course' }).closest('article')!;
+  expect(within(card).getByText('15 min')).toBeInTheDocument();
+  expect(within(card).queryByText('25 min')).not.toBeInTheDocument();
 });
 
 it('shows lesson completion counts and resumes a local path whose guides are missing from the catalog', async () => {

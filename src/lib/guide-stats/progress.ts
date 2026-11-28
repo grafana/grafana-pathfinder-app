@@ -57,6 +57,10 @@ export function guideProgressAtPosition(index: GuideBlockIndex, position: number
   return { position: clamped, totalBlockCount: total, fraction, percent, complete };
 }
 
+export function guideStepCompletionPercent(completed: number, total: number): number {
+  return total > 0 ? (completed / total) * 100 : 0;
+}
+
 /**
  * Furthest position evidenced by a set of completion signals.
  *

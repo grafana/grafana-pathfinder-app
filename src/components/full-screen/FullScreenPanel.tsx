@@ -7,6 +7,7 @@ import {
   type SceneObjectState,
 } from '@grafana/scenes';
 import { getAppEvents, locationService } from '@grafana/runtime';
+import { useStyles2 } from '@grafana/ui';
 
 import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { useContentReset, useAutoOpenListener, useAssistantPathfinderListener } from '../docs-panel/hooks';
@@ -15,9 +16,12 @@ import { consumePendingGuideOnMount, initializePanelTabsOnMount } from '../docs-
 import { LearningJourneyMilestoneToolbar } from '../docs-panel/components';
 import { getGuideStripTabs, isNonContentTab } from '../docs-panel/utils';
 import { FloatingPanelContent } from '../floating-panel/FloatingPanelContent';
+import { GuideProgressBar } from '../guide-progress';
+import { LessonReaderHeader } from '../LearningPaths/PathLessonHeader';
+import { getMilestoneStyles } from '../../styles/docs-panel.styles';
 import { enrollInteractiveLearningBannerExperiment } from '../../utils/experiments/interactive-learning-banner';
 import { SkeletonLoader } from '../SkeletonLoader';
-import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
+import { useGuideProgressState, useAutoLaunchTutorial } from '../../hooks';
 import { panelModeManager } from '../../global-state/panel-mode';
 import { sidebarState } from '../../global-state/sidebar';
 import { getConfigWithDefaults, PLUGIN_BASE_URL, ROUTES } from '../../constants';
@@ -36,7 +40,7 @@ import pluginJson from '../../plugin.json';
 import { isExtensionSidebarOwnedByOther } from '../../lib/storage/extension-sidebar';
 import { getCourseTitle } from '../../integrations/assistant-integration/course-context';
 import { FullScreenLayout } from './FullScreenLayout';
-import { CourseAssistant } from './CourseAssistant';
+import { ReaderAssistant } from '../reader-assistant/ReaderAssistant';
 import { isJourneyCoverPage, resolveActiveMilestoneToolbarContext } from '../../docs-retrieval';
 import {
   getCourseLessonPosition,
@@ -296,7 +300,7 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
     activeTab?.type === 'learning-journey' &&
     !!content &&
     !!resolveActiveMilestoneToolbarContext(content, activeTab.activeTrackId, activeTab.activeTrackMilestones);
-  const stepProgress = useStepProgressFromEvents(hasActiveGuide && !hasPathToolbar);
+  const toolbarStyles = useStyles2(getMilestoneStyles, 'fullscreen');
 
   const { hasInteractiveProgress, progressKey } = useGuideProgressState(activeTab);
 
@@ -625,6 +629,18 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       />
     ) : null;
 
+  const guideToolbar =
+    content && hasActiveGuide && !isCoverPage && !hasPathToolbar ? (
+      <LessonReaderHeader
+        className={toolbarStyles.milestoneProgress}
+        title={content.metadata.title || title}
+        titleElement="h1"
+      >
+        <GuideProgressBar contentUrl={content.url} inToolbar />
+      </LessonReaderHeader>
+    ) : null;
+  const readerToolbar = journeyToolbar ?? guideToolbar;
+
   const guideType: 'learning-journey' | 'docs' | undefined = hasActiveGuide
     ? activeTab?.type === 'learning-journey'
       ? 'learning-journey'
@@ -634,9 +650,8 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
   return (
     <FullScreenLayout
       title={title}
-      showTitle={!isCoverPage && !hasPathToolbar}
+      showTitle={!isCoverPage && !readerToolbar}
       isCourseOverview={isCoverPage}
-      stepProgress={stepProgress}
       guideUrl={guideUrl}
       lessonPosition={lessonPosition}
       guideType={guideType}
@@ -648,9 +663,9 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       // button would create an inconsistency with the BlockEditor toolbar's
       // own "Pop out" button which dispatches the equivalent event.
       onGoFloating={hasActiveGuide || isEditorTab ? handleSwitchToFloating : undefined}
-      subHeader={journeyToolbar}
+      subHeader={readerToolbar}
       assistant={
-        content && !isEditorTab ? <CourseAssistant content={content} activeTab={activeTab ?? null} /> : undefined
+        content && hasActiveGuide ? <ReaderAssistant content={content} activeTab={activeTab ?? null} /> : undefined
       }
     >
       {isEditorTab ? (
@@ -660,7 +675,8 @@ function FullScreenPanelRenderer(_props: SceneComponentProps<FullScreenPanel>) {
       ) : (
         <FloatingPanelContent
           fullPageOverview
-          showGuideProgress={!hasPathToolbar}
+          showGeneratedTitle={!guideToolbar}
+          showGuideProgress={!readerToolbar}
           content={content}
           pendingAlignment={activeTab?.pendingAlignment}
           onAlignmentConfirm={activeTab ? () => void panel.confirmAlignment(activeTab.id) : undefined}

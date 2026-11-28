@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import { css } from '@emotion/css';
+import { css, cx } from '@emotion/css';
 import { useStyles2 } from '@grafana/ui';
 import type { GrafanaTheme2 } from '@grafana/data';
 import { t } from '@grafana/i18n';
@@ -15,10 +15,13 @@ import {
   getGuideIndexEvictionRevision,
 } from '../../global-state/active-guide-index';
 import { subscribeGuideProgressRevision, getGuideProgressRevision } from '../../global-state/progress-events';
+import { useDocumentStepProgressFromEvents } from '../../hooks';
+import { guideStepCompletionPercent } from '../../lib/guide-stats';
 
 interface GuideProgressBarProps {
   contentUrl?: string;
   isCoverPage?: boolean;
+  inToolbar?: boolean;
 }
 
 const NO_SUBSCRIPTION = () => undefined;
@@ -26,8 +29,10 @@ const NO_SUBSCRIPTION = () => undefined;
 export function GuideProgressBar({
   contentUrl,
   isCoverPage = false,
+  inToolbar = false,
 }: GuideProgressBarProps): React.ReactElement | null {
   const styles = useStyles2(getStyles);
+  const stepProgress = useDocumentStepProgressFromEvents(inToolbar && !isCoverPage);
 
   const [resolved, setResolved] = useState<{ contentUrl: string; contentKey: string } | null>(null);
 
@@ -59,25 +64,40 @@ export function GuideProgressBar({
   );
 
   const activeIndex = contentKey === undefined ? undefined : getGuideIndex(contentKey);
-  if (isCoverPage || !activeIndex?.index.completableBlockCount) {
+  const steps = stepProgress?.contentKey === contentKey ? stepProgress : undefined;
+  if (isCoverPage || (!steps && !activeIndex?.index.completableBlockCount)) {
     return null;
   }
 
+  const filledPercent = steps ? guideStepCompletionPercent(steps.completed, steps.total) : percentage;
+  const stepLabel = steps
+    ? t('guideProgress.stepsCompleted', '{{completed}} of {{count}} steps completed', {
+        completed: steps.completed,
+        count: steps.total,
+        defaultValue_one: '{{completed}} of {{count}} step completed',
+      })
+    : undefined;
+
   return (
     <div
-      className={styles.sticky}
+      className={cx(styles.container, inToolbar ? styles.toolbar : styles.sticky)}
       data-testid={testIds.guideProgress.bar}
       role="progressbar"
-      aria-valuenow={percentage}
+      aria-valuenow={steps?.completed ?? percentage}
       aria-valuemin={0}
-      aria-valuemax={100}
-      aria-label={t('guideProgress.label', 'Guide progress: {{percent}}% complete', { percent: percentage })}
+      aria-valuemax={steps?.total ?? 100}
+      aria-valuetext={stepLabel}
+      aria-label={
+        steps
+          ? t('learningCard.guide', 'Guide')
+          : t('guideProgress.label', 'Guide progress: {{percent}}% complete', { percent: percentage })
+      }
     >
-      <div className={styles.track}>
-        <div className={styles.fill} style={{ width: `${percentage}%` }} />
+      <div className={cx(styles.track, inToolbar && styles.toolbarTrack)}>
+        <div className={styles.fill} style={{ width: `${filledPercent}%` }} />
       </div>
       <span className={styles.percentage} data-testid={testIds.guideProgress.percentage}>
-        {t('guideProgress.percentComplete', '{{percent}}% complete', { percent: percentage })}
+        {stepLabel ?? t('guideProgress.percentComplete', '{{percent}}% complete', { percent: percentage })}
       </span>
     </div>
   );
@@ -85,13 +105,18 @@ export function GuideProgressBar({
 
 function getStyles(theme: GrafanaTheme2) {
   return {
+    container: css({
+      display: 'flex',
+      alignItems: 'center',
+      gap: theme.spacing(1),
+    }),
+    toolbar: css({
+      flexWrap: 'wrap',
+    }),
     sticky: css({
       position: 'sticky',
       top: 0,
       zIndex: 2,
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(1),
       backgroundColor: theme.colors.background.canvas,
       padding: theme.spacing(0.5, 1),
       borderBottom: `1px solid ${theme.colors.border.weak}`,
@@ -104,6 +129,10 @@ function getStyles(theme: GrafanaTheme2) {
       backgroundColor: theme.colors.background.secondary,
       overflow: 'hidden',
     }),
+    toolbarTrack: css({
+      flex: '1 1 0%',
+      minWidth: theme.spacing(8),
+    }),
     fill: css({
       height: '100%',
       backgroundColor: theme.colors.success.main,
@@ -114,7 +143,8 @@ function getStyles(theme: GrafanaTheme2) {
     }),
     percentage: css({
       color: theme.colors.text.secondary,
-      fontSize: theme.typography.bodySmall.fontSize,
+      fontSize: theme.typography.sm.fontSize,
+      lineHeight: theme.typography.sm.lineHeight,
       whiteSpace: 'nowrap',
     }),
   };

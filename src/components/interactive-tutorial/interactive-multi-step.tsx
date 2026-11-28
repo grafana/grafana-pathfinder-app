@@ -2,7 +2,7 @@ import { useObservedCompletion } from '../../global-state/observation/use-observ
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import type { ConditionInput } from '../../types/requirements.types';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
-import { Button } from '@grafana/ui';
+import { Button, Icon } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 
 import { useInteractiveElements } from '../../interactive-engine';
@@ -947,7 +947,10 @@ export const InteractiveMultiStep = forwardRef<
             className="interactive-step-requirement-explanation"
             data-testid={testIds.interactive.requirementCheck(renderedStepId)}
           >
-            {checker.explanation}
+            <span className="interactive-notice-icon" aria-hidden="true">
+              <Icon name="lock" size="md" />
+            </span>
+            <span>{checker.explanation}</span>
           </div>
         )}
 
@@ -957,7 +960,9 @@ export const InteractiveMultiStep = forwardRef<
         {uiState === STEP_STATES.ERROR && executionError && (
           <div className="interactive-guided-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
             <div className="interactive-guided-error-box">
-              <span className="interactive-guided-error-icon">!</span>
+              <span className="interactive-notice-icon" aria-hidden="true">
+                <Icon name="exclamation-triangle" size="md" />
+              </span>
               <div className="interactive-guided-error-content">
                 <span className="interactive-guided-error-title">Step {failedStepIndex + 1} failed</span>
                 <span className="interactive-guided-error-detail">{executionError}</span>

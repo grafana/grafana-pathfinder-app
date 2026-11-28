@@ -23,6 +23,8 @@ jest.mock('@grafana/data', () => ({
 jest.mock('../../../lib/analytics', () => ({
   reportAppInteraction: jest.fn(),
   getContentTypeForAnalytics: jest.fn(() => 'docs'),
+  tabTypeToContentType: jest.fn(() => 'docs'),
+  AnalyticsLinkType: { ExternalBrowser: 'external_browser' },
   UserInteraction: {
     GuideVersionUnsupportedShown: 'guide_version_unsupported_shown',
     DocsPanelInteraction: 'docs_panel_interaction',
@@ -47,12 +49,14 @@ jest.mock('../../../docs-retrieval', () => ({
 // completion prop it was mounted with so the completion-boundary tests can read it.
 const mockRenderedCompletions: unknown[] = [];
 const mockRenderedSequences: unknown[] = [];
+const mockRenderedCourseOverviews: boolean[] = [];
 const mockRenderedCompletionFlags: boolean[] = [];
 let mockContinueToNextMilestone: (() => Promise<void> | void) | undefined;
 let mockCompletionPanelVisibilityChange: ((visible: boolean) => void) | undefined;
 jest.mock('../../content-renderer/content-renderer', () => ({
   ContentRenderer: ({
     completion,
+    fullPageOverview,
     onActiveTrackChange,
     initialActiveTrackId,
     completionSequence,
@@ -61,6 +65,7 @@ jest.mock('../../content-renderer/content-renderer', () => ({
     onCompletionPanelVisibilityChange,
   }: {
     completion: unknown;
+    fullPageOverview?: boolean;
     completionSequence?: unknown;
     completionPanelEnabled?: boolean;
     onCompletionPanelVisibilityChange?: (visible: boolean) => void;
@@ -69,6 +74,7 @@ jest.mock('../../content-renderer/content-renderer', () => ({
     initialActiveTrackId?: string | null;
   }) => {
     mockRenderedCompletions.push(completion);
+    mockRenderedCourseOverviews.push(Boolean(fullPageOverview));
     mockRenderedSequences.push(completionSequence);
     mockRenderedCompletionFlags.push(completionPanelEnabled ?? false);
     mockContinueToNextMilestone = onContinueToNextMilestone;
@@ -109,8 +115,24 @@ jest.mock('../../guide-language', () => ({
   ),
 }));
 
+jest.mock('../../../hooks/usePathfinderPluginConfig', () => ({
+  usePathfinderPluginConfig: () => ({ config: {} }),
+}));
+
 jest.mock('./LearningJourneyMilestoneToolbar', () => ({ LearningJourneyMilestoneToolbar: () => null }));
 jest.mock('./PanelModeActionButtons', () => ({ PanelModeActionButtons: () => null }));
+
+const originalResizeObserver = global.ResizeObserver;
+beforeAll(() => {
+  global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
+afterAll(() => {
+  global.ResizeObserver = originalResizeObserver;
+});
 
 const { reportAppInteraction } = jest.requireMock('../../../lib/analytics');
 const { journeyMilestonePercentages } = jest.requireMock('../../../docs-retrieval');
@@ -190,7 +212,7 @@ describe('sidebar sticky progress eligibility', () => {
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
-  it('shows sticky progress when the displayed guide index publishes', async () => {
+  it('shows percentage fallback and switches to steps when the guide publishes a step count', async () => {
     const props = makeProps();
     const url = props.stableContent!.url;
     setActiveTabUrl(url);
@@ -204,7 +226,15 @@ describe('sidebar sticky progress eligibility', () => {
         denominatorSource: 'live-pre-inlining',
       })
     );
-    expect(await screen.findByRole('progressbar')).toBeInTheDocument();
+    expect(await screen.findByText('0% complete')).toBeInTheDocument();
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('pathfinder-step-progress', { detail: { completedCount: 1, totalSteps: 5 } })
+      );
+    });
+    const bar = screen.getByRole('progressbar');
+    expect(bar).toHaveAttribute('aria-valuetext', '1 of 5 steps completed');
+    expect(bar.querySelector('[style*="width"]')).toHaveStyle({ width: '20%' });
   });
 
   it('hides guide progress for a path lesson with tracked exercises', async () => {
@@ -264,19 +294,49 @@ describe('DocsPanelContentArea', () => {
     mockContinueToNextMilestone = undefined;
     mockCompletionPanelVisibilityChange = undefined;
   });
-  it('uses the stable reset selector for docs-like guides', () => {
+  it('uses the shared actions menu to reset a standalone guide', () => {
     const base = makeProps();
+    const handleResetGuide = jest.fn();
     render(
       <DocsPanelContentArea
         {...makeProps({
           activeTab: { ...base.activeTab, type: 'interactive' } as any,
           hasInteractiveProgress: true,
           progressKey: 'bundled:e2e-test',
+          handleResetGuide,
         })}
       />
     );
 
-    expect(screen.getByTestId(testIds.docsPanel.resetGuideButton)).toHaveAccessibleName('Reset guide');
+    expect(screen.getByRole('heading', { name: 'My guide' })).toBeInTheDocument();
+    expect(screen.queryByTestId(testIds.docsPanel.nextMilestoneButton)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId(testIds.docsPanel.milestoneMoreActionsButton));
+    const reset = screen.getByTestId(testIds.docsPanel.resetGuideButton);
+    expect(reset).toHaveAccessibleName('Reset guide');
+    fireEvent.click(reset);
+    expect(handleResetGuide).toHaveBeenCalledWith('bundled:e2e-test', expect.objectContaining({ id: 'tab-1' }));
+  });
+
+  it.each([0, 1])('uses the shared overview only on the course cover (milestone %s)', (currentMilestone) => {
+    const base = makeProps();
+    const url = base.activeTab!.baseUrl;
+    const content = {
+      ...base.stableContent!,
+      url,
+      type: 'learning-journey' as const,
+      metadata: {
+        title: 'Course',
+        learningJourney: {
+          baseUrl: url,
+          currentMilestone,
+          totalMilestones: 1,
+          milestones: [{ number: 1, title: 'First lesson', url: `${url}/first`, isActive: currentMilestone === 1 }],
+        },
+      },
+    };
+
+    render(<DocsPanelContentArea {...base} activeTab={{ ...base.activeTab!, content }} stableContent={content} />);
+    expect(mockRenderedCourseOverviews.at(-1)).toBe(currentMilestone === 0);
   });
 
   describe('Return to my learning footer button', () => {
@@ -618,7 +678,7 @@ describe('DocsPanelContentArea', () => {
       expect(screen.queryByText(/\d+ milestones$/)).not.toBeInTheDocument();
     });
 
-    it('shows the legacy meta row when a guide has neither learningJourney nor track membership', () => {
+    it('shows the guide toolbar when a guide has neither learningJourney nor track membership', () => {
       const base = makeProps();
       const props = makeProps({
         activeTab: {
@@ -631,7 +691,9 @@ describe('DocsPanelContentArea', () => {
 
       render(<DocsPanelContentArea {...props} />);
 
-      expect(screen.getByText('Interactive journey')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'My guide' })).toBeInTheDocument();
+      expect(screen.getByTestId(testIds.docsPanel.milestoneMoreActionsButton)).toBeInTheDocument();
+      expect(screen.queryByText('Interactive journey')).not.toBeInTheDocument();
     });
 
     it('shows the loading bar scoped to the track for a track-only guide', () => {

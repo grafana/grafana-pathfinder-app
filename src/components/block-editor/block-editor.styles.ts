@@ -19,6 +19,7 @@ export const getBlockEditorStyles = (theme: GrafanaTheme2) => ({
     border: `1px solid ${theme.colors.border.weak}`,
     borderRadius: theme.shape.radius.lg,
     overflow: 'clip',
+    '&[data-embedded-guide-editor]': { border: 0, borderRadius: 0 },
     // Fill the scrolling parent so the status bar (at the column's
     // bottom) sits at the visible bottom of the editor; longer guides
     // grow the column and trigger the parent's scroll.

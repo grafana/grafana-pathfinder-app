@@ -19,6 +19,35 @@ function flushReactUpdates(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 }
 
+it('labels the drag bar Guide and leaves the guide title to the reader', () => {
+  render(
+    <FloatingPanel title="Tour of Grafana" hasActiveGuide onSwitchToSidebar={jest.fn()} onClose={jest.fn()}>
+      <h1>Tour of Grafana</h1>
+    </FloatingPanel>
+  );
+
+  expect(screen.getByText('Guide', { exact: true })).toBeInTheDocument();
+  expect(screen.getAllByText('Tour of Grafana')).toEqual([screen.getByRole('heading', { name: 'Tour of Grafana' })]);
+  expect(screen.getByRole('button', { name: 'Dock to sidebar' })).toBeInTheDocument();
+});
+
+it('uses the learning path title in the drag bar', () => {
+  render(
+    <FloatingPanel
+      title="Grafana foundations"
+      hasActiveGuide
+      guideType="learning-journey"
+      onSwitchToSidebar={jest.fn()}
+      onClose={jest.fn()}
+    >
+      <h1>How it’s packaged</h1>
+    </FloatingPanel>
+  );
+
+  expect(screen.getByTitle('Grafana foundations')).toHaveTextContent('Grafana foundations');
+  expect(screen.queryByText('Guide', { exact: true })).not.toBeInTheDocument();
+});
+
 describe('FloatingPanel scroll preservation across compact <-> full', () => {
   const noop = () => {};
 
@@ -103,6 +132,37 @@ describe('FloatingPanel scroll preservation across compact <-> full', () => {
     // landed — nothing has restored scrollTop since the second compact.
     expect(content.scrollTop).toBe(0);
     expect(screen.getByRole('dialog')).toHaveAttribute('data-panel-state', 'compact');
+  });
+
+  it('drops a pending scroll restore when a different milestone loads', async () => {
+    const panel = (guideUrl: string) => (
+      <FloatingPanel
+        title="Test guide"
+        hasActiveGuide={true}
+        guideUrl={guideUrl}
+        onSwitchToSidebar={noop}
+        onClose={noop}
+      >
+        <div data-testid="guide-content" />
+      </FloatingPanel>
+    );
+    const { rerender } = render(panel('one'));
+    const content = screen.getByTestId('guide-content').parentElement as HTMLDivElement;
+    content.scrollTop = 800;
+
+    act(() => {
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-compact'));
+    });
+    content.scrollTop = 0;
+    act(() => {
+      document.dispatchEvent(new CustomEvent('pathfinder-floating-restore-full'));
+    });
+    rerender(panel('two'));
+
+    await act(async () => {
+      await flushReactUpdates();
+    });
+    expect(content.scrollTop).toBe(0);
   });
 
   it('keeps the saved scroll position when restore is interrupted by another compact', async () => {

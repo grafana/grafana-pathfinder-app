@@ -13,7 +13,7 @@ import React, {
   useRef,
   useSyncExternalStore,
 } from 'react';
-import { Button } from '@grafana/ui';
+import { Button, Icon } from '@grafana/ui';
 import { getAppEvents } from '@grafana/runtime';
 
 import {
@@ -931,7 +931,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
           checker.explanation && (
             <div className={`interactive-guided-requirements${checker.isChecking ? ' rechecking' : ''}`}>
               <div className="interactive-guided-requirement-box">
-                <span className="interactive-guided-requirement-icon">👣</span>
+                <span className="interactive-notice-icon" aria-hidden="true">
+                  <Icon name="lock" size="md" />
+                </span>
                 <span id={`requirement-explanation-${renderedStepId}`} className="interactive-guided-requirement-text">
                   {checker.explanation}
                 </span>
@@ -1041,7 +1043,9 @@ export const InteractiveGuided = forwardRef<{ executeStep: () => Promise<boolean
         {uiState === 'error' && (
           <div className="interactive-guided-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
             <div className="interactive-guided-error-box">
-              <span className="interactive-guided-error-icon">✕</span>
+              <span className="interactive-notice-icon" aria-hidden="true">
+                <Icon name="exclamation-triangle" size="md" />
+              </span>
               <div className="interactive-guided-error-content">
                 <span className="interactive-guided-error-title">Step {failedStepIndex + 1} didn&apos;t complete</span>
                 <span className="interactive-guided-error-detail">

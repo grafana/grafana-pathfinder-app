@@ -314,7 +314,8 @@ describe('GuideReaderOverlay', () => {
     }));
     render(<GuideReaderOverlay doc="backend-guide:path" mode="controller" />);
     await screen.findByTestId('mock-content');
-    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Previous' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Get started' }));
     await screen.findByTestId('mock-content');
     expect(packageFetch).toHaveBeenLastCalledWith(

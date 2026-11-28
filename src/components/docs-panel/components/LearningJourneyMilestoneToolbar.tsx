@@ -1,30 +1,10 @@
-/**
- * Learning-journey milestone toolbar — the consolidated header shown above
- * journey content: nav arrows flanking a title, a completion count,
- * a segmented per-milestone progress bar, and a kebab menu for
- * Open / Reset guide / Pop out (or Dock) / Full screen.
- *
- * Why this exists: ~130 lines of identical JSX previously lived in both
- * the sidebar (`docs-panel.tsx`) and the fullscreen panel
- * (`FullScreenPanel.tsx`). Drift between the two copies has produced real
- * bugs (e.g. analytics inconsistencies, missing reset-guide flow on one
- * surface). Centralizing here keeps milestone navigation behavior identical
- * across surfaces and gives us one place to evolve future actions.
- *
- * Surface-specific bits stay in props:
- * - `surface` controls the analytics `interaction_location` for "Open".
- *
- * The kebab uses `usePanelModeControls()` directly rather than taking a
- * consumer-injected slot, so Pop out/Dock and Full screen are correct on
- * all three surfaces (sidebar, fullscreen, floating) for free — including
- * surfaces that previously had no way to change panel mode from here.
- */
-
 import React from 'react';
-import { Dropdown, IconButton, Menu, Tooltip, useStyles2 } from '@grafana/ui';
+import { IconButton, Tooltip, useStyles2 } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 
 import { PathLessonHeader } from '../../LearningPaths/PathLessonHeader';
+import { ReaderAssistantIconButton } from '../../reader-assistant/ReaderAssistant';
+import { useIsAssistantAvailable } from '../../../integrations/assistant-integration/assistant-dev-mode';
 import { usePathLessonProgress } from '../../LearningPaths/PathLessonProgressBar';
 
 import {
@@ -35,7 +15,6 @@ import {
   AnalyticsLinkType,
 } from '../../../lib/analytics';
 import { percentagesToProgress, resolveActiveMilestoneToolbarContext } from '../../../docs-retrieval';
-import { usePanelModeControls } from '../../../global-state/use-panel-mode';
 import { getMilestoneStyles } from '../../../styles/docs-panel.styles';
 import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab } from '../../../types/content-panel.types';
@@ -44,6 +23,7 @@ import { cleanDocsUrl } from '../utils';
 import { usePathfinderPluginConfig } from '../../../hooks';
 import { parseUrlSafely } from '../../../security';
 import { pickControllerTabOpenAction } from '../utils/controller-tab-open-action';
+import { ReaderActionsMenu } from './ReaderActionsMenu';
 
 export type MilestoneToolbarSurface = 'sidebar' | 'fullscreen' | 'floating';
 
@@ -56,6 +36,7 @@ export interface LearningJourneyMilestoneToolbarProps {
    * sidebar from fullscreen interactions.
    */
   surface: MilestoneToolbarSurface;
+  actionsOnly?: boolean;
   /**
    * From `useGuideProgressState`. Drives the visibility of the
    * "Reset guide" button.
@@ -69,8 +50,6 @@ export interface LearningJourneyMilestoneToolbarProps {
    * must stay aligned with the parent's lifecycle).
    */
   onResetGuide: (progressKey: string, tab: LearningJourneyTab) => Promise<void> | void;
-  /** Hides the kebab menu in space-constrained layouts (the floating panel's compact header). */
-  compact?: boolean;
 }
 
 /**
@@ -82,14 +61,14 @@ export function LearningJourneyMilestoneToolbar({
   panel,
   activeTab,
   surface,
+  actionsOnly = false,
   hasInteractiveProgress,
   progressKey,
   onResetGuide,
-  compact = false,
 }: LearningJourneyMilestoneToolbarProps) {
   const styles = useStyles2(getMilestoneStyles, surface);
+  const assistantAvailable = useIsAssistantAvailable();
   const { config: pluginConfig } = usePathfinderPluginConfig();
-  const { panelMode, handleTogglePanelMode, handleGoFullScreen } = usePanelModeControls();
   // Scoped to whichever sequence the reader actually navigated through —
   // base Foundations or their active Path Track (`activeTab.activeTrackId`/
   // `activeTrackMilestones`) — so a track-only guide (no `learningJourney` at
@@ -205,88 +184,60 @@ export function LearningJourneyMilestoneToolbar({
     }
   };
 
-  const controllerAction = pickControllerTabOpenAction(activeMilestoneContext.baseUrl, activeTab.type, {
+  const { createControllerUrl } = pickControllerTabOpenAction(activeMilestoneContext.baseUrl, activeTab.type, {
     milestoneUrl: currentMs?.url,
     trackId: activeTab.activeTrackId,
   });
-  const kebabMenu = (
-    <Menu>
-      {pluginConfig.enableTwoTabController && controllerAction.createControllerUrl && (
-        <Menu.Item
-          label={t('docsPanel.openControllerInNewTab', 'Open in interactive window')}
-          icon="external-link-alt"
-          testId={testIds.docsPanel.openControllerTabButton}
-          onClick={() => window.open(controllerAction.createControllerUrl!(), '_blank', 'noopener,noreferrer')}
-        />
-      )}
-      {externalUrl && <Menu.Item label={t('docsPanel.open', 'Open')} icon="external-link-alt" onClick={handleOpen} />}
-      {showReset && (
-        <Menu.Item
-          label={t('docsPanel.resetGuide', 'Reset guide')}
-          icon="history-alt"
-          testId={testIds.docsPanel.resetGuideButton}
-          onClick={handleReset}
-        />
-      )}
-      {(externalUrl || showReset) && <Menu.Divider />}
-      <Menu.Item
-        label={panelMode === 'sidebar' ? t('docsPanel.popOut', 'Pop out') : t('docsPanel.dock', 'Dock')}
-        ariaLabel={panelMode === 'sidebar' ? 'Pop out to floating panel' : 'Dock guide'}
-        icon={panelMode === 'sidebar' ? 'corner-up-right' : 'corner-down-right-alt'}
-        onClick={handleTogglePanelMode}
-        testId={testIds.docsPanel.popOutButton}
-      />
-      {panelMode !== 'fullscreen' && (
-        <Menu.Item
-          label={t('docsPanel.fullScreen', 'Full screen')}
-          ariaLabel="Open in full screen"
-          icon="expand-arrows"
-          onClick={handleGoFullScreen}
-          testId={testIds.docsPanel.fullScreenButton}
-        />
-      )}
-    </Menu>
-  );
-
+  const openController = pluginConfig.enableTwoTabController && createControllerUrl;
   const isLesson = activeMilestoneContext.currentMilestone !== 0;
+  const showModuleNavigation = isLesson || !activeTab.content?.metadata.learningJourney?.milestones.length;
 
   return (
     <PathLessonHeader
-      className={styles.milestoneProgress}
-      title={currentTitle}
+      className={actionsOnly ? undefined : styles.milestoneProgress}
+      title={actionsOnly ? undefined : currentTitle}
       progress={progress}
-      showProgressBar={isLesson}
+      showProgressBar={isLesson && !actionsOnly}
       actions={
         <>
-          <Tooltip content={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')} placement="top">
-            <IconButton
-              name={isLesson ? 'angle-left' : 'arrow-left'}
-              size="md"
-              aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
-              onClick={handlePrev}
-              disabled={!panel.canNavigatePrevious() || activeTab.isLoading}
-              data-testid={testIds.docsPanel.previousMilestoneButton}
+          {showModuleNavigation && (
+            <>
+              <Tooltip
+                content={t('docsPanel.previousMilestoneTooltip', 'Previous milestone (Alt + ←)')}
+                placement="top"
+              >
+                <IconButton
+                  name={isLesson ? 'angle-left' : 'arrow-left'}
+                  size="md"
+                  aria-label={t('docsPanel.previousMilestone', 'Previous milestone')}
+                  onClick={handlePrev}
+                  disabled={!panel.canNavigatePrevious() || activeTab.isLoading}
+                  data-testid={testIds.docsPanel.previousMilestoneButton}
+                />
+              </Tooltip>
+              <Tooltip content={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')} placement="top">
+                <IconButton
+                  name={isLesson ? 'angle-right' : 'arrow-right'}
+                  size="md"
+                  aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
+                  onClick={handleNext}
+                  disabled={!panel.canNavigateNext() || activeTab.isLoading}
+                  data-testid={testIds.docsPanel.nextMilestoneButton}
+                />
+              </Tooltip>
+            </>
+          )}
+          {surface !== 'fullscreen' && assistantAvailable && activeTab.content && (
+            <ReaderAssistantIconButton content={activeTab.content} activeTab={activeTab} />
+          )}
+          {(surface !== 'floating' || actionsOnly) && (
+            <ReaderActionsMenu
+              onOpen={externalUrl ? handleOpen : undefined}
+              onOpenController={
+                openController ? () => window.open(openController(), '_blank', 'noopener,noreferrer') : undefined
+              }
+              onReset={showReset ? handleReset : undefined}
             />
-          </Tooltip>
-          <Tooltip content={t('docsPanel.nextMilestoneTooltip', 'Next milestone (Alt + →)')} placement="top">
-            <IconButton
-              name={isLesson ? 'angle-right' : 'arrow-right'}
-              size="md"
-              aria-label={t('docsPanel.nextMilestone', 'Next milestone')}
-              onClick={handleNext}
-              disabled={!panel.canNavigateNext() || activeTab.isLoading}
-              data-testid={testIds.docsPanel.nextMilestoneButton}
-            />
-          </Tooltip>
-          {!compact && (
-            <Dropdown overlay={kebabMenu} placement="bottom-end">
-              <IconButton
-                size="md"
-                name="ellipsis-v"
-                tooltip={t('docsPanel.moreActions', 'More actions')}
-                data-testid={testIds.docsPanel.milestoneMoreActionsButton}
-              />
-            </Dropdown>
           )}
         </>
       }

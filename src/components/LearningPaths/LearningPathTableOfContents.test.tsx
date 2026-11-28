@@ -1,4 +1,5 @@
 import React from 'react';
+import { locationService } from '@grafana/runtime';
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 import { LearningPathTableOfContents } from './LearningPathTableOfContents';
 import { interactiveCompletionStorage, milestoneCompletionStorage } from '../../lib/user-storage';
@@ -757,29 +758,61 @@ it('shows available course metadata and does not reuse the default estimate for 
       tracks={[{ trackId: 'builder', label: 'Builder', milestones }]}
     />
   );
-  expect(screen.getByRole('link', { name: 'Dashboards' })).toHaveAttribute(
-    'href',
-    '/a/grafana-pathfinder-app/browse?topic=dashboards'
-  );
+  const topic = screen.getByRole('link', { name: 'Dashboards' });
+  expect(topic).toHaveAttribute('href', '/a/grafana-pathfinder-app/browse?topic=dashboards');
+  fireEvent.click(topic);
+  expect(locationService.push).toHaveBeenCalledWith('/a/grafana-pathfinder-app/browse?topic=dashboards');
+  const eyebrow = within(topic.parentElement!);
+  expect(eyebrow.getByText('25 min')).toBeInTheDocument();
+  expect(eyebrow.getByText('·')).toHaveAttribute('aria-hidden', 'true');
   expect(screen.getByText('Your organization')).toBeInTheDocument();
-  expect(screen.getByText('25 min')).toBeInTheDocument();
   expect(screen.queryByText('Earn this badge')).not.toBeInTheDocument();
   expect(screen.queryByText('Core Concepts')).not.toBeInTheDocument();
   fireEvent.change(screen.getByRole('combobox', { name: 'Altitude' }), { target: { value: 'builder' } });
   expect(screen.queryByText('25 min')).not.toBeInTheDocument();
+  expect(eyebrow.queryByText('·')).not.toBeInTheDocument();
 });
 
-it('looks up artwork by the course URL when there is no manifest ID', () => {
+it('shows the estimate above the title without a separator when the course has no topic', () => {
+  render(
+    <LearningPathTableOfContents
+      fullPage
+      title="Demo"
+      estimatedMinutes={25}
+      milestones={milestones}
+      baseUrl={baseUrl}
+    />
+  );
+
+  const estimate = screen.getByText('25 min');
+  expect(estimate.compareDocumentPosition(screen.getByRole('heading', { name: 'Demo' }))).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING
+  );
+  expect(within(estimate.parentElement!).queryByText('·')).not.toBeInTheDocument();
+});
+
+it('looks up artwork and the curated time estimate by course URL', () => {
   render(
     <LearningPathTableOfContents
       fullPage
       title="Explore metrics"
-      baseUrl="https://grafana.com/docs/learning-paths/drilldown-metrics/"
-      milestones={milestones}
+      baseUrl="https://grafana.com/docs/learning-paths/drilldown-metrics"
+      milestones={milestones.map((milestone) => ({ ...milestone, estimatedMinutes: 10 }))}
+      tracks={[
+        {
+          trackId: 'builder',
+          label: 'Builder',
+          milestones: milestones.map((milestone) => ({ ...milestone, estimatedMinutes: 12 })),
+        },
+      ]}
     />
   );
-  expect(screen.queryByRole('combobox', { name: 'Altitude' })).not.toBeInTheDocument();
   expect(screen.getByRole('img', { name: /Metrics Drilldown displaying/ })).toBeInTheDocument();
+  const hero = screen.getByTestId('learning-paths-cover-hero');
+  expect(within(hero).getByText('15 min')).toBeInTheDocument();
+  fireEvent.change(screen.getByRole('combobox', { name: 'Altitude' }), { target: { value: 'builder' } });
+  expect(within(hero).queryByText('15 min')).not.toBeInTheDocument();
+  expect(within(hero).getByText('24 min')).toBeInTheDocument();
 });
 
 it('keeps the overview current segment and completed total aligned with published lessons', () => {

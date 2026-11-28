@@ -1,13 +1,20 @@
 import React, { useMemo, useRef } from 'react';
 import { useStyles2, useTheme2 } from '@grafana/ui';
-import { isJourneyCoverPage, resolveActiveMilestoneSequence } from '../../docs-retrieval';
+import {
+  isJourneyCoverPage,
+  resolveActiveMilestoneSequence,
+  resolveActiveMilestoneToolbarContext,
+} from '../../docs-retrieval';
 import { ContentRenderer } from '../content-renderer/content-renderer';
 import { GuideProgressBar } from '../guide-progress';
+import { GuideReaderToolbar } from '../docs-panel/components/GuideReaderToolbar';
+import { ReturnToMyLearning } from '../docs-panel/components/ReturnToMyLearning';
 import { GuideLanguageSlot, TranslationNoticeSlot } from '../guide-language';
 import { usePublishSurfaceContentKey } from '../../hooks';
 import { InteractiveLearningBanner } from '../InteractiveLearningBanner';
 import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
 import { getInteractiveStyles } from '../../styles/interactive.styles';
+import { getContentStyles } from '../../styles/docs-panel.styles';
 import { getPrismStyles } from '../../styles/prism.styles';
 import type { RawContent } from '../../types/content.types';
 import type { LearningJourneyTab, PendingAlignment } from '../../types/content-panel.types';
@@ -28,7 +35,9 @@ interface FloatingPanelContentProps {
   onResetGuide?: (progressKey: string, tab: LearningJourneyTab) => Promise<void> | void;
   surface?: MilestoneToolbarSurface;
   fullPageOverview?: boolean;
+  showGeneratedTitle?: boolean;
   showGuideProgress?: boolean;
+  onReturnToMyLearning?: () => void;
   /** The guide content to render */
   content: RawContent | null;
   /** Called when a guide completes all interactive sections */
@@ -72,7 +81,9 @@ export function FloatingPanelContent({
   onResetGuide,
   surface = 'floating',
   fullPageOverview = false,
+  showGeneratedTitle,
   showGuideProgress = true,
+  onReturnToMyLearning,
 }: FloatingPanelContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const journeyStyles = useStyles2(journeyContentHtml);
@@ -80,6 +91,7 @@ export function FloatingPanelContent({
   const interactiveStyles = useStyles2(getInteractiveStyles);
   const prismStyles = useStyles2(getPrismStyles);
   const floatingStyles = useStyles2(getFloatingPanelStyles);
+  const readerStyles = useStyles2(getContentStyles);
   const theme = useTheme2();
 
   useLinkClickHandler({
@@ -129,8 +141,15 @@ export function FloatingPanelContent({
     );
   }
 
-  const proseStyles =
-    fullPageOverview && isJourneyCoverPage(content)
+  const isCoverPage = isJourneyCoverPage(content);
+  const showCourseOverview =
+    !fullPageOverview &&
+    surface === 'floating' &&
+    isCoverPage &&
+    Boolean(content.metadata.learningJourney?.milestones.length);
+  const proseStyles = showCourseOverview
+    ? readerStyles.panelCourseOverview
+    : fullPageOverview && isCoverPage
       ? ''
       : content.type === 'learning-journey'
         ? journeyStyles
@@ -144,59 +163,82 @@ export function FloatingPanelContent({
 
   const showEmbeddedToolbar = onResetGuide !== undefined && progressKey !== undefined && activeTab !== null;
   const hasPathToolbar =
-    showEmbeddedToolbar && activeTab.type === 'learning-journey' && Boolean(completionSequence?.baseUrl);
-  const showStandaloneProgress = showGuideProgress && !hasPathToolbar;
+    showEmbeddedToolbar &&
+    activeTab.type === 'learning-journey' &&
+    !!resolveActiveMilestoneToolbarContext(content, activeTab.activeTrackId, activeTab.activeTrackMilestones);
+  const showStandaloneHeader =
+    showEmbeddedToolbar && surface === 'floating' && showGuideProgress && !hasPathToolbar && !isCoverPage;
+  const showStandaloneProgress = showGuideProgress && !showCourseOverview && !hasPathToolbar && !showStandaloneHeader;
+  const journeyToolbar = showEmbeddedToolbar && (
+    <LearningJourneyMilestoneToolbar
+      panel={model}
+      activeTab={activeTab}
+      surface={surface}
+      actionsOnly={showCourseOverview}
+      hasInteractiveProgress={!!hasInteractiveProgress}
+      progressKey={progressKey ?? null}
+      onResetGuide={onResetGuide}
+    />
+  );
 
   return (
     <AlignmentPendingContext.Provider value={alignmentPendingValue}>
-      <div ref={contentRef}>
-        {showEmbeddedToolbar && activeTab ? (
-          <div className={floatingStyles.stickyToolbar}>
-            <LearningJourneyMilestoneToolbar
-              panel={model}
-              activeTab={activeTab}
-              surface={surface}
-              hasInteractiveProgress={!!hasInteractiveProgress}
-              progressKey={progressKey ?? null}
-              onResetGuide={onResetGuide!}
-              compact
-            />
-            {showStandaloneProgress && (
-              <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
-            )}
-          </div>
-        ) : (
-          showStandaloneProgress && (
-            <div className={floatingStyles.stickyProgressBar}>
-              <GuideProgressBar contentUrl={content.url} isCoverPage={isJourneyCoverPage(content)} />
+      <div ref={contentRef} data-panel-course-overview={showCourseOverview || undefined}>
+        {!showCourseOverview &&
+          (showEmbeddedToolbar && activeTab ? (
+            <div className={floatingStyles.stickyToolbar}>
+              {showStandaloneHeader ? (
+                <GuideReaderToolbar
+                  activeTab={activeTab}
+                  content={content}
+                  surface="floating"
+                  hasInteractiveProgress={hasInteractiveProgress}
+                  progressKey={progressKey}
+                  onResetGuide={onResetGuide}
+                />
+              ) : (
+                journeyToolbar
+              )}
+              {showStandaloneProgress && <GuideProgressBar contentUrl={content.url} isCoverPage={isCoverPage} />}
             </div>
-          )
-        )}
-        <GuideVersionNotice
-          manifests={[activeTab?.packageInfo?.packageManifest, content?.metadata.packageManifest]}
-          guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
-          guideTitle={activeTab?.title}
-        />
-        <GuideLanguageSlot guideUrl={activeTab?.baseUrl || activeTab?.currentUrl} guideTitle={activeTab?.title} />
-        <TranslationNoticeSlot guideUrl={activeTab?.baseUrl || activeTab?.currentUrl} guideTitle={activeTab?.title} />
-        {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
-          <div style={{ padding: 16 }}>
-            <AlignmentPrompt
-              startingLocation={pendingAlignment.startingLocation}
-              onConfirm={onAlignmentConfirm}
-              onCancel={onAlignmentCancel}
-            />
-          </div>
-        )}
-        {/* Treatment arm of the interactive-learning banner experiment; renders null
+          ) : (
+            showStandaloneProgress && (
+              <div className={floatingStyles.stickyProgressBar}>
+                <GuideProgressBar contentUrl={content.url} isCoverPage={isCoverPage} />
+              </div>
+            )
+          ))}
+        <div className={showCourseOverview ? readerStyles.guideNotices : undefined}>
+          <GuideVersionNotice
+            manifests={[activeTab?.packageInfo?.packageManifest, content?.metadata.packageManifest]}
+            guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+            guideTitle={activeTab?.title}
+          />
+          <GuideLanguageSlot guideUrl={activeTab?.baseUrl || activeTab?.currentUrl} guideTitle={activeTab?.title} />
+          <TranslationNoticeSlot guideUrl={activeTab?.baseUrl || activeTab?.currentUrl} guideTitle={activeTab?.title} />
+          {pendingAlignment && onAlignmentConfirm && onAlignmentCancel && (
+            <div style={showCourseOverview ? undefined : { padding: 16 }}>
+              <AlignmentPrompt
+                bottomSpacing={showCourseOverview ? 0 : undefined}
+                startingLocation={pendingAlignment.startingLocation}
+                onConfirm={onAlignmentConfirm}
+                onCancel={onAlignmentCancel}
+              />
+            </div>
+          )}
+          {/* Treatment arm of the interactive-learning banner experiment; renders null
             otherwise. Covers floating and full-screen, neither of which has a
             context page to carry it. */}
-        <InteractiveLearningBanner placement="guide" />
+          <InteractiveLearningBanner placement="guide" />
+        </div>
 
         <ContentRenderer
           key={content.url}
           content={content}
-          fullPageOverview={fullPageOverview}
+          milestoneScrollReader={activeTab?.id}
+          fullPageOverview={fullPageOverview || showCourseOverview}
+          panelOverviewActions={showCourseOverview ? journeyToolbar || null : undefined}
+          showGeneratedTitle={showStandaloneHeader ? false : showGeneratedTitle}
           containerRef={contentRef}
           className={contentClassName}
           completion={{ kind: 'tracked', input: surfaceCompletionInput, onComplete: onGuideComplete }}
@@ -212,6 +254,9 @@ export function FloatingPanelContent({
           }
           initialActiveTrackId={activeTab?.activeTrackPathId === coverPathId ? activeTab?.activeTrackId : undefined}
         />
+        {showCourseOverview && onReturnToMyLearning && (
+          <ReturnToMyLearning courseOverview onReturn={onReturnToMyLearning} />
+        )}
       </div>
     </AlignmentPendingContext.Provider>
   );

@@ -8,17 +8,13 @@ export interface CalloutBlockProps {
   children?: React.ReactNode;
 }
 
-/**
- * Presentational callout — a labeled, colored box for calling out anything
- * the author wants to set apart. Reuses the visual language of the
- * `.admonition-*` classes in content-html.styles.ts (which style
- * externally-sourced docs HTML) under its own `.callout` class name.
- */
 export function CalloutBlock({ id, title, children }: CalloutBlockProps) {
   return (
-    <div className="callout" id={id} data-testid="callout-block">
-      <div className="callout-label">{title}</div>
-      {children}
+    <div className="callout" id={id} data-guide-admonition="neutral" data-testid="callout-block">
+      <div className="callout-content">
+        <div className="callout-label">{title}</div>
+        {children}
+      </div>
     </div>
   );
 }

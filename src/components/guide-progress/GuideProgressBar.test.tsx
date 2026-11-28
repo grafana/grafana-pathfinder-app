@@ -3,6 +3,11 @@ import { render, screen, act } from '@testing-library/react';
 
 import { GuideProgressBar } from './GuideProgressBar';
 
+jest.mock('../../hooks', () => ({
+  useDocumentStepProgressFromEvents: jest.requireActual('../../hooks/useStepProgressFromEvents')
+    .useDocumentStepProgressFromEvents,
+}));
+
 jest.mock('@grafana/ui', () => ({
   useStyles2: (fn: any) =>
     fn({
@@ -14,7 +19,7 @@ jest.mock('@grafana/ui', () => ({
       },
       spacing: (...n: number[]) => n.map((x) => `${x * 8}px`).join(' '),
       shape: { radius: { pill: '9999px' } },
-      typography: { bodySmall: { fontSize: '12px' } },
+      typography: { sm: { fontSize: '12px', lineHeight: 1.5 } },
     }),
 }));
 
@@ -25,6 +30,9 @@ jest.mock('@grafana/i18n', () => ({
 
 let mockAmbientKey: string | undefined;
 let mockCompletableBlockCount = 1;
+jest.mock('../../global-state/content-key', () => ({
+  getContentKey: () => mockAmbientKey ?? 'guide-a',
+}));
 jest.mock('../../global-state/guide-content-key', () => ({
   resolveGuideContentKey: (url: string | undefined) => mockAmbientKey ?? url ?? 'default',
 }));
@@ -54,6 +62,12 @@ jest.mock('../../global-state/completion-store', () => ({
     };
   },
 }));
+
+function emitStepProgress(completedCount: number, totalSteps: number) {
+  act(() => {
+    window.dispatchEvent(new CustomEvent('pathfinder-step-progress', { detail: { completedCount, totalSteps } }));
+  });
+}
 
 function setPercentage(p: number) {
   act(() => {
@@ -173,6 +187,35 @@ describe('GuideProgressBar', () => {
     expect(bar).toHaveAttribute('aria-valuemin', '0');
     expect(bar).toHaveAttribute('aria-valuemax', '100');
     expect(screen.getByText('40% complete')).toBeInTheDocument();
+  });
+
+  it('uses the completed steps for both label and fill in the toolbar', () => {
+    mockPercentage = 40;
+    render(<GuideProgressBar contentUrl="guide-a" inToolbar />);
+    expect(screen.getByText('40% complete')).toBeInTheDocument();
+
+    emitStepProgress(0, 5);
+    const bar = screen.getByRole('progressbar');
+    expect(bar).toHaveAttribute('aria-valuetext', '0 of 5 steps completed');
+    expect(bar).toHaveAttribute('aria-valuenow', '0');
+
+    emitStepProgress(1, 5);
+    expect(screen.getByText('1 of 5 steps completed')).toBeInTheDocument();
+    expect(bar).toHaveAttribute('aria-valuenow', '1');
+    expect(bar).toHaveAttribute('aria-valuemax', '5');
+    expect(bar.querySelector('[style*="width"]')).toHaveStyle({ width: '20%' });
+  });
+
+  it('uses the new guide’s percentage when its toolbar has no step count', () => {
+    const { rerender } = render(<GuideProgressBar contentUrl="guide-a" inToolbar />);
+    emitStepProgress(1, 5);
+    expect(screen.getByText('1 of 5 steps completed')).toBeInTheDocument();
+
+    mockAmbientKey = 'quiz-only';
+    mockPercentage = 45;
+    rerender(<GuideProgressBar contentUrl="quiz-only" inToolbar />);
+    expect(screen.getByText('45% complete')).toBeInTheDocument();
+    expect(screen.queryByText('1 of 5 steps completed')).not.toBeInTheDocument();
   });
 
   it('updates live when the store notifies a progress change', async () => {

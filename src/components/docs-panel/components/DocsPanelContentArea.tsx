@@ -2,7 +2,7 @@ import { usePathfinderPluginConfig } from '../../../hooks';
 import { useBooleanFlag } from '../../../utils/openfeature';
 import { openGuideInSidebar } from '../utils/open-prepared-guide';
 import React, { Suspense, lazy } from 'react';
-import { Button, Icon, IconButton } from '@grafana/ui';
+import { Icon, IconButton } from '@grafana/ui';
 import { t } from '@grafana/i18n';
 import { testIds } from '../../../constants/testIds';
 import type { LearningJourneyTab, PackageOpenInfo, ContextPanelState } from '../../../types/content-panel.types';
@@ -26,7 +26,8 @@ import {
   resolveActiveMilestoneSequence,
 } from '../../../docs-retrieval';
 import { ContentRenderer } from '../../content-renderer/content-renderer';
-import { GuideProgressBar } from '../../guide-progress';
+import { getMilestoneScrollKey } from '../../content-renderer/useMilestoneScroll';
+import { GuideReaderToolbar } from './GuideReaderToolbar';
 import { PathLessonProgressBar, usePathLessonProgress } from '../../LearningPaths/PathLessonProgressBar';
 import { GuideLanguageSlot, TranslationNoticeSlot } from '../../guide-language';
 import { InteractiveLearningBanner } from '../../InteractiveLearningBanner';
@@ -40,6 +41,7 @@ import { FullScreenModeNotice } from './FullScreenModeNotice';
 import { LoadingIndicator } from './LoadingIndicator';
 import { LearningJourneyMilestoneToolbar } from './LearningJourneyMilestoneToolbar';
 import { PanelModeActionButtons } from './PanelModeActionButtons';
+import { ReturnToMyLearning } from './ReturnToMyLearning';
 import type { SceneObject } from '@grafana/scenes';
 import type { DocsPanelModelOperations, OpenDocsOptions } from '../types';
 
@@ -225,7 +227,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
           return (
             <div className={styles.devToolsContent} data-testid="editor-tab-content">
               <Suspense fallback={<SkeletonLoader type="recommendations" />}>
-                <BlockEditor onGuideTitleChange={handleGuideTitleChange} />
+                <BlockEditor embedded onGuideTitleChange={handleGuideTitleChange} />
               </Suspense>
             </div>
           );
@@ -237,7 +239,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
 
         if (activeTab?.isLoading) {
           return (
-            <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
+            <div className={styles.readerContent}>
               {loadingPathContext && (
                 <div className={styles.milestoneProgress}>
                   <div className={styles.progressInfo}>
@@ -276,7 +278,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
         if (activeTab?.error && !activeTab.isLoading) {
           return (
             <ErrorDisplay
-              className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}
+              className={styles.readerContent}
               contentType={isDocsLikeTab(activeTab.type) ? 'documentation' : 'learning-journey'}
               error={activeTab.error}
               onRetry={() => reloadActiveTab(activeTab)}
@@ -285,10 +287,30 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
         }
 
         if (activeTab?.content && !activeTab.isLoading) {
+          const isCoverPage = stableContent ? isJourneyCoverPage(stableContent) : false;
+          const showCourseOverview =
+            isCoverPage && Boolean(stableContent?.metadata.learningJourney?.milestones?.length);
+          const standaloneGuide = stableContent && !pathContext && !isCoverPage ? stableContent : null;
+          const contentStyles = showCourseOverview
+            ? styles.panelCourseOverview
+            : stableContent?.type === 'learning-journey'
+              ? journeyStyles
+              : docsStyles;
           const isLearningJourneyTab = activeTab.type === 'learning-journey' || !isDocsLikeTab(activeTab.type);
+          const journeyToolbar = (
+            <LearningJourneyMilestoneToolbar
+              panel={model}
+              activeTab={activeTab}
+              surface="sidebar"
+              actionsOnly={showCourseOverview}
+              hasInteractiveProgress={hasInteractiveProgress}
+              progressKey={progressKey}
+              onResetGuide={handleResetGuide}
+            />
+          );
 
           return (
-            <div className={isDocsLikeTab(activeTab.type) ? styles.docsContent : styles.journeyContent}>
+            <div className={styles.readerContent}>
               {isWysiwygPreview && (
                 <div className={styles.returnToEditorBanner} data-testid={testIds.devTools.previewBanner}>
                   <div className={styles.returnToEditorLeft} data-testid={testIds.devTools.previewModeIndicator}>
@@ -305,7 +327,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </button>
                 </div>
               )}
-              {isLearningJourneyTab && !pathContext && (
+              {!showCourseOverview && !standaloneGuide && isLearningJourneyTab && !pathContext && (
                 <div className={styles.contentMeta}>
                   <div className={styles.metaInfo}>
                     <small>
@@ -318,7 +340,7 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </div>
                 </div>
               )}
-              {isDocsLikeTab(activeTab.type) && (
+              {!showCourseOverview && !standaloneGuide && isDocsLikeTab(activeTab.type) && (
                 <div className={styles.contentMeta}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
                     {(() => {
@@ -404,56 +426,60 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                   </div>
                 </div>
               )}
-              <LearningJourneyMilestoneToolbar
-                panel={model}
-                activeTab={activeTab}
-                surface="sidebar"
-                hasInteractiveProgress={hasInteractiveProgress}
-                progressKey={progressKey}
-                onResetGuide={handleResetGuide}
-              />
-              <div id="inner-docs-content" className={styles.innerDocsContent}>
-                {stableContent && !pathContext && (
-                  <GuideProgressBar contentUrl={stableContent.url} isCoverPage={isJourneyCoverPage(stableContent)} />
-                )}
+              {standaloneGuide ? (
+                <GuideReaderToolbar
+                  activeTab={activeTab}
+                  content={standaloneGuide}
+                  surface="sidebar"
+                  hasInteractiveProgress={hasInteractiveProgress}
+                  progressKey={progressKey}
+                  onResetGuide={handleResetGuide}
+                />
+              ) : (
+                !showCourseOverview && journeyToolbar
+              )}
+              <div id="inner-docs-content" className={styles.innerDocsContent} data-milestone-scroll-container>
                 {stableContent && surfaceCompletionInput && (
                   <AlignmentPendingContext.Provider value={alignmentPendingValue}>
-                    <GuideVersionNotice
-                      manifests={[activeTab?.packageInfo?.packageManifest, stableContent.metadata.packageManifest]}
-                      guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
-                      guideTitle={activeTab?.title}
-                    />
-                    <GuideLanguageSlot
-                      guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
-                      guideTitle={activeTab?.title}
-                    />
-                    <TranslationNoticeSlot
-                      guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
-                      guideTitle={activeTab?.title}
-                    />
-                    {activeTab?.pendingAlignment && (
-                      <AlignmentPrompt
-                        startingLocation={activeTab.pendingAlignment.startingLocation}
-                        onConfirm={() => {
-                          void model.confirmAlignment(activeTab.id);
-                        }}
-                        onCancel={() => {
-                          model.dismissAlignment(activeTab.id);
-                        }}
+                    <div className={styles.guideNotices}>
+                      <GuideVersionNotice
+                        manifests={[activeTab?.packageInfo?.packageManifest, stableContent.metadata.packageManifest]}
+                        guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+                        guideTitle={activeTab?.title}
                       />
-                    )}
-                    <InteractiveLearningBanner placement="guide" />
+                      <GuideLanguageSlot
+                        guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+                        guideTitle={activeTab?.title}
+                      />
+                      <TranslationNoticeSlot
+                        guideUrl={activeTab?.baseUrl || activeTab?.currentUrl}
+                        guideTitle={activeTab?.title}
+                      />
+                      {activeTab?.pendingAlignment && (
+                        <AlignmentPrompt
+                          bottomSpacing={0}
+                          startingLocation={activeTab.pendingAlignment.startingLocation}
+                          onConfirm={() => {
+                            void model.confirmAlignment(activeTab.id);
+                          }}
+                          onCancel={() => {
+                            model.dismissAlignment(activeTab.id);
+                          }}
+                        />
+                      )}
+                      <InteractiveLearningBanner placement="guide" />
+                    </div>
 
                     <ContentRenderer
                       key={activeTab?.currentUrl || stableContent.url}
                       content={stableContent}
+                      showGeneratedTitle={!standaloneGuide}
+                      fullPageOverview={showCourseOverview}
+                      panelOverviewActions={showCourseOverview ? journeyToolbar : undefined}
+                      milestoneScrollReader={activeTab.id}
                       containerRef={contentRef}
-                      className={`${
-                        stableContent.type === 'learning-journey' ? journeyStyles : docsStyles
-                      } ${interactiveStyles} ${prismStyles}`}
-                      onContentReady={() => {
-                        restoreScrollPosition();
-                      }}
+                      className={`${contentStyles} ${interactiveStyles} ${prismStyles}`}
+                      onContentReady={getMilestoneScrollKey(stableContent) ? undefined : restoreScrollPosition}
                       completion={{ kind: 'tracked', input: surfaceCompletionInput }}
                       completionPanelEnabled
                       onCompletionPanelVisibilityChange={handleCompletionPanelVisibilityChange}
@@ -477,23 +503,10 @@ export function DocsPanelContentArea(props: DocsPanelContentAreaProps): React.Re
                 )}
 
                 {!completionPanelVisible && (
-                  <div className={styles.contentFooterAction}>
-                    <Button
-                      variant="secondary"
-                      fill="text"
-                      icon="book-open"
-                      size="sm"
-                      onClick={() => {
-                        reportAppInteraction(UserInteraction.DocsPanelInteraction, {
-                          action: 'navigate_to_recommendations',
-                          source: 'content_footer',
-                        });
-                        model.setActiveTab(RECOMMENDATIONS_TAB_ID);
-                      }}
-                    >
-                      {t('docsPanel.returnToMyLearning', 'Return to my learning')}
-                    </Button>
-                  </div>
+                  <ReturnToMyLearning
+                    courseOverview={showCourseOverview}
+                    onReturn={() => model.setActiveTab(RECOMMENDATIONS_TAB_ID)}
+                  />
                 )}
               </div>
             </div>

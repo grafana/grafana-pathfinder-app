@@ -519,8 +519,8 @@ describe('InteractiveConditional', () => {
     });
 
     const passive = screen.getByText('Passive branch');
-    expect(getComputedStyle(passive).paddingTop).toBe('16px');
-    expect(getComputedStyle(passive).paddingLeft).toBe('calc(18px)');
+    expect(getComputedStyle(passive.closest('li')!).paddingInlineStart).toBe('40px');
+    expect(getComputedStyle(passive).paddingInlineStart).toBe('');
 
     checkRequirementsFromData.mockResolvedValue({ pass: true, requirements: '', error: [] });
     await act(async () => {
@@ -532,7 +532,7 @@ describe('InteractiveConditional', () => {
       expect(screen.getByText('Interactive branch')).toBeInTheDocument();
     });
     const interactive = screen.getByText('Interactive branch');
-    expect(getComputedStyle(interactive).paddingLeft).not.toBe('calc(18px)');
+    expect(getComputedStyle(interactive.closest('li')!).paddingInlineStart).toBe('40px');
   });
 
   it('aligns media branch children as passive content', async () => {
@@ -560,14 +560,14 @@ describe('InteractiveConditional', () => {
 
     const image = screen.getByRole('img', { name: 'Branch media' });
     expect(image).toHaveClass('section-numbering-plain');
-    expect(getComputedStyle(image).paddingLeft).toBe('calc(18px)');
+    expect(getComputedStyle(image.closest('li')!).paddingInlineStart).toBe('40px');
     expect(container.querySelectorAll('ol > li[data-numbered="true"]')).toHaveLength(1);
   });
 
   it.each([
-    ['passive before interactive', ['p', 'interactive-step'], true],
-    ['interactive before passive', ['interactive-step', 'p'], false],
-  ] as const)('aligns every child in a mixed branch: %s', async (_name, types, passiveIsFirst) => {
+    ['passive before interactive', ['p', 'interactive-step']],
+    ['interactive before passive', ['interactive-step', 'p']],
+  ] as const)('aligns every child in a mixed branch: %s', async (_name, types) => {
     render(
       <div className={getInteractiveStyles(createTheme())}>
         <ol className="interactive-section-content">
@@ -599,9 +599,9 @@ describe('InteractiveConditional', () => {
     const passive = screen.getByText('Mixed passive child');
     const interactive = screen.getByText('Interactive branch');
     expect(passive).toHaveClass('existing-class');
-    expect(getComputedStyle(passive).paddingLeft).toBe('calc(18px)');
-    expect(getComputedStyle(passive).paddingTop === '16px').toBe(passiveIsFirst);
-    expect(getComputedStyle(interactive).paddingLeft).not.toBe('calc(18px)');
+    expect(passive.closest('li')).toBe(interactive.closest('li'));
+    expect(getComputedStyle(passive).paddingInlineStart).toBe('');
+    expect(getComputedStyle(interactive.closest('li')!).paddingInlineStart).toBe('40px');
   });
 
   it('aligns a passive leaf through nested conditionals without compounding the offset', async () => {
@@ -621,8 +621,8 @@ describe('InteractiveConditional', () => {
 
     const passive = screen.getByText('Nested passive branch');
     expect(container.querySelectorAll('.interactive-conditional')).toHaveLength(3);
-    expect(getComputedStyle(passive).paddingTop).toBe('16px');
-    expect(getComputedStyle(passive).paddingLeft).toBe('calc(18px)');
+    expect(getComputedStyle(passive.closest('li')!).paddingInlineStart).toBe('40px');
+    expect(getComputedStyle(passive).paddingInlineStart).toBe('');
   });
 
   it('keeps section-display numbering separate from its outer position', async () => {

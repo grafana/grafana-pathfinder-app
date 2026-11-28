@@ -124,6 +124,7 @@ async function gotoLiveTab(page: Page): Promise<void> {
 }
 
 async function openController(liveTab: Page): Promise<Page> {
+  await liveTab.getByTestId(testIds.docsPanel.milestoneMoreActionsButton).click();
   const openButton = liveTab.getByTestId(testIds.docsPanel.openControllerTabButton);
   await expect(openButton).toBeVisible();
 

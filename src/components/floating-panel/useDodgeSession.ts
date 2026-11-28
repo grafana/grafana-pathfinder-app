@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { FloatingPanelEvents, type FloatingPanelMoveDetail } from '../../lib/event-names';
@@ -16,7 +16,10 @@ import {
  * ref, the deferred token-gated scroll write, and the dodge flash/analytics
  * timers.
  */
-export function useDodgeSession(setPosition: (x: number, y: number) => void): {
+export function useDodgeSession(
+  setPosition: (x: number, y: number) => void,
+  guideUrl?: string
+): {
   view: FloatingPanelView;
   isDodging: boolean;
   contentRef: React.RefObject<HTMLDivElement | null>;
@@ -28,6 +31,11 @@ export function useDodgeSession(setPosition: (x: number, y: number) => void): {
   const contentRef = useRef<HTMLDivElement>(null);
   const [isDodging, setIsDodging] = useState(false);
   const dodgeTimersRef = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+
+  useLayoutEffect(() => {
+    const session = sessionRef.current;
+    sessionRef.current = { ...session, savedScrollTop: null, restoreToken: session.restoreToken + 1 };
+  }, [guideUrl]);
 
   // Synchronous dispatch: handlers need the next state immediately (to know
   // whether a scroll write was scheduled and under which token), so the ref

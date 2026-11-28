@@ -15,6 +15,7 @@ import {
 jest.mock('../../lib/dom/selector-retry', () => ({ resolveWithRetry: jest.fn() }));
 
 jest.mock('@grafana/ui', () => ({
+  Icon: () => null,
   Button: ({ children, onClick, disabled, ...rest }: any) => (
     <button onClick={onClick} disabled={disabled} {...rest}>
       {children}

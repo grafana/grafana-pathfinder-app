@@ -5,7 +5,7 @@ import { CombinedLearningJourneyPanel } from '../docs-panel/docs-panel';
 import { consumePendingGuideOnMount, initializePanelTabsOnMount } from '../docs-panel/pendingGuideRouter';
 import { useContentReset, useAutoOpenListener, useAssistantPathfinderListener } from '../docs-panel/hooks';
 import { useKeyboardShortcuts } from '../docs-panel/keyboard-shortcuts.hook';
-import { isNonContentTab } from '../docs-panel/utils';
+import { isNonContentTab, RECOMMENDATIONS_TAB_ID } from '../docs-panel/utils';
 import { PathfinderFeatureProvider } from '../OpenFeatureProvider';
 import { useGuideProgressState, useAutoLaunchTutorial, useStepProgressFromEvents } from '../../hooks';
 import { panelModeManager, type PanelMode } from '../../global-state/panel-mode';
@@ -122,6 +122,7 @@ function FloatingPanelInner() {
   // Prevents the fallback from firing before the guide has loaded.
   const guideOpenInFlightRef = useRef(false);
   const initializationRef = useRef<Promise<boolean> | null>(null);
+  const dockingToSidebar = useRef(false);
 
   // Fire panel-mounted event so auto-launch and MCP flows work
   useEffect(() => {
@@ -201,19 +202,21 @@ function FloatingPanelInner() {
   const isEditorTab = activeTab?.type === 'editor';
   const content = activeTab?.content ?? null;
   const title = isEditorTab ? EDITOR_FLOATING_TITLE : activeTab?.title || 'Interactive learning';
-  // hasActiveGuide drives the dock pill pulse and step-progress polling. Chrome
-  // tabs (recommendations, Dev Tools, editor) are not guides.
   const hasActiveGuide = activeTab != null && !isNonContentTab(activeTab);
 
-  // Track interactive step progress via the `pathfinder-step-progress`
-  // event — shared subscription with FullScreenPanel via the hook.
   const stepProgress = useStepProgressFromEvents(hasActiveGuide);
 
   // After restoration completes, if there's no guide to show and none
   // is being loaded, fall back to sidebar mode. The editor tab counts as
   // valid floating content, so don't fall back when it's active.
   useEffect(() => {
-    if (restorationDone && !hasActiveGuide && !isEditorTab && !guideOpenInFlightRef.current) {
+    if (
+      restorationDone &&
+      !hasActiveGuide &&
+      !isEditorTab &&
+      !guideOpenInFlightRef.current &&
+      !dockingToSidebar.current
+    ) {
       panelModeManager.setMode('sidebar');
     }
   }, [restorationDone, hasActiveGuide, isEditorTab]);
@@ -242,6 +245,7 @@ function FloatingPanelInner() {
   // global-state/panel-mode.ts.
   const dockToSidebar = useCallback(
     async (persist: boolean) => {
+      dockingToSidebar.current = true;
       reportAppInteraction(UserInteraction.FloatingPanelDock, {
         guide_url: guideUrl || '',
         guide_title: title,
@@ -343,6 +347,11 @@ function FloatingPanelInner() {
     );
   }, [isEditorTab, guideUrl, title, activeTab?.id, activeTab?.type, activeTab?.packageInfo, panel]);
 
+  const handleReturnToMyLearning = () => {
+    panel.setActiveTab(RECOMMENDATIONS_TAB_ID);
+    void dockToSidebar(false);
+  };
+
   // Symmetric counterpart to the sidebar's `pathfinder-request-full-screen`
   // listener — lets surface-aware components (notably the BlockEditor toolbar)
   // ask floating to hand off to fullscreen without knowing about the panel
@@ -382,7 +391,7 @@ function FloatingPanelInner() {
     >
       {isEditorTab ? (
         <Suspense fallback={<SkeletonLoader type="documentation" />}>
-          <BlockEditor onGuideTitleChange={(newTitle) => panel.updateEditorTabTitle(newTitle)} />
+          <BlockEditor embedded onGuideTitleChange={(newTitle) => panel.updateEditorTabTitle(newTitle)} />
         </Suspense>
       ) : (
         <FloatingPanelContent
@@ -395,6 +404,7 @@ function FloatingPanelInner() {
           hasInteractiveProgress={hasInteractiveProgress}
           progressKey={progressKey}
           onResetGuide={handleResetGuide}
+          onReturnToMyLearning={handleReturnToMyLearning}
         />
       )}
     </FloatingPanel>

@@ -234,6 +234,20 @@ describe('LearningJourneyMilestoneToolbar', () => {
     renderToolbar({ activeTab: tab });
     expect(screen.getByText('0 of 3 completed')).toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Previous milestone')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Next milestone')).not.toBeInTheDocument();
+  });
+
+  it('keeps the sidebar menu when the overview owns the course title and progress', () => {
+    const tab = makeJourneyTab();
+    tab.content!.metadata.learningJourney!.currentMilestone = 0;
+    renderToolbar({ actionsOnly: true, activeTab: tab });
+
+    expect(screen.queryByLabelText('Previous milestone')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Next milestone')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('More actions')).toBeInTheDocument();
+    expect(screen.queryByText(tab.title)).not.toBeInTheDocument();
+    expect(screen.queryByText('0 of 3 completed')).not.toBeInTheDocument();
   });
 
   it('fires panel.navigateToPreviousMilestone on the back arrow', () => {
@@ -273,10 +287,11 @@ describe('LearningJourneyMilestoneToolbar', () => {
   });
 
   describe('kebab menu', () => {
-    it('hides the whole kebab in compact mode', () => {
-      renderToolbar({ compact: true, hasInteractiveProgress: true });
+    it('keeps the original learning-path controls in the popout', () => {
+      renderToolbar({ surface: 'floating', hasInteractiveProgress: true });
+      expect(screen.getByLabelText('Previous milestone')).toBeInTheDocument();
+      expect(screen.getByLabelText('Next milestone')).toBeInTheDocument();
       expect(screen.queryByLabelText('More actions')).not.toBeInTheDocument();
-      expect(screen.queryByLabelText('Reset guide')).not.toBeInTheDocument();
     });
 
     it('renders Open when an external URL is resolvable', () => {

@@ -129,7 +129,7 @@ describe('a section with an unmet objective after its steps are done', () => {
     renderGuide();
     await finishTheStep();
     await waitFor(() => expect(screen.getByTestId(testIds.interactive.completionWaiting(SECTION))).toBeInTheDocument());
-    expect(screen.queryByTestId(testIds.interactive.resetSectionButton(SECTION))).not.toBeInTheDocument();
+    expect(screen.getByTestId(testIds.interactive.resetSectionButton(SECTION))).toBeEnabled();
   });
 
   it.each([
@@ -139,9 +139,7 @@ describe('a section with an unmet objective after its steps are done', () => {
     switchOff();
     renderGuide();
     await finishTheStep();
-    await waitFor(() =>
-      expect(screen.getByTestId(testIds.interactive.resetSectionButton(SECTION))).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByTestId(testIds.interactive.section(SECTION))).toHaveClass('completed'));
     expect(screen.getByTestId(testIds.interactive.section(SECTION))).toHaveClass('completed');
     expect(screen.queryByTestId(testIds.interactive.completionWaiting(SECTION))).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /check completion/i })).not.toBeInTheDocument();

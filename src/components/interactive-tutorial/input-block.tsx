@@ -554,6 +554,7 @@ export function InputBlock({
   return (
     <div
       className={styles.container}
+      data-guide-component=""
       data-required-choice-unanswered={
         inputType === 'checkbox-group' && required && selection.length === 0 ? 'true' : undefined
       }

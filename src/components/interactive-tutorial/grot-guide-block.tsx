@@ -110,7 +110,7 @@ export const GrotGuideBlock: React.FC<GrotGuideBlockProps> = ({ welcome, screens
   const currentScreen = currentScreenId ? screenMap.get(currentScreenId) : null;
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} data-guide-component="">
       {currentScreenId === null ? (
         <WelcomeScreen welcome={welcome} sub={sub} subHtml={subHtml} onNavigate={navigateTo} styles={styles} />
       ) : currentScreen?.type === 'question' ? (

@@ -115,56 +115,43 @@ const getInteractiveSequenceStyles = (theme: GrafanaTheme2) => ({
 
 // Code block styles (can be shared with content styles)
 const getCodeBlockStyles = (theme: GrafanaTheme2) => ({
-  // Code block styles
   '.code-block': {
     margin: `${theme.spacing(2)} 0`,
-    backgroundColor: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
-    overflow: 'hidden',
+
+    '& > pre.code-block-pre': {
+      ...theme.typography.code,
+      fontSize: theme.typography.sm.fontSize,
+      margin: 0,
+      padding: theme.spacing(1.5, 1),
+      overflow: 'auto',
+      background: theme.colors.background.primary,
+      border: 0,
+      borderRadius: theme.shape.radius.md,
+      color: theme.colors.text.primary,
+
+      '& > code': {
+        background: 'transparent',
+        padding: 0,
+        font: 'inherit',
+        letterSpacing: 'inherit',
+        color: 'inherit',
+      },
+    },
   },
 
   '.code-block-header': {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: `${theme.spacing(1)} ${theme.spacing(1.5)}`,
-    backgroundColor: theme.colors.background.primary,
-    borderBottom: `1px solid ${theme.colors.border.weak}`,
-    minHeight: theme.spacing(4),
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+    gap: theme.spacing(1),
+    marginBottom: theme.spacing(0.5),
   },
 
   '.code-block-language': {
-    fontSize: theme.typography.bodySmall.fontSize,
-    fontWeight: theme.typography.fontWeightMedium,
+    marginInlineEnd: 'auto',
+    fontSize: theme.typography.sm.fontSize,
+    lineHeight: theme.typography.sm.lineHeight,
     color: theme.colors.text.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-  },
-
-  '.code-block-copy-btn': {
-    opacity: 0.7,
-    '&:hover': {
-      opacity: 1,
-    },
-  },
-
-  '.code-block-pre': {
-    margin: 0,
-    padding: theme.spacing(2),
-    overflow: 'auto',
-    backgroundColor: theme.colors.background.secondary,
-    fontSize: theme.typography.bodySmall.fontSize,
-    lineHeight: theme.typography.bodySmall.lineHeight,
-    fontFamily: theme.typography.fontFamilyMonospace,
-
-    code: {
-      backgroundColor: 'transparent',
-      padding: 0,
-      fontSize: 'inherit',
-      fontFamily: 'inherit',
-      color: theme.colors.text.primary,
-    },
   },
 
   // Inline code styles
@@ -197,80 +184,63 @@ const getCodeBlockStyles = (theme: GrafanaTheme2) => ({
   },
 });
 
+const visibleStepContent = ':not(.section-numbering-empty, .section-numbering-retained)';
+const visibleSectionItem = 'li:not(:empty, :has(> :is(.section-numbering-empty, .section-numbering-retained)))';
+const visibleNumberedSectionItem = `${visibleSectionItem}[data-numbered="true"]`;
+
+const getStepNoticeStyles = (theme: GrafanaTheme2, tone?: 'info' | 'warning') => {
+  const color = tone && theme.colors[tone];
+  const refresh = theme.flags.visualDesignRefresh;
+  const background = color ? (refresh ? color.subtleBackground : color.transparent) : theme.colors.background.primary;
+  const border = color ? (refresh ? color.subtleBorder : color.borderTransparent) : theme.colors.border.weak;
+  return {
+    ...theme.typography.sm,
+    padding: theme.spacing(1),
+    border: `1px solid ${border}`,
+    borderRadius: theme.shape.radius.md,
+    color: color ? (refresh ? color.textEmphasis : theme.colors.text.primary) : theme.colors.text.secondary,
+    backgroundColor: refresh || !color ? background : theme.colors.background.primary,
+    backgroundImage: !refresh && color ? `linear-gradient(${background}, ${background})` : undefined,
+    '--step-notice-icon': color ? color.text : theme.colors.text.secondary,
+  };
+};
+
 // Interactive component styles (sections and steps)
 const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // Interactive Section styles
   '.interactive-section': {
-    margin: `${theme.spacing(3)} 0`,
-    border: `1px solid ${theme.colors.border.weak}`,
-    borderRadius: theme.shape.radius.default,
+    margin: theme.spacing(3, 0),
+    borderRadius: theme.shape.radius.lg,
     backgroundColor: theme.colors.background.primary,
-    overflow: 'hidden',
-    transition: 'all 0.3s ease',
-    '&.completed': {
+    boxShadow: theme.shadows.z1,
+    '&.completed > .interactive-section-body': {
       borderColor: theme.colors.success.border,
-      backgroundColor: theme.colors.success.transparent,
-    },
-    '&.collapsed': {
-      marginBottom: theme.spacing(2),
     },
   },
 
   '.interactive-section-header': {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: theme.spacing(1),
-    padding: `${theme.spacing(1.5)} ${theme.spacing(2)}`,
-    backgroundColor: theme.colors.background.secondary,
-    borderBottom: `1px solid ${theme.colors.border.weak}`,
-    transition: 'border-bottom 0.3s ease',
-    '&.collapsed': {
-      borderBottom: 'none',
+    gap: theme.spacing(1.5),
+    '&:not(.journey-collapse-trigger)': {
+      padding: theme.spacing(2),
     },
-  },
-
-  '.interactive-section-toggle-button': {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: theme.colors.text.secondary,
-    fontSize: '14px',
-    lineHeight: 1,
-    transition: 'color 0.2s ease, transform 0.2s ease',
-    minWidth: '24px',
-    minHeight: '24px',
-    flexShrink: 0,
-    '&:hover': {
-      color: theme.colors.text.primary,
-      backgroundColor: theme.colors.action.hover,
+    '&.journey-collapse-trigger': {
+      borderRadius: theme.shape.radius.lg,
+      textAlign: 'start',
+      '&:focus-visible': {
+        outline: `2px solid ${theme.colors.accent?.main ?? theme.colors.primary.main}`,
+        outlineOffset: '-2px',
+      },
     },
-    '&:focus': {
-      outline: `2px solid ${theme.colors.accent?.main ?? theme.colors.primary.main}`,
-      outlineOffset: '2px',
-    },
-    '&:active': {
-      backgroundColor: theme.colors.action.selected,
-    },
-  },
-
-  '.interactive-section-toggle-icon': {
-    display: 'block',
-    transition: 'transform 0.2s ease',
-    pointerEvents: 'none', // Ensure clicks go through to button
-    fontSize: '14px',
-    lineHeight: 1,
   },
 
   '.interactive-section-title-container': {
     display: 'flex',
-    alignItems: 'center',
-    gap: theme.spacing(1),
+    flexDirection: 'column',
+    gap: theme.spacing(0.5),
     flex: 1,
+    minWidth: 0,
   },
 
   '.interactive-section-toggle': {
@@ -303,27 +273,22 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-section-title': {
-    margin: 0,
-    fontSize: theme.typography.body.fontSize,
+    ...theme.typography.base,
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.primary,
-    flex: 1,
+    overflowWrap: 'anywhere',
   },
 
   '.interactive-section-checkmark': {
-    color: theme.colors.success.main,
-    fontSize: '16px',
-    fontWeight: 'bold',
-    marginLeft: theme.spacing(1),
+    color: theme.colors.success.text,
+    flexShrink: 0,
   },
 
   '.interactive-section-hint': {
+    display: 'inline-flex',
     color: theme.colors.text.secondary,
-    fontSize: '14px',
     cursor: 'help',
-    '&:hover': {
-      color: theme.colors.text.primary,
-    },
+    flexShrink: 0,
   },
 
   // Interactive Conditional loading styles
@@ -359,101 +324,92 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     fontWeight: theme.typography.fontWeightMedium,
   },
 
-  // Conditionals that resolve empty before showing content do not consume a number.
-  '.interactive-section-content > li[data-numbered="true"]:empty': {
-    display: 'none',
-  },
-
-  // Keep nested conditionals mounted while their own listeners wait for
-  // content to become renderable, but do not count the empty wrapper yet.
-  '.interactive-section-content > li[data-numbered="true"]:has(> .section-numbering-empty)': {
-    display: 'none',
-  },
-
-  // Passive conditional children lack the horizontal padding supplied by step cards.
-  '.interactive-section-content > li[data-numbered="true"] .interactive-conditional > .section-numbering-plain': {
-    paddingLeft: `calc(${theme.spacing(2)} + 2px)`,
-
-    '&:first-child': {
-      paddingTop: theme.spacing(2),
-    },
-  },
-
   '.interactive-section-description': {
-    padding: `0 ${theme.spacing(2)} ${theme.spacing(1.5)}`,
+    ...theme.typography.base,
     color: theme.colors.text.secondary,
-    fontSize: theme.typography.bodySmall.fontSize,
   },
 
-  '.interactive-section-content': {
-    padding: theme.spacing(2),
-    opacity: 1,
-    maxHeight: '10000px',
-    overflow: 'hidden',
-    transition: 'opacity 0.3s ease, max-height 0.3s ease',
-    margin: 0,
-    listStyle: 'none', // Hide default markers since we use CSS counters
-    counterReset: 'step-counter', // Initialize counter
+  '.interactive-section-body': {
+    '--section-body-padding': `calc(${theme.spacing(2)} - 1px)`,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(2),
+    padding: 'var(--section-body-padding)',
+    backgroundColor: theme.colors.background.secondary,
+    border: `1px solid ${theme.colors.border.weak}`,
+    borderRadius: theme.shape.radius.lg,
+    '&[hidden]': { display: 'none' },
+  },
 
-    // Every direct child sits in a wrapper <li>. Only li[data-numbered="true"]
-    // participates in the sequential numbering; media render without a number.
+  'ol.interactive-section-content': {
+    padding: 0,
+    margin: 0,
+    listStyle: 'none',
+    counterReset: 'step-counter',
+
     '& > li': {
       listStyle: 'none',
+      margin: 0,
+      display: 'flow-root',
     },
-
+    '& > li:empty, & > li:has(> .section-numbering-empty)': {
+      display: 'none',
+    },
+    [`& > ${visibleSectionItem}:has(~ li > ${visibleStepContent})`]: {
+      paddingBlockEnd: theme.spacing(3),
+    },
     '& > li[data-numbered="true"]': {
       counterIncrement: 'step-counter',
       position: 'relative',
-      paddingLeft: theme.spacing(4), // Space for the number
-
-      // Add the step number using ::before pseudo-element
+    },
+    [`& > ${visibleNumberedSectionItem}`]: {
+      minBlockSize: theme.spacing(3),
+      paddingInlineStart: theme.spacing(5),
       '&::before': {
-        content: 'counter(step-counter) "."',
+        content: 'counter(step-counter)',
         position: 'absolute',
-        left: 0,
-        top: theme.spacing(2), // Aligns with the content start offset (see below)
-        color: theme.colors.text.secondary,
-        fontWeight: theme.typography.fontWeightMedium,
-        fontSize: theme.typography.body.fontSize,
+        insetInlineStart: 0,
+        insetBlockStart: 0,
+        display: 'grid',
+        placeItems: 'center',
+        boxSizing: 'border-box',
         width: theme.spacing(3),
-        textAlign: 'right',
+        height: theme.spacing(3),
+        border: `1px solid ${theme.colors.border.medium}`,
+        borderRadius: '50%',
+        backgroundColor: theme.colors.background.primary,
+        color: theme.colors.text.primary,
+        ...theme.typography.base,
+        lineHeight: 1,
+      },
+      '&:has(> .interactive-step.completed, > .interactive-conditional > .interactive-step.completed)::before': {
+        borderColor: theme.colors.success.border,
+        color: theme.colors.success.text,
       },
     },
-
-    // Interactive step components (InteractiveStep, InteractiveMultiStep, etc.)
-    // carry their own CSS margin-top of theme.spacing(2), which naturally
-    // positions the card 16px below the <li> top — matching the number's
-    // top: theme.spacing(2). They also wrap content in a card with
-    // padding: theme.spacing(2) (16px) and border: 2px solid transparent,
-    // which insets the title text 18px from the card's left edge.
-    // Their <li> therefore needs NO extra padding.
-    //
-    // Plain content blocks (markdown <p>, headings, etc.) have no built-in
-    // margin-top OR card chrome, so they'd start at (top: 0, left: 0 inside
-    // the li padding) while the step's title sits at
-    // (top: theme.spacing(2), left: theme.spacing(2) + 2px) inside the li.
-    // [data-step="false"] marks those <li> items; paddingTop pushes their
-    // content down to align with the number, paddingLeft pushes them right
-    // to align horizontally with the step title text.
-    //
-    // Verified at runtime (issue #841 alignment fix):
-    //   step  title.x = li.x + 32 (li padding) + 2 (step border) + 16 (step padding) = li.x + 50
-    //   plain title.x = li.x + 32 + 18 (extra padding) = li.x + 50  ✓
-    '& > li[data-numbered="true"][data-step="false"]': {
-      paddingTop: theme.spacing(2),
-      paddingLeft: `calc(${theme.spacing(4)} + ${theme.spacing(2)} + 2px)`,
-    },
-
-    // Once visible, a conditional keeps its counter slot so later steps do not renumber.
-    // This follows the base/data-step padding rules so its reset wins the cascade.
+    // A previously visible conditional still reserves its number while hidden.
     '& > li[data-numbered="true"]:has(> .section-numbering-retained)': {
       height: 0,
       overflow: 'hidden',
       padding: 0,
+    },
 
-      '&::before': {
-        display: 'none',
-      },
+    '& > li > :first-child, & > li > .interactive-conditional > :first-child': { marginBlockStart: 0 },
+    '& > li > :last-child, & > li > .interactive-conditional > :last-child': { marginBlockEnd: 0 },
+    '& > li > .interactive-step, & > li > .interactive-conditional .interactive-step': {
+      margin: 0,
+      padding: 0,
+      border: 0,
+      backgroundColor: 'transparent',
+      '&:is(.completed, .skipped, .executing)': { backgroundColor: 'transparent' },
+    },
+    '& .interactive-step-content': {
+      margin: 0,
+      '& > :first-child': { marginBlockStart: 0 },
+      '& > :last-child, & > :is(.markdown-block, .html-block):last-child > :last-child': { marginBlockEnd: 0 },
+    },
+    '& .interactive-step-actions:has(.interactive-step-action-buttons > *, .interactive-guided-completed)': {
+      marginBlockStart: theme.spacing(1),
     },
 
     // Step status styles
@@ -476,62 +432,51 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-section-requirement-explanation': {
-    color: theme.colors.text.secondary,
-    fontSize: '0.875rem',
-    margin: `${theme.spacing(2)} ${theme.spacing(2)} 0`,
-    padding: theme.spacing(1.5),
-    backgroundColor: theme.colors.warning.transparent,
-    border: `1px solid ${theme.colors.warning.border}`,
-    borderRadius: theme.shape.radius.default,
-    fontStyle: 'italic',
-    lineHeight: '1.4',
+    ...getStepNoticeStyles(theme, 'warning'),
+    margin: theme.spacing(2, 2, 0),
   },
 
-  // Section requirements banner (shown when section-level requirements are not met)
-  // Styled to match individual step requirements (interactive-guided-requirement-box)
+  '.interactive-notice-icon': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: theme.spacing(3),
+    height: theme.spacing(3),
+    flexShrink: 0,
+    borderRadius: theme.shape.radius.sm,
+    color: 'var(--step-notice-icon)',
+    backgroundColor: 'color-mix(in srgb, var(--step-notice-icon) 8%, transparent)',
+  },
+
   '.interactive-section-requirements-banner': {
+    ...getStepNoticeStyles(theme, 'warning'),
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
-    margin: `${theme.spacing(1.5)} ${theme.spacing(2)} 0`,
-    padding: '10px 12px',
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: theme.shape.radius.lg,
-    fontSize: '0.875rem',
-    lineHeight: '1.5',
-    color: theme.colors.text.secondary,
+    '& > .interactive-step-requirement-buttons': { margin: 0 },
   },
 
-  '.interactive-section-requirements-content': {
+  '.interactive-section-requirements-content, .interactive-section-alignment-banner': {
     display: 'flex',
     alignItems: 'flex-start',
-    gap: '8px',
+    gap: theme.spacing(1),
   },
 
-  '.interactive-section-requirements-icon': {
-    color: theme.colors.text.secondary,
-    fontSize: '1rem',
-    lineHeight: 1.4,
-    flexShrink: 0,
+  '.interactive-section-requirements-message, .interactive-section-alignment-message': {
+    paddingBlock: theme.spacing(0.25),
+    minWidth: 0,
   },
 
-  '.interactive-section-requirements-message': {
-    color: theme.colors.text.secondary,
-    fontSize: '0.875rem',
-    lineHeight: 1.4,
-  },
-
-  '.interactive-section-recovery': {
+  '.interactive-section-recovery, .interactive-completion-waiting': {
+    ...getStepNoticeStyles(theme, 'info'),
     display: 'flex',
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: theme.spacing(1),
-    margin: `${theme.spacing(1)} ${theme.spacing(2)} 0`,
-    padding: theme.spacing(1),
-    background: theme.colors.info.transparent,
-    borderRadius: theme.shape.radius.default,
-    fontSize: theme.typography.bodySmall.fontSize,
+  },
+
+  '.interactive-step-content > .interactive-completion-waiting': {
+    marginBlock: theme.spacing(1),
   },
 
   '.interactive-section-recovery-label': {
@@ -543,23 +488,8 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
       display: 'none',
     },
 
-  // Alignment paused banner (implied 0th step) — info-blue to match the top
-  // AlignmentPrompt (which uses Alert severity="info"), no icon, with link
-  // back to the top prompt. Distinct from the generic requirements banner
-  // because the paused state is recoverable via the prompt above.
   '.interactive-section-alignment-banner': {
-    margin: `${theme.spacing(1.5)} ${theme.spacing(2)} 0`,
-    padding: '8px 12px',
-    background: theme.colors.info.transparent,
-    border: `1px solid ${theme.colors.info.border}`,
-    borderLeft: `3px solid ${theme.colors.info.main}`,
-    borderRadius: '4px',
-  },
-
-  '.interactive-section-alignment-message': {
-    color: theme.colors.info.text,
-    fontSize: '0.875rem',
-    lineHeight: 1.4,
+    ...getStepNoticeStyles(theme, 'info'),
   },
 
   '.interactive-section-alignment-link': {
@@ -567,7 +497,7 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     border: 'none',
     padding: 0,
     margin: 0,
-    color: theme.colors.info.text,
+    color: 'inherit',
     fontSize: 'inherit',
     fontFamily: 'inherit',
     fontWeight: theme.typography.fontWeightMedium,
@@ -584,29 +514,26 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-section-actions': {
-    padding: theme.spacing(2),
-    borderTop: `1px solid ${theme.colors.border.weak}`,
-    backgroundColor: theme.colors.background.canvas,
     display: 'flex',
-    justifyContent: 'center',
-    transition: 'padding 0.3s ease',
-    '&.collapsed': {
-      padding: `${theme.spacing(1)} ${theme.spacing(2)}`,
-      justifyContent: 'flex-end',
-    },
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    marginBlockStart: theme.spacing(1),
+    paddingBlockStart: 'var(--section-body-padding)',
+    borderBlockStart: `1px solid ${theme.colors.border.weak}`,
+    '& > :is(.interactive-guided-executing, .interactive-completion-waiting)': { margin: 0 },
   },
 
-  '.interactive-section-do-button': {
-    fontWeight: theme.typography.fontWeightMedium,
-
-    '&:disabled': {
-      opacity: 0.6,
-      cursor: 'not-allowed',
-    },
+  '.interactive-section-buttons': {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    '& > .interactive-section-do-button': { marginInlineStart: 'auto' },
   },
 
-  '.interactive-section-reset-button': {
+  '.interactive-section-do-button, .interactive-section-reset-button': {
     fontWeight: theme.typography.fontWeightMedium,
+
     '&:disabled': {
       opacity: 0.6,
       cursor: 'not-allowed',
@@ -633,19 +560,30 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
     },
   },
 
+  '.interactive-step.interactive-code-block-step': {
+    padding: 0,
+    backgroundColor: 'transparent',
+    border: 0,
+    boxShadow: 'none',
+
+    '&.executing > .code-block > .code-block-pre': {
+      boxShadow: `inset 0 0 0 1px ${theme.colors.success.main}`,
+    },
+  },
+
   '.interactive-step-content': {
     marginBottom: theme.spacing(1.5),
   },
 
   '.interactive-step-title': {
-    fontSize: theme.typography.body.fontSize,
+    fontSize: theme.typography.base.fontSize,
     fontWeight: theme.typography.fontWeightMedium,
     color: theme.colors.text.primary,
     marginBottom: theme.spacing(0.5),
   },
 
   '.interactive-step-description': {
-    fontSize: theme.typography.bodySmall.fontSize,
+    fontSize: theme.typography.sm.fontSize,
     color: theme.colors.text.secondary,
     marginBottom: theme.spacing(1),
   },
@@ -658,16 +596,17 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   '.interactive-step-action-buttons': {
     display: 'flex',
+    flexWrap: 'wrap',
     gap: theme.spacing(1),
     alignItems: 'center',
   },
 
   '.interactive-step-show-btn': {
-    fontSize: theme.typography.bodySmall.fontSize,
+    fontSize: theme.typography.sm.fontSize,
   },
 
   '.interactive-step-do-btn': {
-    fontSize: theme.typography.bodySmall.fontSize,
+    fontSize: theme.typography.sm.fontSize,
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -675,24 +614,17 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // ═══════════════════════════════════════════════════════════════════════════
 
   '.interactive-step-requirement-explanation': {
-    marginTop: '12px',
-    padding: '10px 12px',
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: theme.shape.radius.lg,
-    fontSize: '0.875rem',
-    lineHeight: '1.5',
-    color: theme.colors.text.secondary,
+    ...getStepNoticeStyles(theme),
+    display: 'grid',
+    gridTemplateColumns: 'auto minmax(0, 1fr)',
+    alignItems: 'start',
+    gap: theme.spacing(0.5, 1),
     position: 'relative',
-    // Add footprints icon via ::before with inline layout
-    '&::before': {
-      content: '"👣"',
-      marginRight: '8px',
-      fontSize: '0.9rem',
-    },
-    '&.rechecking': {
-      opacity: 0.85,
-    },
+    marginBlockStart: theme.spacing(1),
+    '& > :not(.interactive-notice-icon)': { gridColumn: 2 },
+    '& > :nth-child(2)': { paddingBlock: theme.spacing(0.25) },
+    '& > .interactive-step-requirement-buttons': { margin: 0 },
+    '&.rechecking': { opacity: 0.85 },
   },
 
   '.interactive-requirement-spinner': {
@@ -728,6 +660,8 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   '.interactive-step-requirement-buttons': {
     display: 'flex',
+    flexWrap: 'wrap',
+    '&:empty': { display: 'none' },
     gap: theme.spacing(1),
     marginTop: theme.spacing(1),
     width: '100%',
@@ -772,24 +706,11 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // ═══════════════════════════════════════════════════════════════════════════
 
   '.interactive-step-execution-error': {
-    marginTop: '12px',
-    padding: '10px 12px',
-    background: theme.colors.warning.transparent,
-    border: `1px solid ${theme.colors.warning.border}`,
-    borderRadius: '6px',
-    fontSize: '0.875rem',
-    lineHeight: '1.4',
-    color: theme.colors.warning.text,
+    ...getStepNoticeStyles(theme, 'warning'),
     display: 'flex',
-    alignItems: 'flex-start',
-    gap: '8px',
-    flexWrap: 'wrap',
-    // Add warning icon via ::before
-    '&::before': {
-      content: '"⚠"',
-      fontSize: '1rem',
-      flexShrink: 0,
-    },
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    marginBlockStart: theme.spacing(1),
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -798,24 +719,12 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   // ═══════════════════════════════════════════════════════════════════════════
 
   '.interactive-step-lazy-error': {
-    marginTop: '12px',
-    padding: '10px 12px',
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: '6px',
-    fontSize: '0.875rem',
-    lineHeight: '1.5',
-    color: theme.colors.text.secondary,
-    // Add scroll icon via ::before with inline layout
-    '&::before': {
-      content: '"↕"',
-      marginRight: '8px',
-      fontSize: '0.9rem',
-    },
-  },
-
-  '.interactive-lazy-error-text': {
-    display: 'inline',
+    ...getStepNoticeStyles(theme),
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+    marginBlockStart: theme.spacing(1),
   },
 
   '.interactive-lazy-retry-btn': {
@@ -845,17 +754,11 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   // Form checking indicator (shown during 2s debounce)
   '.interactive-step-form-checking': {
-    marginTop: '12px',
-    padding: '10px 12px',
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: '6px',
-    fontSize: '0.875rem',
-    lineHeight: '1.5',
-    color: theme.colors.text.secondary,
+    ...getStepNoticeStyles(theme, 'info'),
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: theme.spacing(1),
+    marginBlockStart: theme.spacing(1),
   },
 
   '.interactive-form-spinner': {
@@ -870,23 +773,11 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
 
   // Form validation hint warning (shown when regex pattern doesn't match)
   '.interactive-step-form-hint-warning': {
-    marginTop: '12px',
-    padding: '10px 12px',
-    background: theme.colors.warning.transparent,
-    border: `1px solid ${theme.colors.warning.border}`,
-    borderRadius: '6px',
-    fontSize: '0.875rem',
-    lineHeight: '1.4',
-    color: theme.colors.warning.text,
+    ...getStepNoticeStyles(theme, 'warning'),
     display: 'flex',
-    alignItems: 'flex-start',
-    gap: '8px',
-  },
-
-  '.interactive-form-warning-icon': {
-    fontSize: '1rem',
-    flexShrink: 0,
-    color: theme.colors.warning.main,
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    marginBlockStart: theme.spacing(1),
   },
 
   '.interactive-form-hint-text': {
@@ -950,28 +841,12 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-guided-requirement-box': {
+    ...getStepNoticeStyles(theme),
     display: 'flex',
-    alignItems: 'flex-start',
-    gap: '8px',
-    padding: '10px 12px',
-    background: theme.colors.background.secondary,
-    border: `1px solid ${theme.colors.border.medium}`,
-    borderRadius: theme.shape.radius.lg,
-    marginBottom: '10px',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    marginBlockEnd: theme.spacing(1),
     position: 'relative',
-  },
-
-  '.interactive-guided-requirement-icon': {
-    color: theme.colors.text.secondary,
-    fontSize: '1rem',
-    lineHeight: 1.4,
-    flexShrink: 0,
-  },
-
-  '.interactive-guided-requirement-text': {
-    color: theme.colors.text.secondary,
-    fontSize: '0.875rem',
-    lineHeight: 1.4,
   },
 
   '.interactive-guided-fix-btn': {
@@ -1111,28 +986,11 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-guided-error-box': {
+    ...getStepNoticeStyles(theme, 'warning'),
     display: 'flex',
     alignItems: 'flex-start',
-    gap: '10px',
-    padding: '12px 14px',
-    background: theme.colors.warning.transparent,
-    border: `1px solid ${theme.colors.warning.border}`,
-    borderRadius: '6px',
-    marginBottom: '12px',
-  },
-
-  '.interactive-guided-error-icon': {
-    width: '20px',
-    height: '20px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: theme.colors.warning.main,
-    color: theme.colors.warning.contrastText,
-    borderRadius: '50%',
-    fontSize: '0.75rem',
-    fontWeight: 'bold',
-    flexShrink: 0,
+    gap: theme.spacing(1),
+    marginBlockEnd: theme.spacing(1),
   },
 
   '.interactive-guided-error-content': {
@@ -1142,14 +1000,11 @@ const getInteractiveComponentStyles = (theme: GrafanaTheme2) => ({
   },
 
   '.interactive-guided-error-title': {
-    color: theme.colors.warning.text,
-    fontSize: '0.9rem',
-    fontWeight: 600,
+    fontWeight: theme.typography.fontWeightMedium,
   },
 
   '.interactive-guided-error-detail': {
-    color: theme.colors.text.secondary,
-    fontSize: '0.8rem',
+    overflowWrap: 'anywhere',
   },
 
   '.interactive-guided-error-actions': {

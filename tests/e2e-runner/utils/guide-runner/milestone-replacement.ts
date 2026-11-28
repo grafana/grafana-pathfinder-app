@@ -382,6 +382,12 @@ async function resetInteractiveProgress(page: Page): Promise<void> {
   const resetButton = legacyResetGuideControl(page);
   await armProgressResetProbe(page);
   try {
+    if (!(await resetButton.isVisible())) {
+      const actions = page.getByTestId(testIds.docsPanel.milestoneMoreActionsButton);
+      if (await actions.isVisible()) {
+        await actions.click();
+      }
+    }
     await resetButton.click({ timeout: REPLACEMENT_TIMEOUT_MS });
     await page.waitForFunction(
       (contentKey) =>

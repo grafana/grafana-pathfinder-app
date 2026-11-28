@@ -550,17 +550,8 @@ export const getTabStyles = (theme: GrafanaTheme2) => ({
 });
 
 export const getContentStyles = (theme: GrafanaTheme2) => ({
-  journeyContent: css({
+  readerContent: css({
     backgroundColor: theme.colors.background.page,
-    border: 'none',
-    overflow: 'auto',
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-  }),
-  docsContent: css({
-    backgroundColor: theme.colors.background.page,
-    border: `1px solid ${theme.colors.border.weak}`,
     overflow: 'auto',
     flex: 1,
     display: 'flex',
@@ -572,6 +563,23 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
     minHeight: 0,
     '& > [data-guide-content-root]': {
       paddingTop: theme.spacing(4),
+    },
+  }),
+  panelCourseOverview: css({
+    paddingInline: getGuideContentPadding(theme),
+    '&&': { paddingTop: 0 },
+  }),
+  guideNotices: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(2),
+    paddingBlockStart: theme.spacing(2),
+    paddingInline: getGuideContentPadding(theme),
+    '&:empty': {
+      display: 'none',
+    },
+    '&:not(:empty) + [data-guide-content-root]': {
+      paddingTop: theme.spacing(2),
     },
   }),
   // Dev Tools panel has its own internal layout - just provide scrolling container
@@ -686,6 +694,7 @@ export const getContentStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(2),
     textAlign: 'center' as const,
   }),
+  courseOverviewFooter: css({ paddingBlockStart: theme.spacing(4) }),
   // Return to Editor Banner - shown for WYSIWYG preview tabs
   returnToEditorBanner: css({
     padding: theme.spacing(1, 2),

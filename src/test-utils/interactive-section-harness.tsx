@@ -457,6 +457,7 @@ export function createGrafanaUiMock() {
   return {
     Button: ({ children, onClick, disabled, ...rest }: any) =>
       React.createElement('button', { onClick, disabled, ...rest }, children),
+    Icon: () => null,
     createLogger: () => ({ logger: jest.fn() }),
     attachDebugger: jest.fn(),
   };

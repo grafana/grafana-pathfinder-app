@@ -201,9 +201,14 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
     await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toHaveTextContent('2 steps'));
     act(() => screen.getByTestId('harness-complete-enter-query').click());
     await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toHaveTextContent('1 step'));
-    expect(screen.queryByTestId(resetBtn(SECTION_ID))).not.toBeInTheDocument();
+    const reset = screen.getByTestId(resetBtn(SECTION_ID));
+    expect(reset).toBeEnabled();
+    act(() => reset.click());
+    await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toHaveTextContent('2 steps'));
+
+    act(() => screen.getByTestId('harness-complete-enter-query').click());
     act(() => screen.getByTestId('harness-complete-run-query').click());
-    await waitFor(() => expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId(testIds.interactive.section(SECTION_ID))).toHaveClass('completed'));
     act(() => screen.getByTestId('harness-redo-enter-query').click());
     await waitFor(() => expect(screen.getByTestId(doSectionBtn(SECTION_ID))).toHaveTextContent('2 steps'));
   });
@@ -222,7 +227,7 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
       screen.getByTestId(doSectionBtn(SECTION_ID)).click();
     });
 
-    await waitFor(() => expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId(testIds.interactive.section(SECTION_ID))).toHaveClass('completed'));
     expect(executeInteractiveActionCalls).toHaveLength(0);
   });
 
@@ -249,8 +254,11 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
           screen.getByTestId(doSectionBtn(SECTION_ID)).click();
         });
 
-        // After execution completes, the Reset button surfaces (section is done).
-        await waitFor(() => expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeInTheDocument(), { timeout: 3000 });
+        // The runner finishes all steps before recording section completion.
+        await waitFor(
+          () => expect(screen.getByTestId(testIds.interactive.section(SECTION_ID))).toHaveClass('completed'),
+          { timeout: 3000 }
+        );
 
         // pathfinder:progress (kind: section, completed: true) must fire exactly once.
         const sectionCompletions = events.filter(
@@ -290,7 +298,7 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
       act(() => {
         screen.getByTestId(doSectionBtn(SECTION_ID)).click();
       });
-      await waitFor(() => expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId(testIds.interactive.section(SECTION_ID))).toHaveClass('completed'));
 
       const { withFaroUserAction } = require('../../lib/faro');
       const sectionRunCall = withFaroUserAction.mock.calls.find(
@@ -475,7 +483,7 @@ describe('handleDoSection — Phase 0 tripwire (Tier C gate)', () => {
       // deterministically observable here — this is the gate-criterion
       // signal: Tier C should NOT proceed until a proper DI seam allows
       // mid-loop suspension. See `it.todo` below.
-      await waitFor(() => expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId(testIds.interactive.section(SECTION_ID))).toHaveClass('completed'));
     });
 
     it.todo('cancel mid-step interrupts execution before next-step requirements check (needs DI seam)');
@@ -521,7 +529,8 @@ it('does not skip or complete a skippable step when lazy discovery is cancelled'
   await waitFor(() => expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument());
   expect(mockMarkSkipped).not.toHaveBeenCalled();
   expect(executeInteractiveActionCalls).toHaveLength(0);
-  expect(screen.queryByTestId(resetBtn(SECTION_ID))).not.toBeInTheDocument();
+  expect(screen.getByTestId(testIds.interactive.section(SECTION_ID))).not.toHaveClass('completed');
+  expect(screen.getByTestId(resetBtn(SECTION_ID))).toBeEnabled();
 });
 
 describe('Do section auto-skip reports step_skipped', () => {

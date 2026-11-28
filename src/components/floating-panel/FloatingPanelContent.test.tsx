@@ -21,6 +21,8 @@ import { FloatingPanelContent } from './FloatingPanelContent';
 jest.mock('../../docs-retrieval', () => ({
   resolveActiveMilestoneSequence: jest.requireActual('../../docs-retrieval/active-milestone-sequence')
     .resolveActiveMilestoneSequence,
+  resolveActiveMilestoneToolbarContext: jest.requireActual('../../docs-retrieval/active-milestone-sequence')
+    .resolveActiveMilestoneToolbarContext,
   isJourneyCoverPage: () => false,
 }));
 
@@ -59,6 +61,8 @@ jest.mock('../content-renderer/content-renderer', () => ({
 
 jest.mock('../../hooks', () => ({
   usePublishSurfaceContentKey: jest.fn(),
+  useDocumentStepProgressFromEvents: () => undefined,
+  usePathfinderPluginConfig: () => ({ config: {} }),
 }));
 
 jest.mock('../docs-panel/link-handler.hook', () => ({

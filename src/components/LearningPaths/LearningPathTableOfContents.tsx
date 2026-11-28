@@ -6,9 +6,10 @@ import { catalogTopic } from '../../lib/catalog-discovery';
 import { prefixRoute } from '../../utils/utils.routing';
 import { ROUTES } from '../../constants';
 import React, { useEffect, useId, useState, useSyncExternalStore } from 'react';
-import { useStyles2, Icon, TabsBar, Tab, Button, Badge, Combobox, InlineLabel, Link } from '@grafana/ui';
+import { useStyles2, Icon, TabsBar, Tab, Button, Badge, Combobox, InlineLabel } from '@grafana/ui';
 import { css, cx } from '@emotion/css';
-import type { GrafanaTheme2 } from '@grafana/data';
+import { locationUtil, type GrafanaTheme2 } from '@grafana/data';
+import { locationService } from '@grafana/runtime';
 import { t } from '@grafana/i18n';
 
 import type { CoverPageTrack, Milestone } from '../../types/content.types';
@@ -35,6 +36,7 @@ const FOUNDATIONS_TAB_ID = FOUNDATIONS_TRACK_ID;
 
 export interface LearningPathTableOfContentsProps {
   fullPage?: boolean;
+  panelActions?: React.ReactNode;
   category?: string;
   organization?: boolean;
   estimatedMinutes?: number;
@@ -77,6 +79,7 @@ export interface LearningPathTableOfContentsProps {
 
 export function LearningPathTableOfContents({
   fullPage = false,
+  panelActions,
   category,
   organization = false,
   estimatedMinutes,
@@ -94,11 +97,13 @@ export function LearningPathTableOfContents({
   const fullPageStyles = useStyles2(getFullPageStyles);
   const trackControlId = useId();
   const styles = fullPage ? { ...compactStyles, ...fullPageStyles } : compactStyles;
+  const isPanelOverview = panelActions !== undefined;
   const badge = !fullPage && pathId ? getBadgeForPath(pathId) : undefined;
   const topicId = catalogTopic({ id: pathId ?? '', title: title ?? '', category });
   const topic = getLearningTopicMetadata(topicId, 'path');
   const showTopic = fullPage && topicId !== 'uncategorized' && topicId !== 'other' && topic.label;
-  const previewId = fullPage && !organization ? (pathId ?? findPathByUrl(baseUrl)?.id) : undefined;
+  const curatedPath = fullPage && !organization ? findPathByUrl(baseUrl) : undefined;
+  const previewId = fullPage && !isPanelOverview && !organization ? (pathId ?? curatedPath?.id) : undefined;
 
   const hasTracks = tracks !== undefined && tracks.length > 0;
   const [activeTabId, setActiveTabId] = useState<string>(() =>
@@ -210,16 +215,29 @@ export function LearningPathTableOfContents({
   const ctaTarget = cursor >= 0 ? activeMilestones[cursor] : undefined;
   const ctaLabel = progress === 0 ? t('coverPage.getStarted', 'Get started') : t('coverPage.resume', 'Resume');
 
-  const totalEstimatedMinutes =
-    activeMilestones.length > 0 && activeMilestones.every((m) => typeof m.estimatedMinutes === 'number')
-      ? activeMilestones.reduce((sum, m) => sum + m.estimatedMinutes!, 0)
-      : fullPage &&
-          activeTabId === FOUNDATIONS_TAB_ID &&
-          typeof estimatedMinutes === 'number' &&
-          Number.isFinite(estimatedMinutes) &&
-          estimatedMinutes > 0
-        ? estimatedMinutes
-        : undefined;
+  const courseEstimate = curatedPath?.estimatedMinutes ?? estimatedMinutes;
+  const showCourseEstimate =
+    fullPage &&
+    !activeTrack &&
+    typeof courseEstimate === 'number' &&
+    Number.isFinite(courseEstimate) &&
+    courseEstimate > 0;
+  const allModulesHaveEstimates =
+    activeMilestones.length > 0 &&
+    activeMilestones.every(
+      ({ estimatedMinutes: minutes }) => typeof minutes === 'number' && Number.isFinite(minutes) && minutes > 0
+    );
+  const totalEstimatedMinutes = showCourseEstimate
+    ? courseEstimate
+    : allModulesHaveEstimates
+      ? activeMilestones.reduce((sum, milestone) => sum + milestone.estimatedMinutes!, 0)
+      : undefined;
+  const durationLabel =
+    totalEstimatedMinutes == null
+      ? null
+      : totalEstimatedMinutes < 60
+        ? t('coverPage.totalMinutes', '{{count}} min', { count: totalEstimatedMinutes })
+        : t('coverPage.totalHours', '~{{count}} hr', { count: Math.round(totalEstimatedMinutes / 60) });
 
   const ctaProps = {
     'data-journey-start': 'true',
@@ -229,45 +247,80 @@ export function LearningPathTableOfContents({
     'data-testid': testIds.learningPaths.tableOfContentsCta,
   };
 
+  const topicRoute = `${prefixRoute(ROUTES.Browse)}?${new URLSearchParams({ topic: topicId })}`;
+
   const heroContent = (
     <>
       {fullPage ? (
         <div className={fullPageStyles.heroHeading}>
-          {showTopic && (
-            <Link
-              href={`${prefixRoute(ROUTES.Browse)}?${new URLSearchParams({ topic: topicId })}`}
-              className={fullPageStyles.eyebrow}
-            >
-              <Icon name={topic.icon} size="sm" />
-              {topic.label}
-            </Link>
+          {(showTopic || durationLabel) && (
+            <div className={fullPageStyles.eyebrow}>
+              {showTopic && (
+                <a
+                  href={locationUtil.assureBaseUrl(topicRoute)}
+                  className={fullPageStyles.topicLink}
+                  onClick={(event) => {
+                    if (
+                      event.defaultPrevented ||
+                      event.button !== 0 ||
+                      event.altKey ||
+                      event.ctrlKey ||
+                      event.metaKey ||
+                      event.shiftKey
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    locationService.push(topicRoute);
+                  }}
+                >
+                  <Icon name={topic.icon} size="sm" />
+                  {topic.label}
+                </a>
+              )}
+              {durationLabel && (
+                <span className={fullPageStyles.eyebrowDuration}>
+                  {showTopic && <span aria-hidden="true">·</span>}
+                  {durationLabel}
+                </span>
+              )}
+            </div>
           )}
-          <div className={fullPageStyles.titleRow}>
-            {title && <h1 className={styles.heroTitle}>{title}</h1>}
-            {organization && <Badge color="darkgrey" text={t('learningCard.organization', 'Your organization')} />}
+          <div className={isPanelOverview ? fullPageStyles.panelTitleActions : undefined}>
+            <div className={fullPageStyles.titleRow}>
+              {title && <h1 className={cx(styles.heroTitle, isPanelOverview && fullPageStyles.panelTitle)}>{title}</h1>}
+              {organization && <Badge color="darkgrey" text={t('learningCard.organization', 'Your organization')} />}
+            </div>
+            {panelActions}
           </div>
         </div>
       ) : (
         title && <h1 className={styles.heroTitle}>{title}</h1>
       )}
-      {description && <p className={styles.heroDescription}>{description}</p>}
-      {(!fullPage || totalEstimatedMinutes != null) && (
+      {description && (
+        <p
+          className={cx(
+            styles.heroDescription,
+            isPanelOverview && fullPageStyles.panelDescription,
+            isPanelOverview && hasTracks && fullPageStyles.panelDescriptionWithTracks
+          )}
+        >
+          {description}
+        </p>
+      )}
+      {!fullPage && (
         <div className={styles.heroMeta}>
-          {!fullPage && (
+          <span className={styles.heroMetaItem}>
+            <Icon name="list-ul" size="sm" />
+            {moduleCountText(activeMilestones.length)}
+          </span>
+          {durationLabel && (
             <span className={styles.heroMetaItem}>
-              <Icon name="list-ul" size="sm" />
-              {moduleCountText(activeMilestones.length)}
+              <Icon name="clock-nine" size="sm" />
+              {durationLabel}
             </span>
           )}
-          {totalEstimatedMinutes != null && (
-            <span className={styles.heroMetaItem}>
-              <Icon name="clock-nine" size={fullPage ? 'md' : 'sm'} />
-              {totalEstimatedMinutes < 60
-                ? t('coverPage.totalMinutes', '{{count}} min', { count: totalEstimatedMinutes })
-                : t('coverPage.totalHours', '~{{count}} hr', { count: Math.round(totalEstimatedMinutes / 60) })}
-            </span>
-          )}
-          {!fullPage && badge && (
+          {badge && (
             <span className={styles.heroMetaItem}>
               <BadgeIcon emoji={badge.emoji} icon={badge.icon} size="sm" />
               {t('coverPage.earnsBadge', 'Earns {{badge}} badge', { badge: badge.title })}
@@ -284,24 +337,32 @@ export function LearningPathTableOfContents({
     <>
       {(showHeroContent || (fullPage && hasTracks)) && (
         <div
-          className={cx(styles.hero, renderSections && fullPageStyles.heroWithTabs)}
+          className={cx(
+            styles.hero,
+            renderSections && fullPageStyles.heroWithTabs,
+            isPanelOverview && fullPageStyles.panelHero
+          )}
           data-testid={testIds.learningPaths.coverHero}
         >
           {fullPage ? (
             <>
               {showHeroContent && (
                 <>
-                  <LearningCardPreview
-                    kind="path"
-                    topic={topicId}
-                    preview={previewId ? getLearningPreview(previewId) : undefined}
-                    className={fullPageStyles.heroPreview}
-                  />
-                  <div className={fullPageStyles.heroMain}>{heroContent}</div>
+                  {!isPanelOverview && (
+                    <LearningCardPreview
+                      kind="path"
+                      topic={topicId}
+                      preview={previewId ? getLearningPreview(previewId) : undefined}
+                      className={fullPageStyles.heroPreview}
+                    />
+                  )}
+                  <div className={cx(fullPageStyles.heroMain, isPanelOverview && fullPageStyles.panelHeroMain)}>
+                    {heroContent}
+                  </div>
                 </>
               )}
               {hasTracks && (
-                <div className={fullPageStyles.trackFilter}>
+                <div className={cx(fullPageStyles.trackFilter, isPanelOverview && fullPageStyles.panelTrackFilter)}>
                   <InlineLabel width="auto" htmlFor={trackControlId} className={fullPageStyles.trackFilterLabel}>
                     {altitudeLabel}
                   </InlineLabel>
@@ -353,7 +414,7 @@ export function LearningPathTableOfContents({
 
   const modules = (
     <div
-      className={styles.container}
+      className={cx(styles.container, isPanelOverview && fullPageStyles.panelContainer)}
       data-testid={testIds.learningPaths.tableOfContents}
       // Testing contract: readable at 0%, where the ring below is hidden.
       // Unconditional — progress is synchronous (see the comment above), so
@@ -363,7 +424,7 @@ export function LearningPathTableOfContents({
     >
       <div className={styles.header}>
         {fullPage ? (
-          <div className={fullPageStyles.progressRow}>
+          <div className={cx(fullPageStyles.progressRow, isPanelOverview && fullPageStyles.panelProgressRow)}>
             <div className={fullPageStyles.progressSummary}>
               <span className={fullPageStyles.progressCount}>
                 {t('coverPage.completedOfTotal', '{{completed}} of {{total}} completed', {
@@ -374,7 +435,7 @@ export function LearningPathTableOfContents({
               <span className={fullPageStyles.progressLabel}>({Math.round(progress)}%)</span>
             </div>
             <div
-              className={fullPageStyles.progressBar}
+              className={cx(fullPageStyles.progressBar, isPanelOverview && fullPageStyles.panelProgressBar)}
               role="progressbar"
               aria-valuemin={0}
               aria-valuemax={100}
@@ -449,7 +510,10 @@ const getFullPageStyles = (theme: GrafanaTheme2) => ({
     padding: theme.spacing(3, 0, 0),
     margin: theme.spacing(0, 0, 5),
   }),
-  heroWithTabs: css({ marginBottom: theme.spacing(3) }),
+  heroWithTabs: css({
+    marginBottom: theme.spacing(3),
+  }),
+  panelHero: css({ gap: theme.spacing(2), marginBottom: theme.spacing(2) }),
   heroMain: css({
     display: 'flex',
     flexDirection: 'column',
@@ -458,6 +522,7 @@ const getFullPageStyles = (theme: GrafanaTheme2) => ({
     minWidth: 0,
     paddingTop: theme.spacing(1),
   }),
+  panelHeroMain: css({ flexBasis: '100%', paddingTop: 0 }),
   heroPreview: css({
     width: theme.spacing(27),
     maxWidth: '100%',
@@ -465,15 +530,36 @@ const getFullPageStyles = (theme: GrafanaTheme2) => ({
   }),
   heroHeading: css({ display: 'flex', flexDirection: 'column', gap: theme.spacing(0.5) }),
   titleRow: css({ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: theme.spacing(1.5) }),
+  panelTitleActions: css({
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1fr) auto',
+    alignItems: 'start',
+    gap: theme.spacing(1),
+  }),
+  panelTitle: css({ ...theme.typography.lg, fontSize: 18, fontWeight: theme.typography.fontWeightMedium }),
+  panelDescription: css({ ...theme.typography.base }),
+  panelDescriptionWithTracks: css({ marginBlockEnd: theme.spacing(0.5) }),
   eyebrow: css({
     ...theme.typography.sm,
     color: theme.colors.text.secondary,
     display: 'flex',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: theme.spacing(0.5),
-    marginBottom: 0,
+  }),
+  topicLink: css({
+    color: 'inherit',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
     textDecoration: 'none',
-    '&:hover': { color: theme.colors.text.secondary, textDecoration: 'underline' },
+    '&:hover': { color: 'inherit', textDecoration: 'underline' },
+  }),
+  eyebrowDuration: css({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.5),
+    whiteSpace: 'nowrap',
   }),
   heroTitle: css({
     ...theme.typography.xxl,
@@ -489,15 +575,6 @@ const getFullPageStyles = (theme: GrafanaTheme2) => ({
     maxWidth: '75ch',
     margin: 0,
   }),
-  heroMeta: css({
-    marginTop: theme.spacing(1),
-    display: 'flex',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: theme.spacing(2),
-    ...theme.typography.base,
-    color: theme.colors.text.secondary,
-  }),
   headerActions: css({ display: 'flex', alignItems: 'center', gap: theme.spacing(2), flexWrap: 'wrap' }),
   progressRow: css({
     display: 'flex',
@@ -507,17 +584,27 @@ const getFullPageStyles = (theme: GrafanaTheme2) => ({
     width: theme.spacing(32),
     maxWidth: '100%',
   }),
-  progressBar: css({ width: theme.spacing(32), maxWidth: '100%' }),
+  progressBar: css({
+    width: theme.spacing(32),
+    maxWidth: '100%',
+  }),
+  panelProgressRow: css({
+    flex: `1 1 ${theme.spacing(16)}`,
+    minWidth: 0,
+    maxWidth: `min(100%, ${theme.spacing(32)})`,
+  }),
+  panelProgressBar: css({ width: '100%' }),
   progressSummary: css({ display: 'flex', alignItems: 'baseline', gap: theme.spacing(0.5), flexWrap: 'wrap' }),
   progressCount: css({ ...theme.typography.sm, color: theme.colors.text.primary, whiteSpace: 'nowrap' }),
   progressLabel: css({ ...theme.typography.sm, color: theme.colors.text.secondary, whiteSpace: 'nowrap' }),
   trackFilter: css({
     display: 'flex',
-    marginLeft: 'auto',
+    marginInlineStart: 'auto',
     minWidth: 0,
     maxWidth: '100%',
     '& input': { borderTopLeftRadius: 0, borderBottomLeftRadius: 0 },
   }),
+  panelTrackFilter: css({ marginInlineStart: 0 }),
   trackFilterLabel: css({
     marginRight: 0,
     border: `1px solid ${theme.components.input.borderColor}`,
@@ -531,6 +618,7 @@ const getFullPageStyles = (theme: GrafanaTheme2) => ({
     background: theme.colors.background.primary,
     boxShadow: theme.shadows.z1,
   }),
+  panelContainer: css({ marginBottom: 0 }),
   header: css({
     display: 'flex',
     alignItems: 'center',

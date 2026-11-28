@@ -94,6 +94,7 @@ function applyAuthorNote(block: JsonBlock, note: string): JsonBlock {
 }
 
 export interface BlockEditorProps {
+  embedded?: boolean;
   /** Initial guide to load */
   initialGuide?: JsonGuide;
   /** Called when guide changes */
@@ -254,7 +255,14 @@ export function authorNoticeText({ name, replacedName }: DefaultedAuthor): strin
   return 'This guide had no author, so it was attributed to you.';
 }
 
-function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideTitleChange }: BlockEditorProps) {
+function BlockEditorInner({
+  embedded,
+  initialGuide,
+  onChange,
+  onCopy,
+  onDownload,
+  onGuideTitleChange,
+}: BlockEditorProps) {
   const styles = useStyles2(getBlockEditorStyles);
   const editor = useBlockEditor({ initialGuide, onChange });
   const { state } = editor;
@@ -847,7 +855,11 @@ function BlockEditorInner({ initialGuide, onChange, onCopy, onDownload, onGuideT
   );
 
   return (
-    <div className={styles.container} data-testid={testIds.blockEditor.container}>
+    <div
+      className={styles.container}
+      data-testid={testIds.blockEditor.container}
+      data-embedded-guide-editor={embedded || undefined}
+    >
       {/* Header */}
       <BlockEditorHeader
         guideTitle={state.guide.title}

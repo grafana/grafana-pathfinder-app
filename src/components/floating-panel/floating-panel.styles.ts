@@ -90,6 +90,7 @@ export const getFloatingPanelStyles = (theme: GrafanaTheme2) => ({
     minHeight: 0,
     padding: theme.spacing(1),
     backgroundColor: theme.colors.background.page,
+    '&:has(> [data-panel-course-overview], > [data-embedded-guide-editor])': { padding: 0 },
   }),
 
   /** Resize handle in bottom-right corner */

@@ -1,6 +1,6 @@
 import { useObservedCompletion } from '../../global-state/observation/use-observed-completion';
 import React, { useState, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from 'react';
-import { Button } from '@grafana/ui';
+import { Button, Icon } from '@grafana/ui';
 
 import { waitForReactUpdates } from '../../lib/async-utils';
 import { getPostVerifyExplanation, useStepChecker, validateInteractiveRequirements } from '../../requirements-manager';
@@ -1223,14 +1223,20 @@ export const InteractiveStep = forwardRef<
             className="interactive-step-execution-error"
             data-testid={testIds.interactive.errorMessage(renderedStepId)}
           >
-            {postVerifyError}
+            <span className="interactive-notice-icon" aria-hidden="true">
+              <Icon name="exclamation-triangle" size="md" />
+            </span>
+            <span>{postVerifyError}</span>
           </div>
         )}
 
         {/* Lazy scroll failure message with retry */}
         {!isCompletedWithObjectives && lazyScrollError && (
           <div className="interactive-step-lazy-error" data-testid={testIds.interactive.errorMessage(renderedStepId)}>
-            <span className="interactive-lazy-error-text">{lazyScrollError}</span>
+            <span className="interactive-notice-icon" aria-hidden="true">
+              <Icon name="info-circle" size="md" />
+            </span>
+            <span>{lazyScrollError}</span>
             <button
               className="interactive-lazy-retry-btn"
               onClick={handleLazyScrollRetry}
@@ -1275,7 +1281,9 @@ export const InteractiveStep = forwardRef<
                 className="interactive-step-form-hint-warning"
                 data-testid={testIds.interactive.formHintWarning(renderedStepId)}
               >
-                <span className="interactive-form-warning-icon">⚠</span>
+                <span className="interactive-notice-icon" aria-hidden="true">
+                  <Icon name="exclamation-triangle" size="md" />
+                </span>
                 <span className="interactive-form-hint-text">{formValidation.hint}</span>
               </div>
             )}
@@ -1292,6 +1300,9 @@ export const InteractiveStep = forwardRef<
               className={`interactive-step-requirement-explanation${checker.isChecking ? ' rechecking' : ''}`}
               data-testid={testIds.interactive.requirementCheck(renderedStepId)}
             >
+              <span className="interactive-notice-icon" aria-hidden="true">
+                <Icon name="lock" size="md" />
+              </span>
               <span id={`requirement-explanation-${renderedStepId}`}>{explanationText}</span>
               {checker.isChecking && <span className="interactive-requirement-spinner">⟳</span>}
               {isEligibleForChecking && recoveryHint && (

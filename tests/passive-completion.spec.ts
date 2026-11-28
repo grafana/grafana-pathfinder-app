@@ -75,6 +75,7 @@ for (const kind of ['guided', 'multistep'] as const) {
       }
       let reader = page;
       if (surface !== 'sidebar') {
+        await page.getByTestId(testIds.docsPanel.milestoneMoreActionsButton).click();
         const opened = context.waitForEvent('page');
         await page.getByTestId(testIds.docsPanel.openControllerTabButton).click();
         reader = await opened;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 jest.mock('@grafana/ui', () => require('../../test-utils/interactive-section-harness').createGrafanaUiMock());
 jest.mock('@grafana/data', () => require('../../test-utils/interactive-section-harness').createGrafanaDataMock());
@@ -149,7 +149,16 @@ describe('collapsed parent section with a nested visibility gate', () => {
       // The gate reports while the parent is expanded; readiness settles.
       await waitFor(() => expect(isGuideChoiceProgressReady(contentKey)).toBe(true));
 
-      fireEvent.click(screen.getByTestId(`interactive-section-toggle-${PARENT_SECTION_ID}`));
+      const toggle = screen.getByTestId(`interactive-section-toggle-${PARENT_SECTION_ID}`);
+      const sectionBody = document.getElementById(toggle.getAttribute('aria-controls')!);
+      expect(toggle).toHaveClass('journey-collapse-trigger');
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(sectionBody).not.toHaveAttribute('hidden');
+
+      fireEvent.click(within(toggle).getByText('Parent section'));
+
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      expect(sectionBody).toHaveAttribute('hidden');
 
       expect(screen.getByTestId(`interactive-section-${PARENT_SECTION_ID}`).className).toContain('collapsed');
       // Collapse must not unmount the gate or forget its report.
@@ -174,6 +183,12 @@ describe('collapsed parent section with a nested visibility gate', () => {
       );
       // The gate mounts under the collapsed parent and reports in this session.
       await waitFor(() => expect(isGuideChoiceProgressReady(contentKey)).toBe(true));
+      expect(screen.getByText('Nested instructions')).not.toBeVisible();
+
+      const toggle = screen.getByTestId(`interactive-section-toggle-${PARENT_SECTION_ID}`);
+      fireEvent.click(toggle);
+
+      expect(toggle).not.toBeInTheDocument();
       expect(screen.getByText('Nested instructions')).toBeInTheDocument();
     }
   );

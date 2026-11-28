@@ -8,11 +8,12 @@ import { GuideLoadTelemetryContext, GuideRenderBoundary } from './GuideRenderBou
 import { finishGuideLoad, pauseGuideLoad, resumeGuideLoad } from '../../lib/telemetry/guide-load';
 import { useIsAlignmentPaused } from '../../global-state/alignment-pending-context';
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useSyncExternalStore } from 'react';
-import { css } from '@emotion/css';
+import { css, cx } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { TabsBar, Tab, TabContent, Badge, Tooltip, LoadingPlaceholder, Button, Icon, useStyles2 } from '@grafana/ui';
 import { getSelectionStyles } from './content-renderer.styles';
-import { journeyContentHtml, docsContentHtml } from '../../styles/content-html.styles';
+import { getMilestoneScrollKey, useMilestoneScroll } from './useMilestoneScroll';
+import { journeyContentHtml, docsContentHtml, guideArticleHeadings } from '../../styles/content-html.styles';
 
 import { RawContent, ContentParseResult, GuideCountingSource, Milestone } from '../../types/content.types';
 import { logger } from '../../lib/logging';
@@ -190,7 +191,10 @@ function recordCompletion(
 
 interface ContentRendererProps {
   fullPageOverview?: boolean;
+  panelOverviewActions?: React.ReactNode;
+  showGeneratedTitle?: boolean;
   content: RawContent;
+  milestoneScrollReader?: string;
   onContentReady?: () => void;
   completion: ContentRendererCompletion;
   /**
@@ -241,7 +245,10 @@ const COMPLETION_SETTLE_MS = 200;
 
 const ContentRendererInner = React.memo(function ContentRendererInner({
   fullPageOverview = false,
+  panelOverviewActions,
+  showGeneratedTitle = true,
   content,
+  milestoneScrollReader,
   onContentReady,
   completion,
   onContinueToNextMilestone,
@@ -615,6 +622,12 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     onContentReadyRef.current = onContentReady;
   }, [onContentReady]);
   const [readyFor, setReadyFor] = useState<{ url: string; contentKey: string } | null>(null);
+  useMilestoneScroll(
+    activeRef,
+    milestoneScrollReader,
+    readyFor?.url === content.url ? getMilestoneScrollKey(content) : undefined,
+    Boolean(content.hashFragment)
+  );
   const handleContentReady = useCallback(() => {
     if (contentReadyAtRef.current?.url !== content.url) {
       contentReadyAtRef.current = { url: content.url, at: Date.now() };
@@ -642,6 +655,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
     isCoverPage && journey?.milestones.length
       ? {
           fullPage: fullPageOverview,
+          panelActions: panelOverviewActions,
           organization,
           estimatedMinutes:
             typeof packageManifest?.estimatedMinutes === 'number' ? packageManifest.estimatedMinutes : undefined,
@@ -760,7 +774,7 @@ const ContentRendererInner = React.memo(function ContentRendererInner({
                 countingSource={content.countingSource}
                 contentType={content.type}
                 baseUrl={content.url}
-                title={content.metadata.title}
+                title={showGeneratedTitle ? content.metadata.title : undefined}
                 isNativeJson={content.isNativeJson ?? false}
                 onContentReady={handleContentReady}
                 activeRef={activeRef}
@@ -794,7 +808,7 @@ interface ContentWithVariablesProps {
   countingSource?: GuideCountingSource;
   contentType: 'learning-journey' | 'single-doc' | 'interactive';
   baseUrl: string;
-  title: string;
+  title?: string;
   isNativeJson: boolean;
   onContentReady?: () => void;
   activeRef: React.RefObject<HTMLDivElement | null>;
@@ -897,9 +911,10 @@ function ContentWithVariables({
   `;
 
   const overviewArticleClassName = overview
-    ? contentType === 'learning-journey'
-      ? overviewArticleStyles.journey
-      : overviewArticleStyles.docs
+    ? cx(
+        contentType === 'learning-journey' ? overviewArticleStyles.journey : overviewArticleStyles.docs,
+        overview.path.panelActions !== undefined && overviewArticleStyles.panel
+      )
     : undefined;
 
   return (
@@ -1191,6 +1206,20 @@ function ContentProcessor({
   const currentSnippetOverlay = overlayMatchesCurrent ? snippetOverlay : null;
   const parseResult = currentSnippetOverlay?.result ?? baseParseResult;
   const isResolvingSnippets = guideWithSnippetRefs !== null && !overlayMatchesCurrent;
+
+  useLayoutEffect(() => {
+    const article = ref.current;
+    if (!article) {
+      return;
+    }
+
+    let previousLevel = 6;
+    for (const heading of article.querySelectorAll(guideArticleHeadings)) {
+      const level = Number(heading.tagName.slice(1));
+      heading.toggleAttribute('data-guide-subheading', level > previousLevel);
+      previousLevel = level;
+    }
+  }, [parseResult]);
 
   const readyReported = useRef<string | null>(null);
   useEffect(() => {
@@ -2226,12 +2255,26 @@ function renderParsedElement(
             <Icon name={admonition.icon} size="lg" />
           </span>
         );
-        return React.createElement(
+        const rendered = React.createElement(
           element.type,
           { key, ...element.props, 'data-guide-admonition': admonition?.tone },
           ...(icon ? [icon] : []),
           ...(children ?? [])
         );
+        if (element.type === 'table') {
+          return (
+            <div
+              key={key}
+              className="guide-table-scroll"
+              role="region"
+              tabIndex={0}
+              aria-label={t('contentRenderer.scrollableTable', 'Scrollable table')}
+            >
+              {rendered}
+            </div>
+          );
+        }
+        return rendered;
       }
   }
 }
@@ -2263,5 +2306,8 @@ const getOverviewArticleStyles = (theme: GrafanaTheme2) => {
   return {
     journey: css(journeyContentHtml(theme), layout),
     docs: css(docsContentHtml(theme), layout),
+    panel: css({
+      '&& > :last-child, && > :is(.markdown-block, .html-block):last-child > :last-child': { marginBottom: 0 },
+    }),
   };
 };

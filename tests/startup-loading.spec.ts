@@ -110,6 +110,29 @@ for (const panelMode of ['sidebar', 'floating', 'fullscreen']) {
   });
 }
 
+test('pops out a reader with a long title and keeps the guide open', async ({ page }) => {
+  await settings(page);
+  const guideId = 'startup-popout-title';
+  const guideUrl = `https://interactive-learning.grafana.net/packages/${guideId}/content.json`;
+  const title = 'A long guide title that takes up more space than the floating reader header can display';
+  await page.route(guideUrl.replace('content.json', 'manifest.json'), (route) =>
+    route.fulfill({ json: { id: guideId, type: 'guide', repository: 'interactive-tutorials' } })
+  );
+  await page.route(guideUrl, (route) =>
+    route.fulfill({ json: { id: guideId, title, blocks: [{ type: 'markdown', content: 'Guide content.' }] } })
+  );
+
+  await page.goto(`/a/grafana-pathfinder-app/fullscreen?doc=${encodeURIComponent(guideUrl)}&type=docs`);
+  await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Pop out to floating panel', exact: true }).click();
+
+  const floatingReader = page.getByRole('dialog', { name: 'Interactive learning floating panel' });
+  const floatingTitle = floatingReader.getByRole('heading', { name: title, exact: true });
+  await expect(floatingTitle).toBeVisible({ timeout: 20_000 });
+  await expect(floatingTitle).toHaveCSS('text-overflow', 'ellipsis');
+  await expect(floatingReader.getByText('Guide content.', { exact: true })).toBeVisible();
+});
+
 test('preserves configured auto-open', async ({ page }) => {
   await settings(page, { openPanelOnLaunch: true });
   await page.goto('/');
@@ -119,7 +142,7 @@ test('preserves configured auto-open', async ({ page }) => {
 test('pairs the controller with the live executor after loading on demand', async ({ page, context }) => {
   await settings(context, { enableTwoTabController: true });
   await page.goto('/dashboards?doc=bundled:welcome-to-grafana');
-  await expect(page.getByTestId(testIds.docsPanel.openControllerTabButton)).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId(testIds.docsPanel.milestoneMoreActionsButton).click({ timeout: 20_000 });
   // Grafana's home redirect can strip controller parameters before plugin registration.
   await page.evaluate(() => {
     const open = window.open.bind(window);

@@ -74,11 +74,14 @@ const getStyles = (theme: GrafanaTheme2) => ({
       marginBottom: 0,
     },
   }),
-  codeBlockWrapper: css({
-    marginBottom: theme.spacing(1),
+  codeBlock: css({
+    '&.code-block': {
+      margin: theme.spacing(0, 0, 1),
+    },
   }),
   actions: css({
     display: 'flex',
+    flexWrap: 'wrap',
     gap: theme.spacing(1),
     alignItems: 'center',
   }),
@@ -139,8 +142,6 @@ export const CodeBlockStep = forwardRef<
     },
     ref
   ) => {
-    const styles = useStyles2(getStyles);
-
     const generatedStepIdRef = useRef<string | undefined>(undefined);
     if (!generatedStepIdRef.current) {
       codeBlockStepCounter += 1;
@@ -324,6 +325,7 @@ export const CodeBlockStep = forwardRef<
     );
 
     const isEnabled = checker.isEnabled && !disabled;
+    const styles = useStyles2(getStyles);
 
     let stepState: StepStateValue = STEP_STATES.IDLE;
     if (isCompleted) {
@@ -339,7 +341,7 @@ export const CodeBlockStep = forwardRef<
     }
 
     const containerClasses = [
-      'interactive-step',
+      'interactive-step interactive-code-block-step',
       isCompleted && 'completed',
       (isInsertRunning || isShowRunning || isCurrentlyExecuting) && 'executing',
       !isEnabled && styles.disabled,
@@ -358,9 +360,7 @@ export const CodeBlockStep = forwardRef<
       >
         {children && <div className={styles.content}>{children}</div>}
 
-        <div className={styles.codeBlockWrapper}>
-          <CodeBlock code={currentCode} language={language} showCopy={false} />
-        </div>
+        <CodeBlock code={currentCode} language={language} showCopy={false} className={styles.codeBlock} />
 
         {!isEnabled && !isCompleted && checker.explanation && (
           <div className={styles.requirementMessage} data-testid={testIds.interactive.requirementCheck(renderedStepId)}>
@@ -397,6 +397,7 @@ export const CodeBlockStep = forwardRef<
               size="sm"
               variant="primary"
               icon="arrow-right"
+              iconPlacement="right"
               onClick={handleInsert}
               disabled={isInsertRunning}
               tooltip="Clear editor and insert code"

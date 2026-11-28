@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { t } from '@grafana/i18n';
 import { IconButton, useStyles2, getPortalContainer } from '@grafana/ui';
 import { reportAppInteraction, UserInteraction } from '../../lib/analytics';
 import { copyTextToClipboard } from '../../lib/clipboard';
@@ -16,7 +17,7 @@ export interface FloatingPanelProps {
   title: string;
   /** Whether an interactive guide is active (for pill pulse) */
   hasActiveGuide: boolean;
-  /** Step progress info for the pill badge */
+  /** Step progress for the pill and compact panel */
   stepProgress?: string;
   /** URL of the currently active guide (for workshop link) */
   guideUrl?: string;
@@ -59,7 +60,7 @@ export function FloatingPanel({
 }: FloatingPanelProps) {
   const styles = useStyles2(getFloatingPanelStyles);
   const { geometry, setPosition, drag, resize } = useDragResize();
-  const { view, isDodging, contentRef, minimize, restoreFromPill } = useDodgeSession(setPosition);
+  const { view, isDodging, contentRef, minimize, restoreFromPill } = useDodgeSession(setPosition, guideUrl);
 
   useHighlightDodge(geometry, view === 'minimized', true);
 
@@ -115,6 +116,7 @@ export function FloatingPanel({
   useEffect(() => () => clearTimeout(copyTimerRef.current), []);
 
   const isMinimized = view === 'minimized';
+  const showGuideLabel = hasActiveGuide && guideType !== 'learning-journey';
 
   const panelContent = (
     <>
@@ -146,10 +148,10 @@ export function FloatingPanel({
           onPointerMove={drag.onPointerMove}
           onPointerUp={drag.onPointerUp}
         >
-          <span className={styles.headerTitle} title={title}>
-            {title}
+          <span className={styles.headerTitle} title={showGuideLabel ? undefined : title}>
+            {showGuideLabel ? t('learningCard.guide', 'Guide') : title}
           </span>
-          {stepProgress && <span className={styles.stepCounter}>{stepProgress}</span>}
+          {view === 'compact' && stepProgress && <span className={styles.stepCounter}>{stepProgress}</span>}
           <div className={styles.headerActions}>
             {guideUrl && (
               <IconButton
@@ -187,7 +189,7 @@ export function FloatingPanel({
           </div>
         </div>
 
-        <div ref={contentRef} className={styles.content}>
+        <div ref={contentRef} className={styles.content} data-milestone-scroll-container>
           {children}
         </div>
 

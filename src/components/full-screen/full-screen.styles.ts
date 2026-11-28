@@ -5,7 +5,7 @@ import { getGuideContentPadding } from '../../styles/content-html.styles';
 const GUIDE_COLUMN_MAX_WIDTH = 1100;
 const FULL_SCREEN_CONTENT_GUTTER = 4;
 
-export const getFullScreenStyles = (theme: GrafanaTheme2, isCourseOverview: boolean, hasCourseLesson: boolean) => ({
+export const getFullScreenStyles = (theme: GrafanaTheme2, isCourseOverview: boolean, hasReaderToolbar: boolean) => ({
   container: css({
     display: 'flex',
     flexDirection: 'column',
@@ -50,14 +50,6 @@ export const getFullScreenStyles = (theme: GrafanaTheme2, isCourseOverview: bool
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   }),
-  stepCounter: css({
-    fontSize: theme.typography.bodySmall.fontSize,
-    color: theme.colors.text.secondary,
-    padding: theme.spacing(0.25, 1),
-    background: theme.colors.background.canvas,
-    borderRadius: theme.shape.radius.default,
-    flexShrink: 0,
-  }),
   headerActions: css({
     display: 'flex',
     alignItems: 'center',
@@ -82,7 +74,7 @@ export const getFullScreenStyles = (theme: GrafanaTheme2, isCourseOverview: bool
     overscrollBehavior: 'contain',
     minHeight: 0,
     overflow: 'auto',
-    scrollbarGutter: hasCourseLesson ? 'stable' : undefined,
+    scrollbarGutter: hasReaderToolbar ? 'stable' : undefined,
     display: 'flex',
     justifyContent: 'center',
   }),
@@ -92,9 +84,9 @@ export const getFullScreenStyles = (theme: GrafanaTheme2, isCourseOverview: bool
   contentWrap: css({
     width: '100%',
     maxWidth: isCourseOverview ? 1160 : GUIDE_COLUMN_MAX_WIDTH,
-    boxSizing: hasCourseLesson ? 'border-box' : undefined,
+    boxSizing: hasReaderToolbar ? 'border-box' : undefined,
     alignSelf: isCourseOverview ? 'flex-start' : undefined,
-    padding: theme.spacing(hasCourseLesson ? 2 : 3, FULL_SCREEN_CONTENT_GUTTER, 3),
+    padding: theme.spacing(hasReaderToolbar ? 2 : 3, FULL_SCREEN_CONTENT_GUTTER, 3),
   }),
   emptyState: css({
     display: 'flex',

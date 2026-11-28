@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { IconButton } from '@grafana/ui';
+import { Button, IconButton } from '@grafana/ui';
 import Prism from 'prismjs';
 import { logger } from '../../../lib/logging';
 
@@ -71,18 +71,23 @@ export function CodeBlock({ code, language, showCopy = true, inline = false, cla
 
   return (
     <div className={`code-block${className ? ` ${className}` : ''}`}>
-      <div className="code-block-header">
-        <span className="code-block-language">{language}</span>
-        {showCopy && (
-          <IconButton
-            name={copied ? 'check' : 'copy'}
-            size="xs"
-            onClick={handleCopy}
-            tooltip={copied ? 'Copied!' : 'Copy code'}
-            className="inline-copy-btn ml-auto"
-          />
-        )}
-      </div>
+      {(language || showCopy) && (
+        <div className="code-block-header">
+          {language && <span className="code-block-language">{language}</span>}
+          {showCopy && (
+            <Button
+              icon={copied ? 'check' : 'copy'}
+              size="sm"
+              variant="secondary"
+              fill="text"
+              onClick={handleCopy}
+              aria-label={copied ? 'Copied!' : 'Copy code'}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </Button>
+          )}
+        </div>
+      )}
       <pre className="code-block-pre">
         <code ref={codeRef} className={language ? `language-${language}` : ''}>
           {code}

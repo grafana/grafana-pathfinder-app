@@ -423,7 +423,9 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
                 event.name === 'pathfinder:progress' && event.detail.kind === 'section' && event.detail.completed
             );
           if (reset) {
-            await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_ID))).toBeInTheDocument());
+            await waitFor(() =>
+              expect(screen.getByTestId(testIds.interactive.section(SECTION_ID))).toHaveClass('completed')
+            );
             act(() => {
               screen.getByTestId(resetButton(SECTION_ID)).click();
             });
@@ -480,7 +482,9 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         act(() => {
           screen.getByTestId(completeBtn(STEP_ID)).click();
         });
-        await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_ID))).toBeInTheDocument());
+        await waitFor(() =>
+          expect(screen.getByTestId(testIds.interactive.section(SECTION_ID))).toHaveClass('completed')
+        );
 
         // Clear the events buffer so we observe only the reset's dispatches.
         events.length = 0;
@@ -606,7 +610,9 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
 
         // Now reset and confirm the cleared event still fires.
         events.length = 0;
-        await waitFor(() => expect(screen.getByTestId(resetButton(SECTION_ID))).toBeInTheDocument());
+        await waitFor(() =>
+          expect(screen.getByTestId(testIds.interactive.section(SECTION_ID))).toHaveClass('completed')
+        );
         act(() => {
           screen.getByTestId(resetButton(SECTION_ID)).click();
         });
@@ -695,15 +701,13 @@ describe('InteractiveSection contracts — Phase 0 tripwire', () => {
         // `handleStepComplete` closure captures `completedSteps` from the
         // most recent commit; if the prior store flip didn't refresh that
         // snapshot, the section would still see only step-2 completed and
-        // `stepsCompleted` would stay false (Do Section, not Reset). The
-        // appearance of `resetSectionButton` is the visible-DOM
-        // confirmation that the cross-step re-render contract holds.
+        // the section would stay incomplete.
         act(() => {
           screen.getByTestId(`harness-complete-step-2`).click();
         });
         await flushMicrotasks();
         await waitFor(() => {
-          expect(screen.getByTestId(resetButton(SECTION_ID))).toBeInTheDocument();
+          expect(screen.getByTestId(testIds.interactive.section(SECTION_ID))).toHaveClass('completed');
         });
       } finally {
         unsubscribe();

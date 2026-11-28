@@ -26,6 +26,8 @@ jest.mock('../../utils/openfeature', () => ({ useBooleanFlag: () => true }));
 jest.mock('../../docs-retrieval', () => ({
   resolveActiveMilestoneSequence: jest.requireActual('../../docs-retrieval/active-milestone-sequence')
     .resolveActiveMilestoneSequence,
+  resolveActiveMilestoneToolbarContext: jest.requireActual('../../docs-retrieval/active-milestone-sequence')
+    .resolveActiveMilestoneToolbarContext,
   useGuideResponsesOptional: () => null,
   isJourneyCoverPage: (content: RawContent) =>
     content.type === 'learning-journey' && content.metadata.learningJourney?.currentMilestone === 0,
@@ -46,6 +48,22 @@ jest.mock('../content-renderer/content-renderer', () => ({
   },
 }));
 
+jest.mock('../../hooks/usePathfinderPluginConfig', () => ({
+  usePathfinderPluginConfig: () => ({ config: {} }),
+}));
+
+const originalResizeObserver = global.ResizeObserver;
+beforeAll(() => {
+  global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
+afterAll(() => {
+  global.ResizeObserver = originalResizeObserver;
+});
+
 const guideUrl = 'https://example.com/sticky-guide';
 const docsUrl = 'https://example.com/reference';
 
@@ -64,7 +82,7 @@ function surface(url: string, mode: 'floating' | 'fullscreen') {
   return (
     <FloatingPanelContent
       content={{ url, type: 'single-doc', metadata: { title: 'Guide' }, content: '', lastFetched: '' }}
-      activeTab={{ id: 'floating-tab', currentUrl: url, baseUrl: url } as any}
+      activeTab={{ id: 'floating-tab', title: 'Guide', type: 'docs', currentUrl: url, baseUrl: url } as any}
       model={{ canNavigateNext: () => false } as any}
       surface={mode}
     />
@@ -91,12 +109,20 @@ it.each(['floating', 'fullscreen'] as const)(
   }
 );
 
-it.each(['floating', 'fullscreen'] as const)('preserves the embedded %s milestone toolbar offset', async (mode) => {
+it('keeps one sticky guide toolbar with matching step count and fill in the popout', async () => {
   setActiveTabUrl(guideUrl);
   publish(guideUrl);
-  render(React.cloneElement(surface(guideUrl, mode), { progressKey: guideUrl, onResetGuide: jest.fn() }));
+  render(React.cloneElement(surface(guideUrl, 'floating'), { progressKey: guideUrl, onResetGuide: jest.fn() }));
+  expect(screen.getByRole('heading', { name: 'Guide' })).toBeInTheDocument();
   const progress = await screen.findByRole('progressbar');
-  expect(progress.parentElement).toHaveStyle({ position: 'sticky', top: '-8px' });
+  expect(progress.parentElement?.parentElement).toHaveStyle({ position: 'sticky', top: '-8px' });
+
+  act(() => {
+    window.dispatchEvent(new CustomEvent('pathfinder-step-progress', { detail: { completedCount: 1, totalSteps: 5 } }));
+  });
+  expect(screen.getAllByRole('progressbar')).toHaveLength(1);
+  expect(progress).toHaveAttribute('aria-valuetext', '1 of 5 steps completed');
+  expect(progress.querySelector('[style*="width"]')).toHaveStyle({ width: '20%' });
 });
 
 it('hides guide progress when the full-screen header supplies path progress', async () => {

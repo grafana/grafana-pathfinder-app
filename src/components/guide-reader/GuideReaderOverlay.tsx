@@ -184,7 +184,6 @@ function GuideReaderInner({
     setContent(null);
     setError(null);
     setContentReady(false);
-    backdropRef.current?.scrollTo?.(0, 0);
   };
   const nextUrl = content ? getNextMilestoneUrlFromContent(content, track.id, track.milestones) : null;
   const previousUrl = content ? getPreviousMilestoneUrlFromContent(content, track.id, track.milestones) : null;
@@ -331,6 +330,7 @@ function GuideReaderInner({
     ? `${content.type === 'learning-journey' ? journeyStyles : docsStyles} ${interactiveStyles} ${prismStyles}`
     : '';
   const isCoverPage = content ? isJourneyCoverPage(content) : false;
+  const showCourseOverview = isCoverPage && Boolean(content?.metadata.learningJourney?.milestones.length);
   const pathContext =
     content && !isCoverPage ? resolveActiveMilestoneToolbarContext(content, track.id, track.milestones) : null;
   const pathProgress = usePathLessonProgress(pathContext);
@@ -373,7 +373,7 @@ function GuideReaderInner({
           />
         ) : (
           <>
-            {(nextUrl || previousUrl) && (
+            {!showCourseOverview && (nextUrl || previousUrl) && (
               <nav className={styles.milestoneNavigation} aria-label="Learning path navigation">
                 <Button icon="arrow-left" variant="secondary" disabled={!previousUrl} onClick={navigatePrevious}>
                   Previous
@@ -388,6 +388,7 @@ function GuideReaderInner({
         )}
         <ContentRenderer
           content={content}
+          milestoneScrollReader={doc}
           containerRef={contentRef}
           className={contentClassName}
           onContentReady={handleContentReady}
@@ -404,6 +405,7 @@ function GuideReaderInner({
     <div
       ref={backdropRef}
       className={styles.backdrop}
+      data-milestone-scroll-container
       role="dialog"
       aria-modal="true"
       aria-label="Guide reader"

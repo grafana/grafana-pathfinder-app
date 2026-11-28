@@ -13,8 +13,6 @@ export interface FullScreenLayoutProps {
   title: string;
   showTitle?: boolean;
   isCourseOverview?: boolean;
-  /** "n/m" step progress for guides; omitted otherwise */
-  stepProgress?: string;
   /** Active guide URL — used for the workshop "copy link" button */
   guideUrl?: string;
   lessonPosition?: ReaderPosition;
@@ -45,7 +43,6 @@ export function FullScreenLayout({
   title,
   showTitle = true,
   isCourseOverview = false,
-  stepProgress,
   guideUrl,
   lessonPosition,
   guideType,
@@ -146,17 +143,6 @@ export function FullScreenLayout({
           <span className={styles.headerTitle} title={showTitle ? title : undefined}>
             {showTitle && title}
           </span>
-          {stepProgress && (
-            <span
-              className={styles.stepCounter}
-              aria-label={t('fullScreen.stepProgressLabel', 'Step {{progress}}', { progress: stepProgress })}
-            >
-              {t('fullScreen.stepProgress', 'Step {{done}} of {{total}}', {
-                done: stepProgress.split('/')[0],
-                total: stepProgress.split('/')[1],
-              })}
-            </span>
-          )}
           <div className={styles.headerActions}>
             {hasActiveGuide && guideUrl && (
               <IconButton
@@ -193,7 +179,7 @@ export function FullScreenLayout({
           </div>
         )}
       </div>
-      <div className={styles.body}>
+      <div className={styles.body} data-milestone-scroll-container>
         <div className={styles.contentWrap}>{children}</div>
       </div>
     </div>
