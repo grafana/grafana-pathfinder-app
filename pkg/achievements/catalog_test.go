@@ -194,6 +194,48 @@ func TestLoadCatalogAcceptsBoundaryValues(t *testing.T) {
 	}
 }
 
+func grantOnly(tiers string) string {
+	return fmt.Sprintf(`{"id":"x","title":"X","description":"X.","grantOnly":true,"tiers":%s}`, tiers)
+}
+
+func TestLoadCatalogGrantOnly(t *testing.T) {
+	accepted := map[string]string{
+		"one tier":                   grantOnly(`[{"id":"earned"}]`),
+		"tiers with art":             grantOnly(`[{"id":"earned","art":"x-1"},{"id":"honours","art":"x-2"}]`),
+		"an empty rules list":        grantOnly(`[{"id":"earned","rules":[]}]`),
+		"a non-grant-only flag left": strings.Replace(tiered(oneTier), `"tiers"`, `"grantOnly":false,"tiers"`, 1),
+	}
+	for name, achievement := range accepted {
+		t.Run("accepts "+name, func(t *testing.T) {
+			if _, err := loadCatalog([]byte(wrap(achievement)), mustRegistry(t)); err != nil {
+				t.Errorf("rejected: %v", err)
+			}
+		})
+	}
+
+	refused := []struct{ name, achievement, want string }{
+		{"a grant-only tier with rules", grantOnly(ruleTier(dashRule)), `tier "bronze": a grant-only tier has no goal or rules`},
+		{"a grant-only tier with a goal", grantOnly(`[{"id":"earned","goal":1}]`), `tier "earned": a grant-only tier has no goal or rules`},
+		{"a later grant-only tier with rules", grantOnly(`[{"id":"earned"},{"id":"more","goal":1,"rules":[` + dashRule + `]}]`), `tier "more": a grant-only tier has no goal or rules`},
+		{"a grant-only tier id not a token", grantOnly(`[{"id":"Earned"}]`), `tier "Earned": id must be a lowercase token`},
+		{"a grant-only tier id twice", grantOnly(`[{"id":"earned"},{"id":"earned"}]`), "tier id declared twice"},
+		{"a grant-only art path", grantOnly(`[{"id":"earned","art":"../x"}]`), "art must be a lowercase key"},
+		{"a grant-only definition with no tiers", grantOnly(`[]`), "needs 1 to 10 tiers"},
+		{"a grant-only definition with no title", strings.Replace(grantOnly(`[{"id":"earned"}]`), `"title":"X"`, `"title":""`, 1), "title is required"},
+		{"grantOnly not a boolean", strings.Replace(grantOnly(`[{"id":"earned"}]`), `"grantOnly":true`, `"grantOnly":"yes"`, 1), "grantOnly"},
+		{"a non-grant-only tier with no rules", tiered(`[{"id":"earned"}]`), "needs 1 to 16 rules, got 0"},
+		{"a non-grant-only tier with no goal", strings.Replace(tiered(`[{"id":"earned","rules":[`+dashRule+`]}]`), `"tiers"`, `"grantOnly":false,"tiers"`, 1), "goal must be 1 to 200, got 0"},
+	}
+	for _, tc := range refused {
+		t.Run("refuses "+tc.name, func(t *testing.T) {
+			_, err := loadCatalog([]byte(wrap(tc.achievement)), mustRegistry(t))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadCatalogReportsEveryProblem(t *testing.T) {
 	_, err := loadCatalog([]byte(wrap(tiered(goalTier(0, `{"entity":"nope","action":"created","countBy":"resource"}`)))), mustRegistry(t))
 	if err == nil || !strings.Contains(err.Error(), "nope.created") || !strings.Contains(err.Error(), "goal must be") {

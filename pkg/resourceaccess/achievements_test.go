@@ -1067,6 +1067,35 @@ func TestAchievementReaderGetsOnlyNamedCallerRows(t *testing.T) {
 	}
 }
 
+func TestAchievementReader_GrantedAwardWithNoProgressRowIsListed(t *testing.T) {
+	snap, err := achievements.LoadBundle([]byte(`{"grammar":"2.0","registry":{"entities":{}},"catalog":{"achievements":[
+	  {"id":"legacy","title":"Legacy","description":"Granted, never earned.","grantOnly":true,"tiers":[{"id":"earned"}]}]}}`))
+	if err != nil || len(snap.Skipped) != 0 {
+		t.Fatalf("LoadBundle = %v, skipped %+v", err, snap)
+	}
+	store, api := newAchievementTestStore(t)
+	granted := achievements.Award{AchievementID: "legacy", TierID: "earned", Entity: "grotacademy", EarnedAt: achievementTestNow}
+	if err := store.CreateAward(context.Background(), achievementTestPerson, granted); err != nil {
+		t.Fatal(err)
+	}
+	if api.spec(achievementProgressResource, achievementProgressName(achievementTestPerson.ID, "legacy")) != nil {
+		t.Fatal("fixture wrote a progress row")
+	}
+
+	reader := services.AchievementReader{Store: store, Catalog: snap.Catalog, Now: func() time.Time { return achievementTestNow }}
+	rows, err := reader.ListMine(context.Background(), achievementTestPerson)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows.Awards) != 1 || rows.Awards[0].AchievementID != "legacy" || rows.Awards[0].TierID != "earned" || len(rows.Progress) != 0 {
+		t.Fatalf("rows = %+v, want the granted award and no progress", rows)
+	}
+	shaped := services.ShapeMyAchievements(rows, snap)
+	if len(shaped.Awards) != 1 || shaped.Awards[0].AchievementID != "legacy" || shaped.Awards[0].Entity != "grotacademy" || len(shaped.Progress) != 0 {
+		t.Fatalf("/my = %+v, want the granted award and an empty progress list", shaped)
+	}
+}
+
 func TestAchievementStore_EmptyAwardAckIsStillACreate(t *testing.T) {
 	store, api := newAchievementTestStore(t)
 	api.emptyNext["POST "+achievementAwardResource] = true

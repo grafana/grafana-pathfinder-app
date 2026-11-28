@@ -78,6 +78,67 @@ func TestBuildWritesABundleThatLoads(t *testing.T) {
 	}
 }
 
+const grotGroundbreaker = `{
+  "id": "grot-groundbreaker", "title": "Groundbreaker", "description": "Granted for a course finished elsewhere.",
+  "grantOnly": true,
+  "tiers": [{"id": "earned", "art": "grot-groundbreaker"}]
+}`
+
+func TestBuildChecksAGrantOnlyTree(t *testing.T) {
+	src := sourceTree(t, map[string]string{
+		"events/guides.json":              guidesEntity,
+		"catalog/grot-groundbreaker.json": grotGroundbreaker,
+		"art/grot-groundbreaker.svg":      testSVG,
+	})
+	dir := t.TempDir()
+	out := filepath.Join(dir, "definitions.json")
+	if code, _, stderr := runCmd("build", "-src", src, "-o", out); code != exitOK {
+		t.Fatalf("build = %d: %s", code, stderr)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := achievements.LoadBundle(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Skipped) != 0 || len(s.Catalog.Achievements) != 1 || !s.Catalog.Achievements[0].GrantOnly {
+		t.Fatalf("snapshot = %+v", s)
+	}
+	if code, _, stderr := runCmd("validate", out); code != exitOK {
+		t.Errorf("validate = %d: %s", code, stderr)
+	}
+	if code, _, stderr := runCmd("compat", out, out); code != exitOK {
+		t.Errorf("compat with itself = %d: %s", code, stderr)
+	}
+
+	earnable := filepath.Join(dir, "earnable.json")
+	flipped := strings.Replace(string(data), `"grantOnly": true,`, `"grantOnly": false,`, 1)
+	if flipped == string(data) {
+		t.Fatal("built bundle no longer carries the author's grantOnly key")
+	}
+	if err := os.WriteFile(earnable, []byte(flipped), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := runCmd("compat", out, earnable); code != exitProblems || !strings.Contains(stderr, `achievement "grot-groundbreaker" changed grantOnly from true to false`) {
+		t.Errorf("compat = %d stderr = %q", code, stderr)
+	}
+}
+
+func TestBuildRefusesAGrantOnlyTierWithRules(t *testing.T) {
+	src := sourceTree(t, map[string]string{
+		"events/guides.json": guidesEntity,
+		"catalog/grot-groundbreaker.json": strings.Replace(grotGroundbreaker, `"art": "grot-groundbreaker"`,
+			`"art": "grot-groundbreaker", "goal": 1, "rules": [{"entity": "guides", "action": "completed", "countBy": "resource"}]`, 1),
+		"art/grot-groundbreaker.svg": testSVG,
+	})
+	code, _, stderr := runCmd("build", "-src", src, "-o", filepath.Join(t.TempDir(), "definitions.json"))
+	if code != exitProblems || !strings.Contains(stderr, "a grant-only tier has no goal or rules") {
+		t.Errorf("build = %d stderr = %q", code, stderr)
+	}
+}
+
 func TestBuildRejects(t *testing.T) {
 	cases := []struct {
 		name  string
