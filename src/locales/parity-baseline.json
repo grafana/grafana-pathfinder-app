@@ -4,7 +4,6 @@
     {
       "locales": [
         "cs-CZ",
-        "de-DE",
         "es-ES",
         "fr-FR",
         "hu-HU",
@@ -61,7 +60,6 @@
     {
       "locales": [
         "cs-CZ",
-        "de-DE",
         "es-ES",
         "fr-FR",
         "hu-HU",
@@ -73,14 +71,15 @@
         "sv-SE",
         "tr-TR"
       ],
-      "violations": ["missing-key:myLearning.dueDayCount_one"],
+      "violations": [
+        "missing-key:myLearning.dueDayCount_one"
+      ],
       "reason": "Existing catalog drift before translation parity enforcement.",
       "tracking": "#2412"
     },
     {
       "locales": [
         "cs-CZ",
-        "de-DE",
         "es-ES",
         "hu-HU",
         "id-ID",
@@ -95,14 +94,16 @@
         "tr-TR",
         "zh-CN"
       ],
-      "violations": ["missing-key:guideVersionNotice.body", "missing-key:guideVersionNotice.title"],
+      "violations": [
+        "missing-key:guideVersionNotice.body",
+        "missing-key:guideVersionNotice.title"
+      ],
       "reason": "Existing catalog drift before translation parity enforcement.",
       "tracking": "#2412"
     },
     {
       "locales": [
         "cs-CZ",
-        "de-DE",
         "es-ES",
         "hu-HU",
         "id-ID",
@@ -173,7 +174,17 @@
       "tracking": "#2412"
     },
     {
-      "locales": ["cs-CZ", "de-DE", "es-ES", "hu-HU", "it-IT", "nl-NL", "pl-PL", "pt-PT", "ru-RU", "sv-SE"],
+      "locales": [
+        "cs-CZ",
+        "es-ES",
+        "hu-HU",
+        "it-IT",
+        "nl-NL",
+        "pl-PL",
+        "pt-PT",
+        "ru-RU",
+        "sv-SE"
+      ],
       "violations": [
         "missing-key:coverPage.estimatedMinutes_one",
         "missing-key:coverPage.moduleCount_one",
@@ -186,13 +197,31 @@
       "tracking": "#2412"
     },
     {
-      "locales": ["cs-CZ", "es-ES", "fr-FR", "it-IT", "pl-PL", "pt-PT", "ru-RU"],
-      "violations": ["missing-key:myLearning.dueDayCount_many", "missing-key:sidebarHub.dueInDays_many"],
+      "locales": [
+        "cs-CZ",
+        "es-ES",
+        "fr-FR",
+        "it-IT",
+        "pl-PL",
+        "pt-PT",
+        "ru-RU"
+      ],
+      "violations": [
+        "missing-key:myLearning.dueDayCount_many",
+        "missing-key:sidebarHub.dueInDays_many"
+      ],
       "reason": "Existing catalog drift before translation parity enforcement.",
       "tracking": "#2412"
     },
     {
-      "locales": ["cs-CZ", "es-ES", "it-IT", "pl-PL", "pt-PT", "ru-RU"],
+      "locales": [
+        "cs-CZ",
+        "es-ES",
+        "it-IT",
+        "pl-PL",
+        "pt-PT",
+        "ru-RU"
+      ],
       "violations": [
         "missing-key:coverPage.estimatedMinutes_many",
         "missing-key:coverPage.moduleCount_many",
@@ -205,7 +234,11 @@
       "tracking": "#2412"
     },
     {
-      "locales": ["cs-CZ", "pl-PL", "ru-RU"],
+      "locales": [
+        "cs-CZ",
+        "pl-PL",
+        "ru-RU"
+      ],
       "violations": [
         "missing-key:coverPage.estimatedMinutes_few",
         "missing-key:coverPage.moduleCount_few",
