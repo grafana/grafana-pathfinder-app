@@ -19,11 +19,11 @@
       "blocks": [
         {
           "type": "interactive",
-          "action": "highlight",
-          "reftarget": "a[data-testid=\"data-testid Nav menu item\"][href=\"/connections/add-new-connection\"]",
-          "content": "Navigate to **Add new connection** in the Connections menu.",
-          "tooltip": "The Connections menu is where you manage all your data sources. In Grafana Cloud, you add new data sources through the 'Add new connection' page.",
-          "requirements": ["navmenu-open", "exists-reftarget"]
+          "action": "navigate",
+          "reftarget": "/connections/add-new-connection",
+          "content": "Open **Add new connection**.",
+          "tooltip": "Find the data source you want to connect.",
+          "verify": "on-page:/connections/add-new-connection"
         },
         {
           "type": "interactive",
