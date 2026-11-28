@@ -435,6 +435,21 @@ export function runValidate(args: ValidateArgs): CommandOutcome {
     return manyIssuesOutcome(outcome.issues, 'package');
   }
 
+  const packageType = args.manifest?.type ?? 'guide';
+  const blockCount = Array.isArray(args.content.blocks) ? args.content.blocks.length : 0;
+  if (packageType === 'guide' && blockCount === 0) {
+    return {
+      status: 'error',
+      code: 'PACKAGE_INVALID',
+      message: `Package "${args.content.id}" of type "guide" needs at least one block`,
+      data: {
+        id: args.content.id,
+        schemaVersion: args.content.schemaVersion,
+        blocks: 0,
+      },
+    };
+  }
+
   const warnings = placeholderSelectorWarnings(args.content.blocks);
   return {
     status: 'ok',
@@ -442,7 +457,7 @@ export function runValidate(args: ValidateArgs): CommandOutcome {
     data: {
       id: args.content.id,
       schemaVersion: args.content.schemaVersion,
-      blocks: Array.isArray(args.content.blocks) ? args.content.blocks.length : 0,
+      blocks: blockCount,
     },
     ...(warnings.length > 0 ? { warnings } : {}),
   };

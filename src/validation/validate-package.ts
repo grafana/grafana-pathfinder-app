@@ -203,6 +203,15 @@ export function validatePackage(packageDir: string, options: PackageValidationOp
 
   validateAssetReferences(contentRaw, assetsDir, warnings);
 
+  const isKnownGuide = !fs.existsSync(manifestPath) || validManifest?.type === 'guide';
+  if (isKnownGuide && content.blocks.length === 0) {
+    errors.push({
+      message: `Package "${packageId}" of type "guide" needs at least one block`,
+      path: ['content.json', 'blocks'],
+      code: 'empty_guide_blocks',
+    });
+  }
+
   const isValid = errors.length === 0 && (contentResult?.isValid ?? true);
 
   if (options.strict && warnings.length > 0) {
