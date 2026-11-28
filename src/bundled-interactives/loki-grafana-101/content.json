@@ -32,9 +32,9 @@
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "input[type='text']",
+          "reftarget": "#pageContent input[data-testid='data-testid Search field input'], #pageContent input[type='text']",
           "targetvalue": "Loki",
-          "requirements": ["on-page:/connections", "exists-reftarget"],
+          "requirements": ["on-page:/connections/add-new-connection", "exists-reftarget"],
           "content": "Search for **Loki** in the search bar.",
           "tooltip": "Loki is Grafana's log aggregation system, designed to work alongside Prometheus for a complete observability solution."
         },
@@ -42,30 +42,23 @@
           "type": "interactive",
           "action": "highlight",
           "reftarget": "a[href='/connections/datasources/loki']",
-          "requirements": ["exists-reftarget"],
+          "requirements": ["on-page:/connections/add-new-connection", "exists-reftarget"],
           "content": "Click on the **Loki** option that appears."
         },
         {
           "type": "interactive",
           "action": "button",
           "reftarget": "Add new data source",
-          "requirements": ["exists-reftarget"],
-          "content": "Click **Add new data source** to create your Loki connection."
-        },
-        {
-          "type": "interactive",
-          "action": "formfill",
-          "reftarget": "input[id='basic-settings-name']",
-          "targetvalue": "loki-datasource",
-          "requirements": ["exists-reftarget"],
-          "content": "Name your data source **loki-datasource** so you can easily find it later."
+          "requirements": ["on-page:/connections/datasources/loki", "exists-reftarget"],
+          "content": "Click **Add new data source** to create your Loki connection.",
+          "verify": "on-page:/connections/datasources/edit"
         },
         {
           "type": "interactive",
           "action": "formfill",
           "reftarget": "input[id='connection-url']",
           "targetvalue": "http://loki:3100",
-          "requirements": ["exists-reftarget"],
+          "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"],
           "content": "Set the **URL** to **http://loki:3100** to connect to your Loki server.",
           "tooltip": "This URL `http://loki:3100` is the default endpoint for Loki servers. Port **3100** is the standard Loki port."
         },
@@ -73,8 +66,33 @@
           "type": "interactive",
           "action": "button",
           "reftarget": "Save & test",
-          "requirements": ["exists-reftarget"],
-          "content": "Click **Save & test** to create your data source and verify the connection is working."
+          "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"],
+          "content": "Click **Save & test** to save the connection URL before naming your data source."
+        },
+        {
+          "type": "multistep",
+          "content": "Click **Edit title** next to the data source name (or the **Name** field on older versions), then enter **loki-datasource**.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "button[data-testid='data-testid Editable title edit button'], input[id='basic-settings-name']",
+              "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"]
+            },
+            {
+              "action": "formfill",
+              "reftarget": "input[data-testid='data-testid Editable title input'], input[id='basic-settings-name']",
+              "targetvalue": "loki-datasource",
+              "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"]
+            }
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "Save & test",
+          "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"],
+          "content": "Click **Save & test** to create your data source and verify the connection is working.",
+          "verify": "datasource-configured:loki-datasource"
         }
       ]
     },

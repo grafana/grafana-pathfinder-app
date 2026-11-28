@@ -32,57 +32,76 @@
         {
           "type": "interactive",
           "action": "formfill",
-          "reftarget": "input[type='text']",
+          "reftarget": "#pageContent input[data-testid='data-testid Search field input'], #pageContent input[type='text']",
           "targetvalue": "Prometheus",
-          "requirements": ["on-page:/connections", "exists-reftarget"],
+          "requirements": ["on-page:/connections/add-new-connection", "exists-reftarget"],
           "content": "Search for **Prometheus** in the search bar - this is a popular monitoring system data source."
         },
         {
           "type": "interactive",
           "action": "highlight",
           "reftarget": "a[href='/connections/datasources/prometheus']",
-          "requirements": ["exists-reftarget"],
+          "requirements": ["on-page:/connections/add-new-connection", "exists-reftarget"],
           "content": "Click on the **Prometheus** option that appears."
         },
         {
           "type": "interactive",
           "action": "button",
           "reftarget": "Add new data source",
-          "requirements": ["exists-reftarget"],
-          "content": "Click **Add new data source** to create your Prometheus connection."
-        },
-        {
-          "type": "interactive",
-          "action": "formfill",
-          "reftarget": "input[id='basic-settings-name']",
-          "targetvalue": "prometheus-datasource",
-          "requirements": ["exists-reftarget"],
-          "content": "Name your data source **prometheus-datasource** so you can easily find it later."
+          "requirements": ["on-page:/connections/datasources/prometheus", "exists-reftarget"],
+          "content": "Click **Add new data source** to create your Prometheus connection.",
+          "verify": "on-page:/connections/datasources/edit"
         },
         {
           "type": "interactive",
           "action": "formfill",
           "reftarget": "input[id='connection-url']",
           "targetvalue": "http://prometheus:9090",
-          "requirements": ["exists-reftarget"],
+          "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"],
           "content": "Set the **URL** to **http://prometheus:9090** to connect to your Prometheus server.",
           "tooltip": "This URL `http://prometheus:9090` is the default endpoint for Prometheus servers. Port **9090** is the standard Prometheus port."
         },
         {
           "type": "interactive",
           "action": "highlight",
-          "reftarget": "#pageContent label:contains('Prometheus type')",
-          "requirements": ["exists-reftarget"],
+          "reftarget": "input[data-testid='data-testid prometheus type-input']",
+          "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"],
           "skippable": true,
           "content": "Review the **Prometheus type** setting in the configuration page.",
-          "tooltip": "The **Prometheus type** dropdown lets you specify whether you're connecting to a standard Prometheus server or a compatible service like Cortex or Thanos, which helps Grafana optimize query behavior accordingly."
+          "tooltip": "The **Prometheus type** dropdown lets you specify whether you're connecting to a standard Prometheus server or a compatible service like Cortex or Thanos, which helps Grafana optimize query behavior accordingly.",
+          "doIt": false
         },
         {
           "type": "interactive",
           "action": "button",
           "reftarget": "Save & test",
-          "requirements": ["exists-reftarget"],
-          "content": "Click **Save & test** to create your data source and verify the connection is working."
+          "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"],
+          "content": "Click **Save & test** to save the connection URL before naming your data source."
+        },
+        {
+          "type": "multistep",
+          "content": "Click **Edit title** next to the data source name (or the **Name** field on older versions), then enter **prometheus-datasource**.",
+          "steps": [
+            {
+              "action": "highlight",
+              "reftarget": "button[data-testid='data-testid Editable title edit button'], input[id='basic-settings-name']",
+              "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"]
+            },
+            {
+              "action": "formfill",
+              "reftarget": "input[data-testid='data-testid Editable title input'], input[id='basic-settings-name']",
+              "targetvalue": "prometheus-datasource",
+              "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"]
+            }
+          ]
+        },
+        {
+          "type": "interactive",
+          "action": "button",
+          "reftarget": "Save & test",
+          "requirements": ["on-page:/connections/datasources/edit", "exists-reftarget"],
+          "content": "Click **Save & test** to create your data source and verify the connection is working.",
+          "verify": "datasource-configured:prometheus-datasource"
         }
       ]
     },
