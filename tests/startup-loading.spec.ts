@@ -1,3 +1,4 @@
+import { matchesBackendRoute } from './helpers/backend-route';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect } from './fixtures';
@@ -29,7 +30,7 @@ async function settings(page: Page | BrowserContext, overrides: Record<string, u
     const body = await response.json();
     await route.fulfill({ response, json: { ...body, jsonData: { ...body.jsonData, ...config } } });
   });
-  await page.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
+  await page.route(matchesBackendRoute('pathfinder-settings'), (route) =>
     route.fulfill({ json: { metadata: { name: 'default', resourceVersion: '1' }, spec: config } })
   );
 }
@@ -234,7 +235,7 @@ test('places the Learn experiment beside toolbar Help despite page help icons', 
   await expect(help).toBeVisible();
   const learn = toolbar.getByTestId('help-button-learn');
   // Grafana renders an untagged placeholder svg until the icon loads; before 12.4 the loaded icon is untagged too.
-  await expect(help.locator('svg > *').first()).toBeAttached();
+  await expect(help.locator('svg > *').first()).toBeAttached({ timeout: 20_000 });
   if ((await help.getByTestId('icon-question-circle').count()) === 0) {
     await expect(page.getByText('Waiting for the closed desktop Help button.', { exact: true })).toBeVisible();
     await expect(page.getByTestId('help-button-learn')).toHaveCount(0);

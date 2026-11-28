@@ -328,20 +328,21 @@ export function useLearningPaths(): UseLearningPathsReturn {
     return [...merged, ...appPlatformData.paths];
   }, [rawPaths, dynamicGuideData, appPlatformData]);
 
-  /**
-   * Gets guide metadata, scoped to a specific path when provided.
-   *
-   * URL-based paths can share guide slugs (e.g. two paths each have an
-   * "intro" guide). When `pathId` is supplied, only that path's dynamic
-   * metadata is consulted, preventing cross-path collisions. When `pathId`
-   * is omitted (callers without path context), all dynamic metadata is
-   * scanned for backwards compatibility.
-   *
-   * Falls back to App Platform catalogue metadata, then to static metadata
-   * from paths.json / paths-cloud.json.
-   */
   const resolveGuideMetadata = useCallback(
-    (guideId: string, pathId?: string): GuideMetadataEntry => {
+    (guideId: string, pathId?: string, selectedPath?: LearningPath): GuideMetadataEntry => {
+      const fallback = { title: guideId, estimatedMinutes: 5 };
+      const customMetadata = Object.hasOwn(appPlatformData.guideMetadata, guideId)
+        ? appPlatformData.guideMetadata[guideId]
+        : undefined;
+      if (
+        selectedPath?.isPrivate ||
+        (!selectedPath &&
+          pathId &&
+          !rawPaths.some((path) => path.id === pathId) &&
+          appPlatformData.paths.some((path) => path.id === pathId))
+      ) {
+        return customMetadata ?? fallback;
+      }
       if (pathId) {
         const scoped = dynamicGuideData[pathId]?.guideMetadata[guideId];
         if (scoped) {
@@ -354,16 +355,16 @@ export function useLearningPaths(): UseLearningPathsReturn {
           }
         }
       }
-      if (appPlatformData.guideMetadata[guideId]) {
-        return appPlatformData.guideMetadata[guideId];
+      if (!pathId && customMetadata) {
+        return customMetadata;
       }
       const { guideMetadata } = getPathsData();
       // Bundled JSON keeps Object.prototype, so gate on own keys — otherwise a
       // guide id of `toString` resolves to a function and renders untitled.
       const staticEntry = Object.hasOwn(guideMetadata, guideId) ? guideMetadata[guideId] : undefined;
-      return staticEntry || { title: guideId, estimatedMinutes: 5 };
+      return staticEntry || fallback;
     },
-    [dynamicGuideData, appPlatformData]
+    [dynamicGuideData, appPlatformData, rawPaths]
   );
 
   // Load progress from storage
@@ -466,8 +467,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
   // Get guides for a specific path with completion status
   const getPathGuides = useCallback(
-    (pathId: string): PathGuide[] => {
-      const path = paths.find((p) => p.id === pathId);
+    (pathId: string, selectedPath?: LearningPath): PathGuide[] => {
+      const path = selectedPath ?? paths.find((p) => p.id === pathId);
       if (!path) {
         return [];
       }
@@ -476,7 +477,7 @@ export function useLearningPaths(): UseLearningPathsReturn {
         path.guides.map((guideId) => {
           // Scope metadata to this path so two paths sharing a guide slug do
           // not bleed URLs/titles across each other.
-          const metadata = resolveGuideMetadata(guideId, pathId);
+          const metadata = resolveGuideMetadata(guideId, pathId, path);
 
           return {
             id: guideId,
@@ -497,8 +498,8 @@ export function useLearningPaths(): UseLearningPathsReturn {
   // Path-scoped per-guide URL lookup. Used by handlers that receive
   // (guideId, pathId) and need to navigate to the correct module.
   const getGuideUrlForPath = useCallback(
-    (guideId: string, pathId: string): string | undefined => {
-      return resolveGuideMetadata(guideId, pathId).url;
+    (guideId: string, pathId: string, selectedPath?: LearningPath): string | undefined => {
+      return resolveGuideMetadata(guideId, pathId, selectedPath).url;
     },
     [resolveGuideMetadata]
   );
@@ -514,12 +515,13 @@ export function useLearningPaths(): UseLearningPathsReturn {
 
   // Get completion percentage for a path
   const getPathProgress = useCallback(
-    (pathId: string): number => {
-      const path = paths.find((p) => p.id === pathId);
+    (pathId: string, selectedPath?: LearningPath): number => {
+      const path = selectedPath ?? paths.find((p) => p.id === pathId);
       if (!path) {
         return 0;
       }
-      return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).percent;
+      return calculatePathRollup(path, progress.completedGuides, (guideId, id) => getGuideUrlForPath(guideId, id, path))
+        .percent;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the revision is not read here, it is what re-identifies this callback so a consumer memoising on it (My Learning's card list) recomputes when the evidence moves
     [paths, progress.completedGuides, getGuideUrlForPath, guideProgressRevision]
@@ -529,12 +531,13 @@ export function useLearningPaths(): UseLearningPathsReturn {
   // fully-finished path can legitimately round to 99 (meanOfMemberPercentages
   // reserves 100 for `complete`), so that comparison would strand it.
   const isPathCompleted = useCallback(
-    (pathId: string): boolean => {
-      const path = paths.find((p) => p.id === pathId);
+    (pathId: string, selectedPath?: LearningPath): boolean => {
+      const path = selectedPath ?? paths.find((p) => p.id === pathId);
       if (!path) {
         return false;
       }
-      return calculatePathRollup(path, progress.completedGuides, getGuideUrlForPath).complete;
+      return calculatePathRollup(path, progress.completedGuides, (guideId, id) => getGuideUrlForPath(guideId, id, path))
+        .complete;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- as above: the revision re-identifies the callback, it is not an input the body reads
     [paths, progress.completedGuides, getGuideUrlForPath, guideProgressRevision]
@@ -667,13 +670,17 @@ export function useLearningPaths(): UseLearningPathsReturn {
   );
 
   const resetPathGuides = useCallback(
-    async (pathId: string, guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>): Promise<void> => {
+    async (
+      pathId: string,
+      guides: ReadonlyArray<Pick<PathGuide, 'id' | 'url'>>,
+      selectedPath?: LearningPath | null
+    ): Promise<void> => {
       if (guides.length === 0) {
         return;
       }
       reportPathReset('assignment', 'learning_path_assignment_reset_modal', undefined, guides.length);
       const guideIds = guides.map((guide) => guide.id);
-      const path = paths.find((p) => p.id === pathId);
+      const path = selectedPath === undefined ? paths.find((p) => p.id === pathId) : selectedPath;
 
       if (path?.url) {
         const targets = guides.map((guide) => ({

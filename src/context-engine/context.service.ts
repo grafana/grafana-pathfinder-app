@@ -40,6 +40,7 @@ import {
   type RecommenderOutcome,
 } from '../lib/telemetry';
 import { isDevModeEnabledGlobal } from '../utils/dev-mode';
+import { stripContentFile } from '../lib/guide-content-file';
 import { sanitizeTextForDisplay, parseUrlSafely, sanitizeForLogging } from '../security';
 import {
   ContextData,
@@ -765,7 +766,7 @@ export class ContextService {
   static deduplicateRecommendations(candidates: Recommendation[], preferred: Recommendation[]): Recommendation[] {
     const identity = (rec: Recommendation): string | undefined => {
       if (rec.url?.startsWith('bundled:')) {
-        return rec.url.slice('bundled:'.length).replace(/\/content\.json$/, '');
+        return stripContentFile(rec.url.slice('bundled:'.length));
       }
       const manifest = rec.manifest as Record<string, unknown> | undefined;
       if (
@@ -1422,7 +1423,7 @@ export class ContextService {
    * If the package design adds new dependency-like fields (e.g. `enhances`,
    * `breaks`), they will silently fail to surface to OSS users until this
    * allowlist is updated. Treat changes here and in
-   * `pkg/plugin/package_recommendations.go` (`PackageTargeting.Match`) as a
+   * `pkg/publiccontent/recommendations.go` (`PackageTargeting.Match`) as a
    * schema-coupling pair.
    */
   private static normalizeOnlinePackageManifest(

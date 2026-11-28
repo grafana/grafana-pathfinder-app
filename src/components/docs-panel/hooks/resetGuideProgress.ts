@@ -13,6 +13,7 @@ import {
   guideCompletionMarkStorage,
   interactiveCompletionStorage,
   interactiveStepStorage,
+  listPrTestContentKeys,
   milestoneCompletionStorage,
 } from '../../../lib/user-storage';
 
@@ -38,6 +39,8 @@ export interface ResetGuideProgressIdentity {
    * (see that field's own doc comment).
    */
   journeyBaseUrl?: string;
+  /** The milestone's URL: a Grafana Learn step's identity is its path, not its slug. */
+  milestoneUrl?: string;
 }
 
 /**
@@ -93,6 +96,7 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
         repository: identity.repository,
         packageManifest: identity.packageManifest,
         milestoneSlug: identity.milestoneSlug,
+        milestoneUrl: identity.milestoneUrl,
       })
     : resolveIdentity({
         packageManifest: identity?.packageManifest,
@@ -105,4 +109,10 @@ export async function resetGuideProgress(contentKey: string, identity?: ResetGui
       detail: { contentKey },
     })
   );
+}
+
+// PR-tester preview keys carry the #pf-pr- marker; real guide keys never do.
+// Clears every orphaned preview record through the single-guide reset path.
+export async function resetPrTestProgress(): Promise<void> {
+  await Promise.all(listPrTestContentKeys().map((contentKey) => resetGuideProgress(contentKey)));
 }

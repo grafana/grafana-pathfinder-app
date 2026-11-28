@@ -45,13 +45,13 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
           const common = {
             variant: 'secondary' as const,
             size: 'sm' as const,
-            className: styles.compactLink,
           };
           if (button.href) {
             return (
               <LinkButton
                 key={button.key}
                 {...common}
+                fill="text"
                 href={button.href}
                 target={button.target || '_blank'}
                 data-testid={testIds.helpFooter.link(index)}
@@ -62,7 +62,13 @@ export const HelpFooter: React.FC<HelpFooterProps> = ({ className }) => {
           }
 
           return (
-            <Button key={button.key} {...common} onClick={button.onClick} data-testid={testIds.helpFooter.link(index)}>
+            <Button
+              key={button.key}
+              {...common}
+              className={styles.compactLink}
+              onClick={button.onClick}
+              data-testid={testIds.helpFooter.link(index)}
+            >
               {button.label}
             </Button>
           );

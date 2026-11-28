@@ -128,8 +128,7 @@ The plugin configuration interface that allows administrators to set up the docu
 
 Plugin `jsonData` remains the tenant fallback for OSS, self-managed and local dev
 without the settings API. The fallback preserves unknown provisioning fields,
-`enabled`, and `pinned`; credentials are never submitted by a config form. The
-existing OBO bridge remains independent of this storage choice.
+`enabled`, and `pinned`; credentials are never submitted by a config form.
 
 A confirmed missing singleton reads as not configured (cached for ten minutes);
 any other tagged GET 404/405/501 permits fallback uncached. A first save tries POST. Existing resources

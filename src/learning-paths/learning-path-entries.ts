@@ -1,3 +1,5 @@
+import type { AssignmentEntry } from '../lib/assignments-client';
+import { assignmentProgress, buildResolvedAssignment, findAssignedTrack, getPathAssignment } from './assignments-core';
 import type { CatalogPackage } from '../types/package-catalog.types';
 import type { LearningPath, PathGuide, ResolvedAssignment } from '../types/learning-paths.types';
 import type { CatalogProgress } from './catalog-progress.hook';
@@ -11,6 +13,11 @@ export interface LearningPathEntry {
   percent: number;
   topic?: string;
   assignment?: ResolvedAssignment;
+  assignedGuide?: CatalogPackage;
+  isGuideAssignment?: boolean;
+  assignmentUnavailable?: boolean;
+  catalogKey?: string;
+  contentSource?: string;
 }
 
 export function selectLearningPathEntries({
@@ -28,8 +35,8 @@ export function selectLearningPathEntries({
   assignmentByTargetId: Map<string, ResolvedAssignment>;
   catalogItems: CatalogPackage[];
   catalogProgress: Map<string, CatalogProgress>;
-  getPathProgress: (id: string) => number;
-  getPathGuides: (id: string) => PathGuide[];
+  getPathProgress: (id: string, selectedPath?: LearningPath) => number;
+  getPathGuides: (id: string, selectedPath?: LearningPath) => PathGuide[];
   includeCompleted?: boolean;
 }): LearningPathEntry[] {
   const entries = new Map<string, LearningPathEntry>();
@@ -51,16 +58,17 @@ export function selectLearningPathEntries({
   const knownPaths = [...paths, ...onlinePaths];
   for (const path of knownPaths) {
     const key = `${path.isPrivate ? 'organization' : 'grafana'}:${path.id}`;
-    const assignment = assignmentByTargetId.get(path.id);
+    const assignment = getPathAssignment(assignmentByTargetId, path);
     const item = catalogPaths.get(key);
-    const percent = assignment?.progress ?? Math.max(getPathProgress(path.id), pathProgress.get(key) ?? 0);
+    const percent = assignment?.progress ?? Math.max(getPathProgress(path.id, path), pathProgress.get(key) ?? 0);
     if (!includeCompleted && percent >= 100 && !(assignment && !assignment.satisfied)) {
       continue;
     }
     entries.set(key, {
       key,
+      contentSource: path.isPrivate ? 'app-platform' : onlinePaths.includes(path) ? 'online-cdn' : 'bundled',
       path: { ...path, estimatedMinutes: path.estimatedMinutes ?? item?.estimatedMinutes },
-      guides: getPathGuides(path.id),
+      guides: getPathGuides(path.id, path),
       percent,
       assignment,
       topic: item ? catalogTopic(item) : undefined,
@@ -76,6 +84,8 @@ export function selectLearningPathEntries({
       key,
       percent,
       topic: catalogTopic(item),
+      contentSource:
+        item.source === 'organization' ? 'app-platform' : item.curatedPath ? 'bundled' : item.key.split(':')[0],
       path: item.curatedPath ?? {
         id: item.id,
         title: item.title,
@@ -100,4 +110,53 @@ export function selectLearningPathEntries({
     });
   }
   return [...entries.values()];
+}
+
+export function selectPathAssignmentEntries(
+  assignments: readonly AssignmentEntry[],
+  paths: readonly LearningPathEntry[]
+): LearningPathEntry[] {
+  return assignments
+    .filter((assignment) => assignment.targetType === 'path')
+    .map((assignment) => {
+      const entry = paths.find(
+        (candidate) =>
+          candidate.path.id === assignment.targetId &&
+          (!assignment.targetSource ||
+            (assignment.targetSource === 'interactive-tutorials' ? 'online-cdn' : assignment.targetSource) ===
+              (candidate.contentSource ?? (candidate.path.isPrivate ? 'app-platform' : 'bundled')))
+      );
+      const path = entry?.path ?? {
+        id: assignment.targetId,
+        title: assignment.targetId,
+        description: '',
+        guides: [],
+        badgeId: '',
+        isPrivate: assignment.targetSource === 'app-platform',
+      };
+      const percent = assignmentProgress(assignment.guides, 0);
+      const resolved = buildResolvedAssignment(assignment, path, percent);
+      const track = findAssignedTrack(path, assignment.trackId);
+      const guides = entry?.guides ?? [];
+      const guideIds = assignment.guides?.map((guide) => guide.guideId) ?? track?.guides;
+      return {
+        ...entry,
+        key: JSON.stringify([
+          'assignment',
+          assignment.targetSource,
+          assignment.targetId,
+          assignment.ruleId,
+          assignment.trackId,
+          assignment.assignedAt,
+        ]),
+        catalogKey: entry?.key,
+        path,
+        guides: guideIds
+          ? guideIds.flatMap((id) => guides.find((guide) => (guide.guideId ?? guide.id) === id) ?? [])
+          : guides,
+        percent,
+        assignment: resolved,
+        assignmentUnavailable: !entry,
+      };
+    });
 }

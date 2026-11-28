@@ -280,7 +280,6 @@ export const testIds = {
     confirmResetButton: (pathId: string) => `learning-path-confirm-reset-${pathId}`,
     cancelResetButton: (pathId: string) => `learning-path-cancel-reset-${pathId}`,
     expandButton: (pathId: string) => `learning-path-expand-${pathId}`,
-    viewBadgesButton: 'learning-paths-view-badges',
     badgesModal: 'learning-paths-badges-modal',
     badgesModalClose: 'learning-paths-badges-modal-close',
     badgeItem: (badgeId: string) => `learning-paths-badge-${badgeId}`,
@@ -300,6 +299,21 @@ export const testIds = {
     coverHero: 'learning-paths-cover-hero',
     tracksTabs: 'learning-paths-toc-tracks-tabs',
     tracksTab: (trackId: string) => `learning-paths-toc-track-${trackId}`,
+  },
+
+  achievements: {
+    hubSection: 'my-learning-achievements-section',
+    hubEmpty: 'my-learning-achievements-empty',
+    hubUnavailable: 'my-learning-achievements-unavailable',
+    homeShelf: 'home-achievements-shelf',
+    pageList: 'badges-page-achievements-list',
+    hubRow: (achievementId: string) => `my-learning-achievement-${achievementId}`,
+    toast: (achievementId: string) => `achievement-toast-${achievementId}`,
+    toastDismiss: 'achievement-toast-dismiss',
+    toastStack: 'achievement-toast-stack',
+    overlay: 'achievement-tier-up-overlay',
+    overlayDismiss: 'achievement-tier-up-overlay-dismiss',
+    overlayAnnouncement: 'achievement-tier-up-announcement',
   },
 
   // Live Session

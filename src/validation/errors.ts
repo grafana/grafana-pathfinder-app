@@ -11,6 +11,7 @@ export interface ValidationError {
   message: string;
   path: Array<string | number>;
   code: string;
+  remediation?: string;
 }
 
 export interface ValidationWarning {

@@ -3,6 +3,7 @@ import { isGrafanaDocsUrl, cleanDocsUrl, isLearningJourneyUrl } from './url-vali
 // Mock the constants
 jest.mock('../../../constants', () => ({
   ALLOWED_GRAFANA_DOCS_HOSTNAMES: ['grafana.com', 'docs.grafana.com'],
+  ALLOWED_INTERACTIVE_LEARNING_HOSTNAMES: ['interactive-learning.grafana.net'],
 }));
 
 describe('url-validation', () => {
@@ -78,6 +79,12 @@ describe('url-validation', () => {
       expect(
         cleanDocsUrl('https://grafana.com/docs/learning-paths/linux-server-integration/select-platform/content.json')
       ).toBe('https://grafana.com/docs/learning-paths/linux-server-integration/select-platform');
+    });
+
+    it('removes a localized content.ja.json suffix', () => {
+      expect(cleanDocsUrl('https://grafana.com/docs/learning-paths/linux/select-platform/content.ja.json')).toBe(
+        'https://grafana.com/docs/learning-paths/linux/select-platform'
+      );
     });
 
     it('does not remove /content.json when not at end', () => {

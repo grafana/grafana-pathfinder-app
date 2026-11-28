@@ -147,6 +147,10 @@ describe('openfeature', () => {
         expect(pathfinderFeatureFlags['pathfinder.progress-analytics'].trackingKey).toBe('progress_analytics');
         expect(pathfinderFeatureFlags['pathfinder.progress-records'].trackingKey).toBe('progress_records');
         expect(pathfinderFeatureFlags['pathfinder.recommend-completions'].trackingKey).toBe('recommend_completions');
+        expect(pathfinderFeatureFlags['pathfinder.achievements']).toMatchObject({
+          trackingKey: 'achievements',
+          defaultValue: false,
+        });
       });
     });
 
@@ -160,6 +164,19 @@ describe('openfeature', () => {
         const { pathfinderFeatureFlags } = require('./openfeature');
         expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].valueType).toBe('boolean');
         expect(pathfinderFeatureFlags['pathfinder.intercept-docs-links'].defaultValue).toBe(false);
+      });
+    });
+
+    it('pathfinder.guide-translations must default to false so translated guides ship dark', () => {
+      jest.isolateModules(() => {
+        const mockOF = createMockOpenFeature();
+        const mockReact = createMockReactSdk();
+        jest.doMock('@openfeature/web-sdk', () => mockOF);
+        jest.doMock('@openfeature/react-sdk', () => mockReact);
+
+        const { pathfinderFeatureFlags } = require('./openfeature');
+        expect(pathfinderFeatureFlags['pathfinder.guide-translations'].valueType).toBe('boolean');
+        expect(pathfinderFeatureFlags['pathfinder.guide-translations'].defaultValue).toBe(false);
       });
     });
 

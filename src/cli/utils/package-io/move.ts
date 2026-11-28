@@ -133,7 +133,7 @@ function moveBlockInto(
     });
   }
 
-  const target = resolveAppendTarget(content, { parentId: containerId, branch: options.branch });
+  const target = resolveAppendTarget(content, { parentId: containerId, branch: options.branch }, source.block.type);
 
   // Reject moving a container into one of its own descendants — that would
   // create a cycle and orphan the entire subtree.

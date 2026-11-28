@@ -1,3 +1,4 @@
+import { inlineSnippetRefsInGuide } from '../../snippet-engine/inline-refs';
 /**
  * Parity between the completion numerator's keys and the parser's.
  *
@@ -41,7 +42,7 @@ import {
 } from '../../global-state/completion-store';
 import { resetContentKeyForTests, setActiveTabUrl } from '../../global-state/content-key';
 import { interactiveCompletionStorage, interactiveStepStorage } from '../user-storage';
-import { publishGuideIndex } from '../../global-state/active-guide-index';
+import { publishGuideIndex, setGuideConditionalBranch } from '../../global-state/active-guide-index';
 import { resolvePathMemberPercentages } from '../../global-state/path-member-join';
 import { StorageKeys, buildVersionedContentStorageKey } from '../storage-keys';
 import type { Milestone, ParsedElement } from '../../types/content.types';
@@ -521,4 +522,45 @@ describe('cross-surface percentage parity (C2)', () => {
 
     expect(Object.keys(interactiveCompletionStorage.peekAll())).not.toContain(untouchedContentKey);
   });
+});
+
+it.each([0, 2])('does not gate on an anonymous conditional path shifted by a %i-block snippet', async (size) => {
+  resetCompletionStoreForTests();
+  const key = `https://example.com/shifted-conditional-${size}`;
+  setActiveTabUrl(key);
+  const source = guideOf([
+    { type: 'snippet-ref', snippetId: 'intro' },
+    {
+      type: 'conditional',
+      conditions: ['exists-reftarget'],
+      reftarget: '#editor',
+      whenTrue: [{ type: 'interactive', id: 'save', action: 'button', reftarget: '#save', content: 'Save' }],
+      whenFalse: [],
+    },
+    { type: 'interactive', id: 'finish', action: 'button', reftarget: '#finish', content: 'Finish' },
+  ]);
+  const index = withResolver(source.blocks);
+  const expanded = await inlineSnippetRefsInGuide(source, {
+    resolve: async () => ({
+      ok: true,
+      id: 'intro',
+      source: 'online-cdn',
+      snippet: {
+        id: 'intro',
+        title: 'Intro',
+        description: 'Intro',
+        blocks: Array.from({ length: size }, () => ({ type: 'markdown' as const, content: 'Intro' })),
+      },
+    }),
+  });
+  const parsed = parseJsonGuide(expanded);
+  expect(parsed.errors ?? []).toEqual([]);
+  const conditional = parsed.data!.elements.find((element) => element.type === 'interactive-conditional')!;
+  expect(conditional.props.id).toBe(`blocks[${size}]`);
+  expect(index.conditionalPositions?.size).toBe(0);
+  publishGuideIndex({ contentKey: key, index, denominatorSource: 'live-pre-inlining' });
+  setGuideConditionalBranch(key, conditional.props.id, { stepIds: ['save'], nestedConditionalIds: [] });
+  markStepCompleted('save', STANDALONE_SECTION_ID, 'manual');
+  markStepCompleted('finish', STANDALONE_SECTION_ID, 'manual');
+  expect(peekGuidePercentage(key)).toBe(100);
 });

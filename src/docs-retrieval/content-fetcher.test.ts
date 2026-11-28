@@ -173,6 +173,26 @@ describe('content.json → unstyled.html ladder', () => {
     });
   });
 
+  it('falls back from a localized content file that returns the null signal to its unstyled.html sibling', async () => {
+    const packageUrl = 'https://interactive-learning.grafana.net/packages/foo';
+    const jsonHeaders = new Headers();
+    jsonHeaders.set('Content-Type', 'application/json');
+    const htmlHeaders = new Headers();
+    htmlHeaders.set('Content-Type', 'text/html; charset=utf-8');
+    const fetchMock = (global.fetch as jest.Mock).mockImplementation((url: string) =>
+      Promise.resolve(
+        url.endsWith('/content.ja.json')
+          ? { ok: true, text: async () => 'null', url, headers: jsonHeaders }
+          : { ok: true, text: async () => '<html><body>unstyled</body></html>', url, headers: htmlHeaders }
+      )
+    );
+
+    const result = await fetchContent(`${packageUrl}/content.ja.json`);
+
+    expect(result.content).not.toBeNull();
+    expect(fetchMock.mock.calls.map(([url]) => url)).toContain(`${packageUrl}/unstyled.html`);
+  });
+
   it('records a terminal content-fetch fallback for generic interactive-learning URLs when both tiers fail', async () => {
     const genericUrl = 'https://interactive-learning.grafana.net/guide/missing';
     (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 404, statusText: 'Not Found' });

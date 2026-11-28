@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import fixture from '../../../pkg/plugin/testdata/contract/learning-insights.default.json';
+import fixture from '../../../pkg/provider/testdata/contract/learning-insights.default.json';
 import type { LearningInsightsResponse } from '../../types/learning-insights';
 import { LearningInsightsView } from './LearningInsightsPage';
 

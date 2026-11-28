@@ -1,4 +1,22 @@
 {
+  "achievements": {
+    "announce": {
+      "award": "",
+      "dismiss": "",
+      "final": "",
+      "progress": "",
+      "tierUp": ""
+    },
+    "hub": {
+      "empty": "",
+      "progress": "",
+      "progressLabel": "",
+      "showAll": "",
+      "title": "",
+      "truncated": "",
+      "unavailable": ""
+    }
+  },
   "contextPanel": {
     "categoryDocsPage": "ドキュメントページ",
     "categoryInteractiveGuide": "インタラクティブガイド",
@@ -106,6 +124,7 @@
     "dueOn": "",
     "dueToday": "",
     "dueTomorrow": "",
+    "groupProgress": "",
     "inProgress": "",
     "moduleOf": "",
     "moreRecommended": "",

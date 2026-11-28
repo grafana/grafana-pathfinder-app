@@ -83,6 +83,10 @@ describe('interactive-learning banner enrollment boundary', () => {
 describe('auto-open guide enrollment boundary', () => {
   const PINNED: Record<string, string[]> = {
     startAutoOpenGuideExperiment: ['module.tsx', 'utils/experiments/auto-open-guide/index.ts'],
+    COHORT_AUTO_OPEN_EXPERIMENT_FLAG: [
+      'constants/auto-open-guide-experiment.ts',
+      'utils/experiments/auto-open-guide/index.ts',
+    ],
     ONBOARDING_EXPLORING_EXPERIMENT_FLAG: [
       'constants/auto-open-guide-experiment.ts',
       'utils/experiments/auto-open-guide/index.ts',

@@ -1,0 +1,156 @@
+import { config, getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom, timeout, TimeoutError } from 'rxjs';
+import { z } from 'zod';
+
+import { backendRoute } from '../../lib/backend-routes';
+import { extractFetchErrorStatus } from '../../lib/fetch-error';
+import {
+  AchievementDefinitionsResponseWireSchema,
+  AchievementSourceConditionWireSchema,
+  AchievementSourceSubscriptionWireSchema,
+  AchievementEventsResponseWireSchema,
+  MyAchievementsResponseWireSchema,
+  type AchievementDefinitionsResponseWire,
+  type AchievementEventsResponseWire,
+  type MyAchievementsResponseWire,
+} from '../../types/backend-api.schema';
+import type { CompletionCategory } from '../types';
+import { WRITE_REQUEST_TIMEOUT_MS } from '../completion-write-timing';
+
+const READ_TIMEOUT_MS = 10_000;
+
+export const ACHIEVEMENT_EVENT_SCHEMA_VERSION = 1;
+
+export interface GuideCompletedContext {
+  guideSource: string;
+  guideId: string;
+  guideCategory: CompletionCategory;
+  pathId?: string;
+}
+
+/** RFC §6.1. The recorder posts `guides.completed`, so the context is that pair's declared fields. */
+export interface GuideCompletedEventBody {
+  schemaVersion: typeof ACHIEVEMENT_EVENT_SCHEMA_VERSION;
+  eventId: string;
+  entity: 'guides';
+  action: 'completed';
+  occurredAt: string;
+  context: GuideCompletedContext;
+}
+
+/** An Echo event, carrying only the properties its source lists; the backend maps it to a pair. */
+export interface SourceEventBody {
+  schemaVersion: typeof ACHIEVEMENT_EVENT_SCHEMA_VERSION;
+  eventId: string;
+  source: string;
+  occurredAt: string;
+  properties: Record<string, string | number | boolean>;
+}
+
+export type AchievementEventBody = GuideCompletedEventBody | SourceEventBody;
+
+/** `route-missing` and `forbidden` disarm the session and keep the queue (RFC §6.5). */
+export type EventOutcome =
+  | { kind: 'evaluated'; response: AchievementEventsResponseWire }
+  | { kind: 'terminal' }
+  | { kind: 'transient' }
+  | { kind: 'route-missing' }
+  | { kind: 'forbidden' };
+
+export async function postAchievementEvent(body: AchievementEventBody): Promise<EventOutcome> {
+  try {
+    const response = await lastValueFrom(
+      getBackendSrv()
+        .fetch<unknown>({
+          url: backendRoute('api/v1/achievements/events'),
+          method: 'POST',
+          data: body,
+          showErrorAlert: false,
+          showSuccessAlert: false,
+        })
+        .pipe(timeout({ each: WRITE_REQUEST_TIMEOUT_MS }))
+    );
+    const parsed = AchievementEventsResponseWireSchema.safeParse(response.data);
+    // The event was evaluated even when the body does not parse; a resend cannot do better.
+    return parsed.success
+      ? { kind: 'evaluated', response: parsed.data }
+      : { kind: 'evaluated', response: { eventId: body.eventId, retry: false, decisions: [] } };
+  } catch (err) {
+    if (err instanceof TimeoutError) {
+      return { kind: 'transient' };
+    }
+    return classifyEventError(extractFetchErrorStatus(err));
+  }
+}
+
+export function classifyEventError(status: number | undefined): EventOutcome {
+  if (status === 404) {
+    return { kind: 'route-missing' };
+  }
+  if (status === 403) {
+    return { kind: 'forbidden' };
+  }
+  if (status !== undefined && status >= 400 && status < 500 && status !== 401 && status !== 408 && status !== 429) {
+    return { kind: 'terminal' };
+  }
+  return { kind: 'transient' };
+}
+
+export type MyAchievementsResult = { kind: 'ok'; data: MyAchievementsResponseWire } | { kind: 'unavailable' };
+
+export async function fetchMyAchievements(): Promise<MyAchievementsResult> {
+  try {
+    const response = await lastValueFrom(
+      getBackendSrv()
+        .fetch<unknown>({ url: backendRoute('api/v1/achievements/my'), method: 'GET', showErrorAlert: false })
+        .pipe(timeout(READ_TIMEOUT_MS))
+    );
+    const parsed = MyAchievementsResponseWireSchema.safeParse(response.data);
+    return parsed.success && parsed.data.capability.available
+      ? { kind: 'ok', data: parsed.data }
+      : { kind: 'unavailable' };
+  } catch {
+    return { kind: 'unavailable' };
+  }
+}
+
+const RuntimeSourceSchema = z.object({
+  ...AchievementSourceSubscriptionWireSchema.shape,
+  when: z.array(z.object(AchievementSourceConditionWireSchema.shape)).optional(),
+});
+
+// Each source is read on its own and unknown keys are dropped, so a source this build cannot read never hides the definitions.
+const RuntimeDefinitionsSchema = AchievementDefinitionsResponseWireSchema.extend({
+  sources: z
+    .array(z.unknown())
+    .catch([])
+    .transform((entries) =>
+      entries.flatMap((entry) => {
+        const parsed = RuntimeSourceSchema.safeParse(entry);
+        return parsed.success ? [parsed.data] : [];
+      })
+    ),
+});
+
+export function parseAchievementDefinitions(data: unknown): AchievementDefinitionsResponseWire | null {
+  const parsed = RuntimeDefinitionsSchema.safeParse(data);
+  return parsed.success ? parsed.data : null;
+}
+
+export async function fetchAchievementDefinitions(): Promise<AchievementDefinitionsResponseWire | null> {
+  try {
+    const response = await lastValueFrom(
+      getBackendSrv()
+        .fetch<unknown>({
+          url: backendRoute('api/v1/achievements/definitions'),
+          params: { grafanaVersion: config.buildInfo.version },
+          method: 'GET',
+          showErrorAlert: false,
+        })
+        .pipe(timeout(READ_TIMEOUT_MS))
+    );
+    return parseAchievementDefinitions(response.data);
+  } catch {
+    return null;
+  }
+}

@@ -1,3 +1,4 @@
+import { matchesBackendRoute } from './helpers/backend-route';
 import { test, expect } from './fixtures';
 import { testIds } from '../src/constants/testIds';
 
@@ -24,7 +25,7 @@ for (const kind of ['guided', 'multistep'] as const) {
           json: { ...body, jsonData: { ...body.jsonData, enableTwoTabController: true } },
         });
       });
-      await context.route('**/api/plugins/grafana-pathfinder-app/resources/pathfinder-settings', (route) =>
+      await context.route(matchesBackendRoute('pathfinder-settings'), (route) =>
         route.fulfill({
           json: {
             metadata: { name: 'default', resourceVersion: '1' },

@@ -1,22 +1,22 @@
 import { config } from '@grafana/runtime';
 
 import { PLUGIN_BASE_URL } from '../constants';
+import { canonicalContentFileUrl, stripContentFile } from '../lib/guide-content-file';
 import type { LearningJourneyTab } from '../types/content-panel.types';
 import { findDocPage } from './find-doc-page';
 import { buildPathfinderShareUrl } from './pathfinder-search-params';
 
 const BACKEND_GUIDE_PREFIX = 'backend-guide:';
 const BUNDLED_PREFIX = 'bundled:';
-const BUNDLED_CONTENT_SUFFIX = '/content.json';
 
 function toCanonicalDoc(url: string): string {
   if (url.startsWith(BACKEND_GUIDE_PREFIX)) {
     return `api:${url.slice(BACKEND_GUIDE_PREFIX.length)}`;
   }
-  if (url.startsWith(BUNDLED_PREFIX) && url.endsWith(BUNDLED_CONTENT_SUFFIX)) {
-    return url.slice(0, -BUNDLED_CONTENT_SUFFIX.length);
+  if (url.startsWith(BUNDLED_PREFIX)) {
+    return stripContentFile(url);
   }
-  return url;
+  return canonicalContentFileUrl(url).url;
 }
 
 /**

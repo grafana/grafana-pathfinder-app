@@ -1,18 +1,19 @@
 import { getBackendSrv } from '@grafana/runtime';
 import { lastValueFrom, timeout } from 'rxjs';
 
-import { PLUGIN_BACKEND_URL } from '../constants';
+import { backendRoute } from '../lib/backend-routes';
 import { logger } from '../lib/logging';
+import { getUserScope } from '../lib/user-scope';
 import { MyCompletionsResponseWireSchema, type MyCompletionsResponseWire } from '../types/backend-api.schema';
 import { onCompletionPublished } from './completion-write-hook';
 
 export type MyCompletionsResult =
   { kind: 'ok'; data: MyCompletionsResponseWire } | { kind: 'unavailable' } | { kind: 'invalid' };
 
-const MY_COMPLETIONS_URL = `${PLUGIN_BACKEND_URL}/completion-records/my`;
 const TRANSPORT_TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 60_000;
 
+let cacheScope = '';
 let cached: { result: Extract<MyCompletionsResult, { kind: 'ok' }>; fetchedAt: number } | null = null;
 let inflight: Promise<MyCompletionsResult> | null = null;
 // The backend answered available:false: a standing condition, so it is not re-probed until reload or a clear.
@@ -30,7 +31,7 @@ async function fetchMyCompletions(): Promise<Fetched> {
   try {
     const response = await lastValueFrom(
       getBackendSrv()
-        .fetch<unknown>({ url: MY_COMPLETIONS_URL, method: 'GET', showErrorAlert: false })
+        .fetch<unknown>({ url: backendRoute('completion-records/my'), method: 'GET', showErrorAlert: false })
         .pipe(timeout(TRANSPORT_TIMEOUT_MS))
     );
     const parsed = MyCompletionsResponseWireSchema.safeParse(response.data);
@@ -46,6 +47,11 @@ async function fetchMyCompletions(): Promise<Fetched> {
 }
 
 export function loadMyCompletions(): Promise<MyCompletionsResult> {
+  const scope = getUserScope();
+  if (scope !== cacheScope) {
+    clearMyCompletionsCache();
+    cacheScope = scope;
+  }
   unsubscribe ??= onCompletionPublished(clearMyCompletionsCache);
   if (structurallyUnavailable) {
     return Promise.resolve({ kind: 'unavailable' });
@@ -57,6 +63,9 @@ export function loadMyCompletions(): Promise<MyCompletionsResult> {
     const startedIn = generation;
     const request: Promise<MyCompletionsResult> = fetchMyCompletions()
       .then(({ result, structural }) => {
+        if (scope !== getUserScope()) {
+          return { kind: 'unavailable' } as const;
+        }
         if (startedIn === generation) {
           if (result.kind === 'ok') {
             cached = { result, fetchedAt: Date.now() };

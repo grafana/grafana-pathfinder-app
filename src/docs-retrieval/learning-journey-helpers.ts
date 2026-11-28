@@ -32,8 +32,13 @@ import {
   resolveBundledGuideCompletionIdentity,
   resolveStandaloneGuideCompletionIdentity,
   resolveJourneyCompletionIdentity,
+  resolveLearnStepCompletionIdentity,
+  resolveLearnJourneyCompletionIdentity,
+  isGrafanaLearnUrl,
   manifestGuideId,
   normalizeGuideId,
+  type CompletionKey,
+  type LearnStepCompletionIdentity,
   type RegisteredGuideIdentity,
   type PathAnalyticsIdentity,
 } from '../completion-records';
@@ -745,11 +750,35 @@ function journeyAnalyticsIdentity(
   };
 }
 
+/** The step's own journey, or `undefined` when the journey base names a different one. */
+function learnJourneyOfStep(step: LearnStepCompletionIdentity, journeyBaseUrl: string): CompletionKey | undefined {
+  const journey = resolveLearnJourneyCompletionIdentity(journeyBaseUrl);
+  return journey?.guideId === step.pathId ? journey : undefined;
+}
+
+function learnStepAnalyticsIdentity(
+  step: LearnStepCompletionIdentity,
+  journeyBaseUrl: string
+): AnalyticsCompletionIdentity {
+  const journey = learnJourneyOfStep(step, journeyBaseUrl);
+  return {
+    guideSource: step.guideSource,
+    guideId: step.guideId,
+    sourceConfirmed: true,
+    ...(journey && { pathIdentity: { ...journey, sourceConfirmed: true } }),
+  };
+}
+
 function milestoneAnalyticsIdentity(
   journeyBaseUrl: string,
   milestoneSlug: string,
+  milestoneUrl: string,
   context?: CompletionContext
 ): AnalyticsCompletionIdentity {
+  const learnStep = resolveLearnStepCompletionIdentity(milestoneUrl);
+  if (learnStep) {
+    return learnStepAnalyticsIdentity(learnStep, journeyBaseUrl);
+  }
   return {
     ...resolveMilestoneCompletionIdentity({
       repository: context?.repository,
@@ -889,8 +918,12 @@ export function resolveSurfaceCompletionIdentity(
       slug && journeyBase ? (metadata?.journeyManifest ?? metadata?.packageManifest) : metadata?.packageManifest,
     repository: metadata?.repository,
   };
-  if (slug && journeyBase) {
-    return milestoneAnalyticsIdentity(journeyBase, slug, context);
+  if (slug && journeyBase && input.currentUrl) {
+    // A Learn page above step depth has no durable identity, never a bare-slug one.
+    if (isGrafanaLearnUrl(input.currentUrl) && !resolveLearnStepCompletionIdentity(input.currentUrl)) {
+      return undefined;
+    }
+    return milestoneAnalyticsIdentity(journeyBase, slug, input.currentUrl, context);
   }
   if (isPathOrJourneyManifest(context.packageManifest)) {
     return undefined;
@@ -1045,11 +1078,70 @@ export async function getAllJourneyCompletionsAsync(): Promise<Record<string, nu
  * doesn't contain) — unchanged behavior for those callers.
  */
 function resolveMilestoneContentKey(url: string, expectedMilestoneUrls?: readonly string[]): string {
-  const slug = getMilestoneSlug(url);
-  const canonicalUrl = slug
-    ? expectedMilestoneUrls?.find((candidate) => getMilestoneSlug(candidate) === slug)
+  const matchKey = milestoneMatchKey(url);
+  const canonicalUrl = matchKey
+    ? expectedMilestoneUrls?.find((candidate) => milestoneMatchKey(candidate) === matchKey)
     : undefined;
   return sanitizeContentKey(canonicalUrl ?? url);
+}
+
+// Learn step slugs repeat across sections, so a Learn step matches on its whole path.
+function milestoneMatchKey(url: string): string {
+  return resolveLearnStepCompletionIdentity(url)?.guideId ?? getMilestoneSlug(url);
+}
+
+/**
+ * Grafana Learn's half of {@link markMilestoneDone}, after the URL-keyed progress write.
+ * It keys records on the step's path and journey slug (`docs/design/GRAFANA_LEARN.md`,
+ * section 7) and never touches the bare-slug completed-guides list, legacy slug
+ * storage, curated paths or badges. A Learn URL above step depth records nothing.
+ */
+async function completeLearnMilestone(
+  journeyBaseUrl: string,
+  milestoneUrl: string,
+  expectedMilestoneUrls: readonly string[] | undefined,
+  context: CompletionContext | undefined
+): Promise<void> {
+  const step = resolveLearnStepCompletionIdentity(milestoneUrl);
+  if (!step) {
+    return;
+  }
+  const source = context?.source ?? 'objectives';
+  recordGuideCompletion({
+    kind: 'guide',
+    ...learnStepAnalyticsIdentity(step, journeyBaseUrl),
+    guideTitle: context?.guideTitle ?? step.guideId,
+    guideCategory: 'learning-journey',
+    pathId: step.pathId,
+    completionPercent: 100,
+    source,
+    ...(context?.guideStats && { guideStats: context.guideStats }),
+    ...(context?.durationMs !== undefined && { durationMs: context.durationMs }),
+    completedAt: new Date().toISOString(),
+  });
+
+  const journey = learnJourneyOfStep(step, journeyBaseUrl);
+  if (!journey || !expectedMilestoneUrls || expectedMilestoneUrls.length === 0) {
+    return;
+  }
+  const completions = await interactiveCompletionStorage.getAll();
+  const allStepsDone = expectedMilestoneUrls.every(
+    (url) => (completions[resolveMilestoneContentKey(url, expectedMilestoneUrls)] ?? 0) >= 100
+  );
+  if (!allStepsDone) {
+    return;
+  }
+  recordJourneyCompletion({
+    kind: 'journey',
+    ...journey,
+    sourceConfirmed: true,
+    guideTitle: journey.guideId,
+    guideCategory: 'learning-journey',
+    pathId: journey.guideId,
+    completionPercent: 100,
+    source,
+    completedAt: new Date().toISOString(),
+  });
 }
 
 export async function markMilestoneDone(
@@ -1070,12 +1162,16 @@ export async function markMilestoneDone(
   if (isPrTestUrl(milestoneUrl) || isPrTestUrl(journeyBaseUrl)) {
     return;
   }
+  if (isGrafanaLearnUrl(milestoneUrl)) {
+    await completeLearnMilestone(journeyBaseUrl, milestoneUrl, expectedMilestoneUrls, context);
+    return;
+  }
   await markGuideCompleted(milestoneSlug);
 
   // Same-source milestone slugs still share a durable key across journeys.
   recordGuideCompletion({
     kind: 'guide',
-    ...milestoneAnalyticsIdentity(journeyBaseUrl, milestoneSlug, context),
+    ...milestoneAnalyticsIdentity(journeyBaseUrl, milestoneSlug, milestoneUrl, context),
     guideTitle: context?.guideTitle ?? milestoneSlug,
     guideCategory: 'learning-journey',
     pathId:

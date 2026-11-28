@@ -3,7 +3,7 @@ import demo from '../../docs/examples/kiosk/dem.json';
 
 it('accepts the complete DEM example', () => expect(KioskCatalogSchema.safeParse(demo).success).toBe(true));
 it.each([
-  { version: 2 },
+  { version: 3 },
   { style: 'color:red' },
   {
     blocks: [

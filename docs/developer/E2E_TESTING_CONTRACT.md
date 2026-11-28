@@ -544,9 +544,11 @@ Applied to comment box elements created by `NavigationManager` and `GuidedHandle
 
 #### `data-guided-state`
 
-**Value**: `completed`, present only on a retained final guided box after success or Skip. Active boxes omit it.
+**Value**: `completed`, present only on a retained final guided box after Skip or after a final noop step is continued. Active boxes omit it.
 
-The final box stays at 100% with only a focused Close button until dismissed, another guided action starts, or its session is cancelled. Action listeners, timers, highlights, and target tracking are already cleaned up; completion and persistence do not wait for Close. Cancelled, timed-out, and failed actions do not retain a box. A final noop receives the same done state.
+The retained box stays at 100% with only a focused Close button until dismissed, another guided action starts, or its session is cancelled. Action listeners, timers, highlights, and target tracking are already cleaned up; completion and persistence do not wait for Close.
+
+When the user performs the final action on the page themselves (click, hover, or form fill), the box is removed at once and no `[data-guided-state="completed"]` box remains. Cancelled, timed-out, and failed actions do not retain a box either.
 
 The retained box keeps its instructional content and original `data-test-*` metadata, but those attributes no longer describe a live action. Runners must not treat `[data-guided-state="completed"]` as ready for another substep. Starting a guided action removes completed boxes from previous handlers synchronously, before target resolution or a new noop box.
 

@@ -1,4 +1,22 @@
 {
+  "achievements": {
+    "announce": {
+      "award": "",
+      "dismiss": "",
+      "final": "",
+      "progress": "",
+      "tierUp": ""
+    },
+    "hub": {
+      "empty": "",
+      "progress": "",
+      "progressLabel": "",
+      "showAll": "",
+      "title": "",
+      "truncated": "",
+      "unavailable": ""
+    }
+  },
   "contextPanel": {
     "categoryDocsPage": "문서 페이지",
     "categoryInteractiveGuide": "대화형 가이드",
@@ -158,6 +176,7 @@
     "dueOn": "",
     "dueToday": "",
     "dueTomorrow": "",
+    "groupProgress": "",
     "inProgress": "",
     "moduleOf": "",
     "moreRecommended": "",

@@ -134,6 +134,11 @@ const pathfinderFeatureFlags = {
     defaultValue: false,
     trackingKey: 'auto_open_sidebar',
   },
+  'pathfinder.cohort-auto-open-experiment': {
+    valueType: 'object',
+    values: EXPERIMENT_VARIANTS.map((variant) => ({ variant })),
+    defaultValue: { variant: 'excluded' },
+  },
   /** Saved-exploring cohort; a separate flag keeps older clients from bypassing its eligibility gate. */
   'pathfinder.onboarding-exploring-auto-open-experiment': {
     valueType: 'object',
@@ -200,6 +205,17 @@ const pathfinderFeatureFlags = {
     trackingKey: 'section_recovery',
   },
   /**
+   * Release gate for translated guides. While false, the guide language stays
+   * the guide's canonical language and no translation surface acts. OSS and
+   * self-managed Grafana have no flag provider, so it stays off there.
+   */
+  'pathfinder.guide-translations': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'guide_translations',
+  },
+  /**
    * Kill switch for the `guide_progress` and `guide_completed` analytics
    * events. Only stops the events: guide attempts are still tracked locally,
    * and completion records are unaffected.
@@ -231,6 +247,13 @@ const pathfinderFeatureFlags = {
     values: [true, false],
     defaultValue: true,
     trackingKey: 'passive_completion',
+  },
+  /** Gates posting achievement events and every achievements display surface. */
+  'pathfinder.achievements': {
+    valueType: 'boolean',
+    values: [true, false],
+    defaultValue: false,
+    trackingKey: 'achievements',
   },
   /** Gate for attaching the user's completion history to recommender requests; off until consent is settled. */
   'pathfinder.recommend-completions': {

@@ -1,3 +1,4 @@
+import { safeParseKioskCatalog } from '../../types/kiosk-page.schema';
 /**
  * Validate Command
  *
@@ -17,6 +18,7 @@ import { defineCommand } from '../contracts';
 import { loadGuideFiles, loadBundledGuides, resolveCliPath, type LoadedGuide } from '../utils/file-loader';
 import { validatePackageState } from '../utils/package-io';
 import { manyIssuesOutcome, type CommandOutcome } from '../utils/output';
+import { placeholderSelectorWarnings } from '../utils/warnings';
 
 type ValidateOptions = ValidateCliInput & { snippetCatalogIds?: ReadonlySet<string> };
 
@@ -139,6 +141,9 @@ function formatPackageResult(dirName: string, result: PackageValidationResult, s
 
   for (const err of result.errors) {
     console.log(`  ❌ ERROR: ${err.message}`);
+    if (err.remediation) {
+      console.log(`      Fix: ${err.remediation}`);
+    }
   }
 
   if (!strict) {
@@ -189,6 +194,7 @@ function runPackageValidation(packageDir: string, options: ValidateOptions): Com
   const result = validatePackage(absoluteDir, {
     strict: options.strict,
     snippetCatalogIds: options.snippetCatalogIds,
+    allowStaleTranslations: options.allowStaleTranslations,
   });
 
   if (options.format === 'json') {
@@ -207,6 +213,7 @@ function runPackagesValidation(rootDir: string, options: ValidateOptions): Comma
   const results = validatePackageTree(absoluteRoot, {
     strict: options.strict,
     snippetCatalogIds: options.snippetCatalogIds,
+    allowStaleTranslations: options.allowStaleTranslations,
   });
 
   if (results.size === 0) {
@@ -443,6 +450,7 @@ export function runValidate(args: ValidateArgs): CommandOutcome {
     };
   }
 
+  const warnings = placeholderSelectorWarnings(args.content.blocks);
   return {
     status: 'ok',
     summary: 'Package state is valid',
@@ -451,10 +459,12 @@ export function runValidate(args: ValidateArgs): CommandOutcome {
       schemaVersion: args.content.schemaVersion,
       blocks: blockCount,
     },
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 
 export const ValidateCliCommand = z.object({
+  kiosk: z.string().optional().describe('Validate a legacy or structured kiosk catalog').meta({ role: 'io' }),
   files: z.array(z.string()).default([]).describe('Guide files or a package directory').meta({ role: 'io' }),
   bundled: z
     .boolean()
@@ -465,6 +475,11 @@ export const ValidateCliCommand = z.object({
     role: 'io',
   }),
   strict: z.boolean().default(false).describe('Treat warnings as errors').meta({ role: 'control' }),
+  allowStaleTranslations: z
+    .boolean()
+    .default(false)
+    .describe('Report stale translations in package sidecars as warnings instead of errors')
+    .meta({ role: 'control' }),
   // Deliberately no default: `--format` is also a root-program option, and a local
   // default would shadow it. The Commander mount inherits the root's value instead.
   format: z.enum(['text', 'json']).optional().describe('Output format: text or json').meta({ role: 'io' }),
@@ -495,6 +510,24 @@ export type ValidateCliInput = z.output<typeof ValidateCliCommand>;
 export async function runValidateCli(args: ValidateCliInput): Promise<CommandOutcome> {
   const failed = (code: string, message: string): CommandOutcome => ({ status: 'error', code, message });
   try {
+    if (args.kiosk) {
+      if (args.files.length || args.stdin || args.bundled || args.package || args.packages || args.snippetsCatalog) {
+        return failed('INVALID_OPTIONS', '--kiosk cannot be combined with other validation inputs');
+      }
+      const data: unknown = JSON.parse(fs.readFileSync(resolveCliPath(args.kiosk), 'utf8'));
+      const parsed = safeParseKioskCatalog(data);
+      const outcome: CommandOutcome = parsed.success
+        ? { status: 'ok', summary: 'Kiosk catalog is valid' }
+        : failed('INVALID_KIOSK', z.prettifyError(parsed.error));
+      console.log(
+        args.format === 'json'
+          ? JSON.stringify(outcome)
+          : parsed.success
+            ? 'Kiosk catalog is valid'
+            : z.prettifyError(parsed.error)
+      );
+      return outcome;
+    }
     const mode = resolveMode(args, args.files);
 
     if (mode.kind === 'error') {

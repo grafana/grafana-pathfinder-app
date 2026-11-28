@@ -4,7 +4,8 @@
  */
 
 import { ALLOWED_GRAFANA_DOCS_HOSTNAMES } from '../../../constants';
-import { parseUrlSafely } from '../../../security';
+import { classifyDocsUrl, isLegacyJourneyFamily } from '../../../lib/docs-url-family';
+import { stripContentFile } from '../../../lib/guide-content-file';
 
 /**
  * Routing predicate shared by the auto-open listener and `prepareGuideLaunch`:
@@ -14,8 +15,7 @@ import { parseUrlSafely } from '../../../security';
  * consumers stay consistent by construction.
  */
 export function isLearningJourneyUrl(url: string): boolean {
-  const urlObj = parseUrlSafely(url);
-  return Boolean(urlObj?.pathname.includes('/learning-journeys/') || urlObj?.pathname.includes('/learning-paths/'));
+  return isLegacyJourneyFamily(classifyDocsUrl(url));
 }
 
 /**
@@ -47,12 +47,12 @@ export function isGrafanaDocsUrl(url: string | undefined): boolean {
 
 /**
  * Removes internal suffixes from a URL for browser viewing.
- * Strips /unstyled.html (used by docs embedding) and /content.json
- * (used by learning path rendering) so users see the canonical page.
+ * Strips /unstyled.html (used by docs embedding) and a content file such as
+ * /content.json (used by learning path rendering) so users see the canonical page.
  *
  * @param url - The URL to clean
  * @returns URL with internal suffixes removed
  */
 export function cleanDocsUrl(url: string): string {
-  return url.replace(/\/(unstyled\.html|content\.json)$/, '');
+  return stripContentFile(url).replace(/\/unstyled\.html$/, '');
 }

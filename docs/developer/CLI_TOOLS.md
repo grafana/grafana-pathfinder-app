@@ -7,10 +7,12 @@ The `pathfinder-cli` is a command-line interface for working with interactive JS
 - **build-stats** — Writes the computed completion block stats into every package's `manifest.json`
 - **build-graph** — Generates a D3-compatible dependency graph from repository indexes
 - **build-snippets** — Generates a snippet catalog (`index.json`) from a directory of snippet bodies
+- **stamp-ids** — Gives every translatable block and step without an `id` a stable, deterministic one
+- **sync-translations** — Stamps a package's translation sidecars with the tooling-owned fields (`_sourceHash`, `_reviewHash`, `_available`, `baseRef`)
 - **schema** — Exports Zod validation schemas as JSON Schema for cross-language consumers
 - **e2e** — Runs end-to-end tests on guides in a live Grafana instance (see [E2E testing](./E2E_TESTING.md))
 
-This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
+This document covers the `validate`, `build-repository`, `build-stats`, `build-graph`, `build-snippets`, `stamp-ids`, `sync-translations`, and `schema` commands. For e2e testing, see the dedicated [E2E testing guide](./E2E_TESTING.md). For the package format itself, see the [package authoring guide](./package-authoring.md).
 
 ---
 
@@ -76,6 +78,7 @@ node dist/cli/cli/index.js validate [options] [files...]
 - `--bundled`: Validate all bundled guides located in `src/bundled-interactives/`. Discovery works in two modes: subdirectories containing `content.json` are validated as package guides (e.g. `first-dashboard/content.json`); flat JSON files at the root level are also loaded as legacy guides (excluding `index.json` and `repository.json`). The `static-links/` subdirectory is always skipped. The path is resolved relative to the current working directory, so when run in another repository it will look for `src/bundled-interactives/` in that repository's directory structure.
 - `--stdin`: Read a single JSON guide from stdin instead of files. Mutually exclusive with `--bundled`, `--package`, `--packages`, and file arguments.
 - `--strict`: Treat warnings as errors. The command will exit with a non-zero status code if any warnings are found.
+- `--allow-stale-translations`: Report stale translations in package sidecars (`sidecar_stale_translation`) as non-blocking warnings instead of errors. It changes no other finding, and `--strict` does not turn these warnings back into errors. Only `--package` and `--packages` read sidecars, so the option has no effect in other modes.
 - `--format <format>`: Output format. Options are `text` (default) or `json`.
 - `--package <dir>`: Validate a single package directory (expects `content.json` and optionally `manifest.json`).
 - `--packages <dir>`: Validate a tree of package directories recursively.
@@ -152,7 +155,7 @@ The validator performs these checks in order:
 2. **Schema compliance** - Types, nesting depth, field names
 3. **Unknown fields** - Warns on unrecognized fields (forward compatibility)
 4. **Condition syntax** - Validates requirements/objectives mini-grammar
-5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (the title is rendered separately). This is an error, so the command fails; remove the heading from the block.
+5. **Duplicate title heading** - `blocks[0]` must not start with a heading that duplicates the guide title (bundled guides render the title above the content; App Platform guides do not, so their opening heading must be worded differently). This is an error, so the command fails; remove or reword the heading.
 6. **Guided step actions** - A `guided` block's steps must not use `navigate` or `popout`; the block waits for the reader to act and neither verb produces an interaction to wait on. This is an error, so the command fails. See [actions a guided step accepts](./interactive-examples/json-guide-format.md#actions-a-guided-step-accepts)
 7. **Snippet references** - When `--snippets-catalog` is supplied, every `snippet-ref` ID must be a key in that catalog
 
@@ -196,6 +199,31 @@ This recursively discovers all package directories (any directory containing `ma
 ```bash
 npm run validate:packages
 ```
+
+### Translation sidecar checks
+
+A package that ships `i18n/*.json` translation sidecars ([`docs/design/I18N.md`](../design/I18N.md) §7.1, §9) gets its sidecars checked as part of package validation. A package with no sidecar gets no sidecar check, and its output does not change.
+
+`validatePackage` reads the sidecars with `readPackageSidecars()` and passes them, with the parsed `content.json` and `manifest.json`, to `validateSidecars()` (`src/validation/sidecar/index.ts`). The checks are listed in `src/validation/sidecar/registry.ts`, and every code they emit is declared in `src/validation/sidecar/codes.ts`. A sidecar that cannot be read is an error (`sidecar_unreadable`, with the file path); the other sidecars are still checked.
+
+Findings are routed by severity:
+
+- **Error** findings go to `errors`, with their `remediation` line when the check sets one, and fail validation.
+- **Warning** findings go to `messages` with `severity: 'warn'` and a `remediation` line, never to `warnings`. `--strict` promotes `warnings` to errors, and orphaned translations must never fail a build. A stale translation is an error by default and becomes a warning here with `--allow-stale-translations`.
+
+| Check                     | Codes                                                                                                                                                             | Severity          | Status                                                                          |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------- |
+| `language-tag`            | `sidecar_filename_invalid`, `sidecar_language_invalid`, `sidecar_language_filename_mismatch`, `sidecar_language_is_canonical`, `sidecar_unicode_format_character` | error and warning | pending, [#2392](https://github.com/grafana/grafana-pathfinder-app/issues/2392) |
+| `manifest-block-fields`   | `sidecar_manifest_block_field`                                                                                                                                    | error             | shipped                                                                         |
+| `projection-conformance`  | `sidecar_structural_field`, `sidecar_field_not_translatable`, `sidecar_block_type_not_translatable`, `sidecar_steps_not_allowed`, `sidecar_reserved_field`        | error             | shipped                                                                         |
+| `orphan-key`              | `sidecar_orphan_key`, `sidecar_orphan_step`                                                                                                                       | warning           | shipped                                                                         |
+| `source-hash`             | `sidecar_missing_source_hash`, `sidecar_stale_translation`                                                                                                        | error and warning | shipped                                                                         |
+| `translatable-ids`        | `translatable_block_missing_id`, `translatable_step_missing_id`, `duplicate_block_id`, `duplicate_step_id`                                                        | error             | pending, [#2391](https://github.com/grafana/grafana-pathfinder-app/issues/2391) |
+| `text-dependent-selector` | `text_dependent_selector`                                                                                                                                         | error             | pending, [#2390](https://github.com/grafana/grafana-pathfinder-app/issues/2390) |
+
+A pending check is registered and returns no findings until its issue lands. Its codes are already in the union, so filling it means editing its file under `src/validation/sidecar/checks/` and its test, and flipping its status row in this table.
+
+`manifest-block-fields` rejects any key in a sidecar's `manifest` block other than `description`, `category`, `reviewed`, `_sourceHash` and the tooling fields declared on `TranslationManifestEntrySchema`. Structural manifest fields such as `milestones`, `targeting` or `author` are named as such in the message.
 
 ## GitHub Actions integration
 
@@ -468,6 +496,96 @@ npm run snippets:build -- <dir>
 
 ---
 
+## Stamp-ids command
+
+Gives an `id` to every translatable block, and to every step of a `multistep` or `guided` block, that has none ([`docs/design/I18N.md`](../design/I18N.md) §6.5, §12.2). A translation sidecar addresses a block or step by `id`, so this is how an English-only guide becomes translatable. It never changes an existing `id`. The rule is the pure function `stampIds` in `src/cli/utils/package-io/stamp-ids.ts`; the command reads the package, applies it, checks the result with the same validation as the authoring commands, and writes `content.json` only.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js stamp-ids <dir> [options]
+```
+
+### Arguments
+
+- `<dir>` (required): The package directory, holding `content.json` and an optional `manifest.json`.
+
+### Options
+
+- `--check`: Print the ids that would be stamped and exit non-zero if there are any. Writes nothing.
+
+### The rule
+
+Blocks are visited depth-first in document order, including the children of `section`, `collapsible` and `assistant` blocks and both branches of a `conditional`.
+
+- A block whose type is in the projection table (`src/lib/guide-translation/projection-table.ts`) and has no `id` gets `<type>-<n>`, where `n` is the smallest positive integer that makes the id unused in the guide.
+- A step of a `multistep` or `guided` block without an `id` gets `<block-id>-step-<k>`, where `k` is the smallest positive integer that makes the id unused.
+- Block types outside the table (`quiz`, `callout`, and the rest) are not touched.
+
+Ids are not random and not time-based, so the same input always gives the same output, and a second run on the output stamps nothing and does not write. Unlike the ids `readPackage` mints for the other commands (highest number plus one, blocks of every type), these fill the smallest free number. Stamped ids replace the step keys the runtime derives today, so stamping a guide that readers already started resets their saved step progress once.
+
+### Examples
+
+```bash
+# Stamp the ids a translation needs
+node dist/cli/cli/index.js stamp-ids guides/first-dashboard
+
+# See what would be stamped, without writing (exit 1 if anything would be)
+node dist/cli/cli/index.js stamp-ids guides/first-dashboard --check
+```
+
+---
+
+## Sync-translations command
+
+Writes the tooling-owned fields of a package's translation sidecars (`i18n/<tag>.json`, [`docs/design/I18N.md`](../design/I18N.md) §6.8, §7.1, §9). It is the only writer of those fields: `validate` stays read-only, and nothing runs this command in CI. The rules live in `src/lib/guide-translation/sync-translations.ts`; the command reads the package, asks git for `baseRef`, and writes through `writePackageSidecar`.
+
+### Basic syntax
+
+```bash
+node dist/cli/cli/index.js sync-translations <dir> [options]
+```
+
+### Arguments
+
+- `<dir>` (required): The package directory, holding `content.json`, an optional `manifest.json` and `i18n/`.
+
+### Options
+
+- `--locale <tag>`: Sync only this sidecar. The other sidecars still layer into the availability rule, but are not written.
+- `--accept <entry...>`: Re-stamp `_sourceHash` on the named entries of `--locale`, which is required with it. This is the translator asserting that the translation now matches the current English. It never re-stamps `_reviewHash`, so it never restores a lapsed review. Name the `guide` entry as `guide`, the `manifest` entry as `manifest`, and a block by its id; write `block:<id>` for a block whose id is itself `guide` or `manifest`. Put the package directory before this option, because it takes a list.
+- `--check`: Print what would be written and exit non-zero if anything would be. Writes nothing.
+
+### What a plain run stamps
+
+For each sidecar, in this order:
+
+| Field         | Where                                 | Rule                                                                                                                                                             |
+| ------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_sourceHash` | Each block entry, `guide`, `manifest` | Stamped when the entry has translated text and no hash. Hashes the current English with the functions in `source-hash.ts`.                                       |
+| `_reviewHash` | Each entry with `reviewed: true`      | Stamped when the entry has translated text and no review hash. Hashes the translated text, so a later edit to it ends the review.                                |
+| `_available`  | Sidecar root                          | Stamped as `true` the first time every translatable unit resolves to a reviewed translation (the derived rule in `availableLocales`). Never removed by the tool. |
+| `baseRef`     | Sidecar root                          | Set to the commit that last changed `content.json`, with its repository-relative path, only when every entry's `_sourceHash` matches the current English.        |
+
+A hash that is present but no longer matches is **never** re-stamped by a plain run, because that would hide a stale or changed translation. It is reported instead: entries whose English changed are listed as stale, and entries whose translated text changed since they were reviewed are listed as lapsed. A stale entry stays stale until a translator runs `--accept` for it. A lapsed entry stops counting as reviewed (so it no longer counts toward availability or coverage) until a reviewer checks the new text, deletes its `_reviewHash`, and runs `sync-translations` again, which stamps a new review hash.
+
+`baseRef` is left absent or unchanged, with a note and no error, outside a git repository, in a shallow clone, when `content.json` has uncommitted changes, or while any entry is stale or has no English source. A second run with no input change writes nothing. Writes keep the file's key order and two-space JSON formatting with a trailing newline.
+
+### Examples
+
+```bash
+# After editing i18n/ja.json: stamp what is missing
+node dist/cli/cli/index.js sync-translations guides/first-dashboard
+
+# See what a run would change, without writing (exit 1 if anything would change)
+node dist/cli/cli/index.js sync-translations guides/first-dashboard --check
+
+# The Japanese translation of two entries was brought up to date by hand
+node dist/cli/cli/index.js sync-translations guides/first-dashboard --locale ja --accept intro guide
+```
+
+---
+
 ## Schema command
 
 Exports Zod validation schemas as JSON Schema, enabling cross-language consumers (e.g. Go) to couple to the CLI binary rather than maintaining duplicate schemas.
@@ -554,6 +672,17 @@ Since Zod `.refine()` calls cannot be expressed in JSON Schema, the output inclu
 Consumers in other languages should reimplement these rules in their own validation logic.
 
 ---
+
+## Find-steps command
+
+Searches step-by-step procedures from guides the live e2e suite currently passes, so the selectors it returns are known to work. It is the same implementation the `pathfinder_find_steps` MCP tool serves; see [MCP server](./MCP_SERVER.md#repository-tools-p6). Guides are filtered by the public package-health report to `healthy` with no `blockedBy` (`PATHFINDER_PACKAGE_HEALTH_URL` overrides its URL); if the report cannot be read the command fails rather than search an unfiltered index. The first call in a process builds the index in memory from the catalog, the report, and each passing guide (a few seconds when guides must be fetched); each query is searched and returned as its own group (`--limit` is per query, default 2, max 5) whose first result has the steps and later ones are summaries, so fetch one with `--procedure-id` when it fits better; search results are lean (no guide title, lead-in, outro or `startsOn`; step `requirements` only beyond `on-page:<step page>` and `exists-reftarget`; `matchedSteps` only when not every shown step), and a weak group whose query has a word found in no procedure hints a reworded query without it and without stopwords (name third-party platforms by the Grafana process, not the product); a procedure already shown in full by an earlier group comes back as a summary with `fullIn`; a full result also prints one `part K of N in "<path or guide>"` line naming its `previous` and `next` neighbours (`nextProcedure`/`previousProcedure` in the JSON; `?` unverified), a procedure of more than 15 steps shows only the navigation steps and a window of 3 steps around each matched step (the first 7 steps after the navigation when none is matched) with each gap marked `... steps X-Y omitted`, and `--procedure-id` (exactly one of `--queries` or `--procedure-id`; repeat it, up to 8 ids, to fetch several parts in one call: results in request order, the outline once per path, unknown ids in `notFound`) returns every step plus the full outline (`>` current, `?` unverified), and steps print their `page` only where it changes, and a group is marked `(no strong match)` when a query word appears in no procedure, nothing matches, the query has no distinctive word, the top hit lacks a distinctive word, or the best score is low; a query of only common words gets a hint to check each product-specific step (the exact rule is in [MCP server](./MCP_SERVER.md#repository-tools-p6)). Each guide's fetched content is cached under `$XDG_CACHE_HOME/pathfinder-cli/step-index` (macOS: `~/Library/Caches/pathfinder-cli/step-index`), one file per guide and health revision; the index itself is rebuilt in memory every process, so the directory is safe to delete. A `procedureId` is valid only within the index build that returned it (`stats.healthRevision`/`stats.builtAt`). A guide whose content returns 404 or cannot be parsed is counted in `stats.unavailableGuides` and skipped; other fetch failures (including a response body that times out) are retried once and any still failing are counted in `stats.fetchFailedGuides` (the partial index is served and rebuilt on the next recheck, fetching only those guides). When the catalog has guides but none yields a procedure, including when none is eligible, the command fails with `EMPTY_INDEX`. A long-running process rechecks its held index at most every 10 minutes and keeps serving the last good one if a recheck fails (health or catalog unreadable, an empty rebuild, or guides whose content could not be fetched); a partial rebuild at a new revision or catalog replaces it. `code-block` blocks are indexed as `code-block` steps on their `reftarget`; a conditional contributes only its `whenTrue` branch.
+
+```bash
+node dist/cli/cli/index.js find-steps --queries "dependent service filter"
+node dist/cli/cli/index.js find-steps --queries "create dashboard" --queries "configure loki data source" --page-url /dashboard/new --limit 3
+node dist/cli/cli/index.js find-steps --procedure-id grafana-quickpizza-working-filters#2
+node dist/cli/cli/index.js find-steps --procedure-id grafana-quickpizza-working-filters#2 --procedure-id grafana-quickpizza-working-filters#3
+```
 
 ## Find-guides command
 

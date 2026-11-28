@@ -3,7 +3,7 @@
  *
  * Renders either an emoji character or a Grafana Icon depending on the badge.
  * Eliminates the duplicated `badge.emoji ? <span> : <Icon>` conditional
- * across BadgesDisplay, BadgeUnlockedToast, MyLearningTab, and BadgeDetailCard.
+ * across BadgeUnlockedToast, MyLearningTab, and BadgeDetailCard.
  */
 
 import React from 'react';

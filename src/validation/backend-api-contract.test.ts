@@ -1,12 +1,13 @@
 /**
  * Go <-> TypeScript contract ratchet for the App Platform response
  * envelopes: `/package-recommendations`, `/custom-guide-repository`,
- * `/custom-guides`, `/completion-records/my`, `/completion-records/capability`, `/assignments/my`.
+ * `/completion-records/my`, `/completion-records/capability`, `/assignments/my`,
+ * `/api/v1/achievements/events`, `/api/v1/achievements/my`, `/api/v1/achievements/definitions`.
  *
  * The boundary is a process boundary, so no compiler can couple the two
- * descriptions of these shapes. `pkg/plugin/contract_fixtures_test.go` captures
+ * descriptions of these shapes. `pkg/provider/contract_fixtures_test.go` captures
  * real handler responses plus a reflected struct-tag inventory into
- * `pkg/plugin/testdata/contract/`; this test reads those committed bytes and
+ * `pkg/provider/testdata/contract/`; this test reads those committed bytes and
  * holds them against `src/types/backend-api.schema.ts`. A Go-side envelope
  * change therefore surfaces as a TypeScript failure that names the field.
  *
@@ -31,9 +32,9 @@ import {
 import { DependencyListSchema, PackageTypeSchema } from '../types/package.schema';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const CONTRACT_DIR = path.join(REPO_ROOT, 'pkg', 'plugin', 'testdata', 'contract');
+const CONTRACT_DIR = path.join(REPO_ROOT, 'pkg', 'provider', 'testdata', 'contract');
 const TAG_GOLDEN = 'struct-tags.json';
-const REGENERATE = 'go test ./pkg/plugin -run TestContract -update';
+const REGENERATE = 'go test ./pkg/provider -run TestContract -update';
 
 const GoFieldTagSchema = z.strictObject({
   field: z.string(),
@@ -83,7 +84,7 @@ function collectValueGoldens(): ValueGolden[] {
   } catch (error) {
     throw new Error(
       `Contract golden directory ${CONTRACT_DIR} is missing. It is produced by ` +
-        `pkg/plugin/contract_fixtures_test.go — regenerate with \`${REGENERATE}\`.\n${String(error)}`
+        `pkg/provider/contract_fixtures_test.go — regenerate with \`${REGENERATE}\`.\n${String(error)}`
     );
   }
 
@@ -194,7 +195,7 @@ function assertStructTagsMatchSchema(goStruct: string, fields: GoFieldTag[]): vo
   if (unemitted.length > 0) {
     throw new Error(
       `src/types/backend-api.schema.ts declares ${goStruct} fields Go no longer emits: ` +
-        `${unemitted.join(', ')}. Remove them, or restore them in pkg/plugin.`
+        `${unemitted.join(', ')}. Remove them, or restore them in the backend emitter.`
     );
   }
 
@@ -281,40 +282,40 @@ describe('backend API contract: struct tags match the schemas', () => {
   });
 
   it('rejects a regenerated same-value Go type widening', () => {
-    const manifestFields = STRUCT_TAGS.customGuideManifest;
+    const manifestFields = STRUCT_TAGS.CatalogueManifest;
     if (!manifestFields) {
-      throw new Error('struct-tags.json does not inventory customGuideManifest.');
+      throw new Error('struct-tags.json does not inventory CatalogueManifest.');
     }
     const fields = manifestFields.map((field) =>
       field.json === 'milestones' ? { ...field, type: '[]json.RawMessage', wire: 'array<json>' } : field
     );
 
-    expect(() => assertStructTagsMatchSchema('customGuideManifest', fields)).toThrow(
-      'customGuideManifest.milestones is array<json> on the Go wire ([]json.RawMessage), ' +
+    expect(() => assertStructTagsMatchSchema('CatalogueManifest', fields)).toThrow(
+      'CatalogueManifest.milestones is array<json> on the Go wire ([]json.RawMessage), ' +
         'but its Zod schema accepts array<string>.'
     );
   });
 
   it('rejects pointer and numeric widenings that preserve fixture values', () => {
-    const responseFields = STRUCT_TAGS.myCompletionsResponse;
-    const completionFields = STRUCT_TAGS.collatedCompletion;
+    const responseFields = STRUCT_TAGS.CompletionResponse;
+    const completionFields = STRUCT_TAGS.CollatedCompletion;
     if (!responseFields || !completionFields) {
       throw new Error('struct-tags.json does not inventory the completion response structs.');
     }
 
     const pointerFields = responseFields.map((field) =>
-      field.json === 'capability' ? { ...field, type: '*completionCapability', wire: 'nullable<object>' } : field
+      field.json === 'capability' ? { ...field, type: '*CompletionCapability', wire: 'nullable<object>' } : field
     );
     const numberFields = completionFields.map((field) =>
       field.json === 'count' ? { ...field, type: 'float64', wire: 'number' } : field
     );
 
-    expect(() => assertStructTagsMatchSchema('myCompletionsResponse', pointerFields)).toThrow(
-      'myCompletionsResponse.capability is nullable<object> on the Go wire (*completionCapability), ' +
+    expect(() => assertStructTagsMatchSchema('CompletionResponse', pointerFields)).toThrow(
+      'CompletionResponse.capability is nullable<object> on the Go wire (*CompletionCapability), ' +
         'but its Zod schema accepts object.'
     );
-    expect(() => assertStructTagsMatchSchema('collatedCompletion', numberFields)).toThrow(
-      'collatedCompletion.count is number on the Go wire (float64), but its Zod schema accepts integer.'
+    expect(() => assertStructTagsMatchSchema('CollatedCompletion', numberFields)).toThrow(
+      'CollatedCompletion.count is number on the Go wire (float64), but its Zod schema accepts integer.'
     );
   });
 

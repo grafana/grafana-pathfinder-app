@@ -156,6 +156,8 @@ export function MarkCompleteFooter({
   useEffect(() => {
     let cancelled = false;
     const key = resolveGuideContentKey(contentUrl);
+    // Subscribe before reading so a completion during hydration triggers a fresh read.
+    const unsubscribe = subscribeProgress(key, () => setMarkRevision((revision) => revision + 1));
     const settle = (isMarked: boolean) => {
       if (cancelled) {
         return;
@@ -180,18 +182,9 @@ export function MarkCompleteFooter({
       });
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, [contentUrl, markRevision]);
-
-  // The store notifies this key when another tab writes the mark. Re-reading it
-  // is what keeps a marked guide from presenting a clickable button, whose
-  // click would mint a second durable completion record.
-  useEffect(() => {
-    if (contentKey === undefined) {
-      return;
-    }
-    return subscribeProgress(contentKey, () => setMarkRevision((revision) => revision + 1));
-  }, [contentKey]);
 
   // A bulk reset clears the mark without remounting this footer, so the read
   // has to re-run on the signal every reset path already emits — otherwise the

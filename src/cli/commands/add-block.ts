@@ -18,9 +18,20 @@ import {
   type CommandShape,
   type CommandSpec,
 } from '../contracts';
-import { BLOCK_SCHEMA_MAP, isContainerBlockType, type BlockType } from '../utils/block-registry';
+import {
+  BLOCK_SCHEMA_MAP,
+  isContainerBlockType,
+  PRESENTATIONAL_BLOCK_TYPES,
+  type BlockType,
+} from '../utils/block-registry';
 import { assertCliBlockFields, CliValidationError } from '../utils/cli-validators';
-import { appendBlock, mutateAndValidate, PackageIOError, type AppendBlockOptions } from '../utils/package-io';
+import {
+  appendBlock,
+  findBlockById,
+  mutateAndValidate,
+  PackageIOError,
+  type AppendBlockOptions,
+} from '../utils/package-io';
 import {
   issueToOutcome,
   manyIssuesOutcome,
@@ -29,7 +40,13 @@ import {
   type OutcomeWarning,
 } from '../utils/output';
 import { normalizeBlockInput } from '../utils/input-normalizers';
-import { isNonEmptySelector, multistepCompositionHint, unverifiedSelectorWarning } from '../utils/warnings';
+import {
+  isNonEmptySelector,
+  multistepCompositionHint,
+  sectionStepListWarning,
+  startsWithListMarker,
+  unverifiedSelectorWarning,
+} from '../utils/warnings';
 import {
   EMPTY_CHOICES_MESSAGE,
   EMPTY_CONDITIONS_MESSAGE,
@@ -126,12 +143,19 @@ function addBlockVariant(type: BlockType): CommandSpec {
     type === 'conditional' && contentSchema.conditions
       ? { ...contentSchema, conditions: required(contentSchema.conditions).meta({ role: 'content' }) }
       : contentSchema;
+  contentSchema =
+    type === 'collapsible' && contentSchema.title
+      ? { ...contentSchema, title: required(contentSchema.title).meta({ role: 'content' }) }
+      : contentSchema;
 
   const contentKeys = Object.keys(contentSchema);
 
   return defineCommand({
     name: type,
-    summary: `Append a ${type} block`,
+    summary:
+      type === 'collapsible'
+        ? `Append a collapsible block, then add its content as child blocks (${PRESENTATIONAL_BLOCK_TYPES.join(', ')} only)`
+        : `Append a ${type} block`,
     schema: z.object({ ...baseSchema, ...contentSchema }),
     // The group supplies `type`; the block's own fields are gathered into `fields`
     // because the runner builds a block object out of them. Nothing is renamed on the
@@ -283,6 +307,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
   let position = '';
   let appended = true;
   let assignedId = block.id as string | undefined;
+  let parentType: string | undefined;
   let legacyIdsMinted = 0;
 
   try {
@@ -292,6 +317,7 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
       position = out.position;
       appended = out.appended;
       assignedId = out.id;
+      parentType = args.parent ? findBlockById(content, args.parent)?.type : undefined;
     });
     if (!result.validation.ok) {
       const issues = result.validation.issues;
@@ -328,6 +354,9 @@ export async function runAddBlock(args: AddBlockArgs): Promise<CommandOutcome> {
     // better as siblings.
     if (args.type === 'multistep') {
       warnings.push(multistepCompositionHint());
+    }
+    if (args.type === 'markdown' && parentType === 'section' && startsWithListMarker(projected.content)) {
+      warnings.push(sectionStepListWarning(`${position}/content`));
     }
     // Issue #3: the CLI cannot verify a selector against the live Grafana
     // DOM, but it CAN tell that a reftarget was written. Surface the soft
@@ -387,6 +416,11 @@ function hintsFor(type: BlockType, parentId: string | undefined, assignedId: str
   if (type === 'section' || type === 'assistant') {
     return [`Add child blocks with: pathfinder-cli add-block <type> <dir> --parent ${assignedId ?? '<id>'}`];
   }
+  if (type === 'collapsible') {
+    return [
+      `Add ${PRESENTATIONAL_BLOCK_TYPES.join(', ')} blocks with: pathfinder-cli add-block <type> <dir> --parent ${assignedId ?? '<id>'}`,
+    ];
+  }
   if (parentId) {
     return [`Continue inside "${parentId}" or add a new top-level block with: pathfinder-cli add-block <type> <dir>`];
   }
@@ -400,7 +434,7 @@ function hintsFor(type: BlockType, parentId: string | undefined, assignedId: str
  * `add-choice`, `add-hint`) in subsequent invocations.
  */
 function initializeStructuralFields(block: Record<string, unknown>, type: BlockType): void {
-  if (type === 'section' || type === 'assistant') {
+  if (type === 'section' || type === 'assistant' || type === 'collapsible') {
     if (!Array.isArray(block.blocks)) {
       block.blocks = [];
     }

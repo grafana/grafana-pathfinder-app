@@ -77,6 +77,7 @@ import { createCompositeResolver } from '../../package-engine';
 
 import { ContextPanel } from './context-panel';
 import { BadgeUnlockedToast } from '../LearningPaths';
+import { useLegacyBadgesHidden } from '../Achievements/useLegacyBadgesHidden';
 import { getBadgeById } from '../../learning-paths';
 
 import { getStyles as getComponentStyles, addGlobalModalStyles } from '../../styles/docs-panel.styles';
@@ -141,6 +142,7 @@ import {
   useScrollTracking,
   useGlobalActiveTabExposure,
   useAutoOpenListener,
+  useAssistantPathfinderListener,
   useCatalogBrowserListener,
   usePopOutHandoff,
   useFullScreenHandoff,
@@ -1111,7 +1113,14 @@ class CombinedLearningJourneyPanel extends SceneObjectBase<CombinedPanelState> i
         const pendingAlignment = alignmentDecision ? { ...alignmentDecision, decidedAt: Date.now() } : undefined;
 
         const finalTab = this.finishTabSuccess(tabId, (tab) =>
-          buildDocsLoadSuccessPatch({ tab, requestedUrl: url, fetchedContent, packageInfo, pendingAlignment })
+          buildDocsLoadSuccessPatch({
+            tab,
+            requestedUrl: url,
+            fetchedContent,
+            packageInfo,
+            pendingAlignment,
+            isReload: launchSource === 'internal_reload',
+          })
         );
 
         if (pendingAlignment) {
@@ -1208,6 +1217,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
     queueCount: badgeCelebrationQueueCount,
     onDismiss: handleDismissGlobalCelebration,
   } = useBadgeCelebrationQueue();
+  const legacyBadgesHidden = useLegacyBadgesHidden();
 
   const {
     isActive: isSessionActive,
@@ -1300,6 +1310,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
   // Listen for auto-open events from global link interceptor
   // Place this HERE (not in ContextPanelRenderer) to avoid component remounting issues
   useAutoOpenListener(model, 'sidebar');
+  useAssistantPathfinderListener(model, 'sidebar');
   // removed — using restored custom overflow state below
 
   const activeTab = tabs.find((t) => t.id === activeTabId) || null;
@@ -1512,7 +1523,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       const opts = { source: 'live_session_attendee' as const };
 
       // Open the tutorial in a new tab
-      if (url.includes('/learning-journeys/') || url.includes('/learning-paths/')) {
+      if (isLearningJourneyUrl(url)) {
         model.openLearningJourney(url, title, opts);
       } else {
         model.openDocsPage(url, title, opts);
@@ -1697,7 +1708,7 @@ function CombinedPanelRendererInner({ model }: SceneComponentProps<CombinedLearn
       />
 
       {/* Global Badge Celebration Toast - shows queued toasts sequentially */}
-      {currentCelebrationBadge && getBadgeById(currentCelebrationBadge) && (
+      {!legacyBadgesHidden && currentCelebrationBadge && getBadgeById(currentCelebrationBadge) && (
         <BadgeUnlockedToast
           badge={getBadgeById(currentCelebrationBadge)!}
           onDismiss={handleDismissGlobalCelebration}

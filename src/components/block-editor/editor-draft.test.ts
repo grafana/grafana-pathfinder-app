@@ -55,10 +55,11 @@ it('saves and publishes a new resource without targeting a previously edited pri
     JSON.stringify({ resourceName: 'previous', lastPublishedJson: '{}' })
   );
   replaceEditorDraft(guide);
+  const previous = { metadata: { name: 'previous' }, spec: { title: 'Previous', status: 'published' as const } };
+  const written = { metadata: { name: guide.id, resourceVersion: '1' }, spec: { ...guide, status: 'draft' as const } };
   const backendGuides = {
-    guides: [{ metadata: { name: 'previous' }, spec: { title: 'Previous', status: 'published' as const } }],
-    saveGuide: jest.fn().mockResolvedValue(undefined),
-    refreshGuides: jest.fn().mockResolvedValue([]),
+    saveGuide: jest.fn().mockResolvedValue({ written }),
+    readGuide: jest.fn(async (name: string) => (name === previous.metadata.name ? previous : undefined)),
     unpublishGuide: jest.fn(),
   };
   const { result } = renderHook(() => useBackendSaveFlow({ editor: { getGuide: () => guide }, backendGuides }));
@@ -67,5 +68,12 @@ it('saves and publishes a new resource without targeting a previously edited pri
   await act(() => result.current.performSaveDraft());
   expect(backendGuides.saveGuide).toHaveBeenCalledWith(guide, undefined, undefined, 'draft', false, undefined);
   await act(() => result.current.handlePostToBackend());
-  expect(backendGuides.saveGuide).toHaveBeenLastCalledWith(guide, guide.id, undefined, 'published', false, undefined);
+  expect(backendGuides.saveGuide).toHaveBeenLastCalledWith(
+    guide,
+    guide.id,
+    written.metadata,
+    'published',
+    false,
+    undefined
+  );
 });

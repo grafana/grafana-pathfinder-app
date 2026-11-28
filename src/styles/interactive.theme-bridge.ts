@@ -1,4 +1,4 @@
-import { GrafanaTheme2 } from '@grafana/data';
+import { colorManipulator, GrafanaTheme2 } from '@grafana/data';
 
 /**
  * Updates CSS custom properties for interactive comment boxes based on the current theme.
@@ -77,6 +77,12 @@ export const updateInteractiveThemeColors = (theme: GrafanaTheme2): void => {
 
   // Border top for button container
   root.style.setProperty('--pathfinder-comment-divider', isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)');
+
+  // Highlight ring around the target. warning.border keeps 3:1 against every background in both themes.
+  const highlight = theme.colors.warning.border;
+  root.style.setProperty('--pathfinder-highlight-color', highlight);
+  root.style.setProperty('--pathfinder-highlight-glow', colorManipulator.alpha(highlight, 0.5));
+  root.style.setProperty('--pathfinder-highlight-glow-soft', colorManipulator.alpha(highlight, 0.3));
 
   // Form validation status colors
   root.style.setProperty('--pathfinder-form-checking-bg', isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)');

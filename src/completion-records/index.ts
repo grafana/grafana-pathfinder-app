@@ -21,6 +21,9 @@ export {
   resolveBundledGuideCompletionIdentity,
   resolveStandaloneGuideCompletionIdentity,
   resolveJourneyCompletionIdentity,
+  resolveLearnStepCompletionIdentity,
+  resolveLearnJourneyCompletionIdentity,
+  isGrafanaLearnUrl,
   manifestGuideId,
   manifestGuideSource,
   normalizeGuideId,
@@ -31,9 +34,11 @@ export type {
   ResolveCompletionIdentityInput,
   ResolveMilestoneCompletionIdentityInput,
   ResolveGuideCompletionIdentityInput,
+  LearnStepCompletionIdentity,
 } from './completion-identity';
 export type { PathAnalyticsIdentity } from './types';
 export { armCompletionWriteHook, discardQueuedCompletionWrites } from './completion-write-hook';
+export { discardQueuedAchievementEvents } from './achievements/achievement-events-hook';
 export type {
   CompletionKey,
   CompletionKind,

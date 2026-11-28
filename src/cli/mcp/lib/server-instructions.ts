@@ -40,16 +40,18 @@ export const SERVER_INSTRUCTIONS: string = [
   '',
   'To check whether a guide already exists for a topic or page ("is there a guide for this?"), call `pathfinder_find_guides`; it needs no authoring session.',
   '',
-  'For authoring, always call `pathfinder_authoring_start` first. It returns the schema version, workflow, composition rules, supported domains, and discovery hints you will need for every subsequent tool call.',
+  'For authoring, always call `pathfinder_authoring_start` first. It returns the schema version, workflow, guide-shape and interactive rules, supported domains, and discovery hints you will need for every subsequent tool call.',
   '',
   // Session-mode primer. Reaches the model before tool selection so agents
   // do not default to threading full artifacts back through every mutation.
   // Detailed shape/rules live in `pathfinder_authoring_start`.
   'Authoring is session-token based. `pathfinder_create_package` mints a `sessionToken`; pass `{sessionToken}` on every subsequent mutation, read, and finalize call. Mutation responses are ACKS (`{sessionToken, generation, summary, outcome}`) — they do NOT include the artifact body. Use the `summary` tree for navigation; call `pathfinder_read_session` / `pathfinder_inspect` for explicit on-demand reads. The full artifact returns at `pathfinder_finalize_for_app_platform`, which then deletes the session. Stateless `{artifact}` mode is an OSS / airgap fallback — do not use it when a `sessionToken` is available.',
   '',
+  "Pathfinder guides usually show how to do something in Grafana. Call `pathfinder_find_steps` once with all the independent Grafana-specific sub-tasks (2-5 word queries, up to 8) and build from its steps; check a result's `nextProcedure`/`previousProcedure` before writing a placeholder.",
+  '',
   'Two rules that bite agents in production — observe them before writing blocks:',
   '',
-  '- Never invent or guess Grafana DOM selectors for a `reftarget` field. If you do not have a verified selector, write a markdown block describing the action, use a `button` action with visible text matching, or ask the user. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.',
+  '- Never invent or guess Grafana DOM selectors for a `reftarget` field. Use only selectors from `pathfinder_find_steps` or ones the user gives you. If none exists but you know the procedure, use the placeholder `pathfinder_authoring_start` describes and tell the user where it is. A wrong selector silently breaks the guide at runtime — the validator cannot catch this.',
   '',
   '- Prefer separate sibling blocks over a `multistep` block. Use `multistep` only when the steps must be completed in order and are tightly coupled. Never write a step with `action: noop` as filler — if there is nothing concrete for the user to do, write a markdown block describing what they would do instead.',
   '',

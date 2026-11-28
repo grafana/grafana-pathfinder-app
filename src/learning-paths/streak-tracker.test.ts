@@ -1,11 +1,12 @@
 import { execFileSync } from 'child_process';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 
 // Jest pins TZ=UTC, which has no DST, so run the module in a child process with a real zone.
 function streakAt(timeZone: string, nowIso: string, lastActivityDate: string) {
   const modulePath = path.join(__dirname, 'streak-tracker.ts');
   const script = `
-    const { getTodayDateString, getYesterdayDateString, calculateUpdatedStreak } = await import(${JSON.stringify(modulePath)});
+    const { getTodayDateString, getYesterdayDateString, calculateUpdatedStreak } = await import(${JSON.stringify(pathToFileURL(modulePath).href)});
     const RealDate = Date;
     const now = RealDate.parse(${JSON.stringify(nowIso)});
     globalThis.Date = class extends RealDate {

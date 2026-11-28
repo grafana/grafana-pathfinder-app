@@ -58,16 +58,6 @@ export function getColorPalette(theme: GrafanaTheme2) {
 // KEYFRAME ANIMATIONS
 // ============================================================================
 
-const badgeGlow = keyframes`
-  0%, 100% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.4); }
-  50% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.8); }
-`;
-
-const badgeShimmer = keyframes`
-  0% { background-position: -100% 0; }
-  100% { background-position: 200% 0; }
-`;
-
 const confettiFloat = keyframes`
   0% { 
     transform: translateY(0) rotate(0deg); 
@@ -77,11 +67,6 @@ const confettiFloat = keyframes`
     transform: translateY(-100px) rotate(360deg); 
     opacity: 0; 
   }
-`;
-
-const fireBounce = keyframes`
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.15); }
 `;
 
 const celebrationEntry = keyframes`
@@ -767,134 +752,6 @@ export const getTableOfContentsStyles = (theme: GrafanaTheme2) => {
 };
 
 // ============================================================================
-// BADGES DISPLAY STYLES
-// ============================================================================
-
-export const getBadgesDisplayStyles = (theme: GrafanaTheme2) => {
-  const isDark = theme.isDark;
-  const colors = getColorPalette(theme);
-
-  return {
-    container: css({
-      padding: theme.spacing(1.5),
-      borderRadius: theme.shape.radius.default,
-      backgroundColor: theme.colors.background.secondary,
-      border: `1px solid ${theme.colors.border.weak}`,
-    }),
-    header: css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(1),
-      marginBottom: theme.spacing(1.5),
-    }),
-    headerIcon: css({
-      color: colors.success,
-    }),
-    headerTitle: css({
-      margin: 0,
-      fontSize: theme.typography.body.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      color: theme.colors.text.primary,
-    }),
-    headerCount: css({
-      marginLeft: 'auto',
-      fontSize: theme.typography.bodySmall.fontSize,
-      color: theme.colors.text.secondary,
-      fontVariantNumeric: 'tabular-nums',
-    }),
-    grid: css({
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(60px, 1fr))',
-      gap: theme.spacing(1),
-    }),
-    badge: css({
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: theme.spacing(0.5),
-      padding: theme.spacing(1),
-      borderRadius: theme.shape.radius.default,
-      backgroundColor: theme.colors.background.primary,
-      border: `1px solid ${theme.colors.border.weak}`,
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
-
-      '&:hover': {
-        transform: 'scale(1.05)',
-      },
-    }),
-    badgeEarned: css({
-      borderColor: colors.success,
-      boxShadow: `0 0 8px ${colors.successGlow}`,
-
-      '&:hover': {
-        boxShadow: `0 0 16px ${colors.successGlow}`,
-      },
-    }),
-    badgeLocked: css({
-      opacity: 0.5,
-      borderStyle: 'dashed',
-      cursor: 'default',
-
-      '&:hover': {
-        transform: 'none',
-      },
-    }),
-    badgeNew: css({
-      animation: `${badgeGlow} 1.5s ease-in-out infinite, ${badgeShimmer} 2s linear infinite`,
-      background: `linear-gradient(90deg, ${colors.successLight}, transparent, ${colors.successLight})`,
-      backgroundSize: '200% 100%',
-    }),
-    badgeLegacy: css({
-      // Muted/sepia style for badges earned in previous versions
-      borderColor: isDark ? 'rgba(161, 136, 107, 0.5)' : 'rgba(139, 119, 101, 0.5)',
-      backgroundColor: isDark ? 'rgba(161, 136, 107, 0.1)' : 'rgba(139, 119, 101, 0.1)',
-      filter: 'sepia(30%)',
-
-      '&:hover': {
-        borderColor: isDark ? 'rgba(161, 136, 107, 0.7)' : 'rgba(139, 119, 101, 0.7)',
-        boxShadow: `0 0 8px ${isDark ? 'rgba(161, 136, 107, 0.3)' : 'rgba(139, 119, 101, 0.3)'}`,
-      },
-    }),
-    badgeIconLegacy: css({
-      color: isDark ? '#A1886B' : '#8B7765',
-    }),
-    badgeEmoji: css({
-      fontSize: 24,
-      lineHeight: 1,
-    }),
-    badgeEmojiCompact: css({
-      fontSize: 16,
-      lineHeight: 1,
-    }),
-    badgeIcon: css({
-      fontSize: 24,
-      lineHeight: 1,
-    }),
-    badgeIconEarned: css({
-      color: colors.success,
-    }),
-    badgeIconLocked: css({
-      color: theme.colors.text.disabled,
-      filter: 'grayscale(100%)',
-    }),
-    badgeTitle: css({
-      fontSize: 10,
-      fontWeight: theme.typography.fontWeightMedium,
-      color: theme.colors.text.secondary,
-      textAlign: 'center',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-      maxWidth: '100%',
-    }),
-    badgeTitleEarned: css({
-      color: theme.colors.text.primary,
-    }),
-  };
-};
-
-// ============================================================================
 // BADGE UNLOCKED TOAST STYLES
 // ============================================================================
 
@@ -1031,104 +888,6 @@ export const getBadgeUnlockedToastStyles = (theme: GrafanaTheme2) => {
       borderRadius: 2,
       boxShadow: `0 0 6px ${celebrationGreenGlow}`,
       animation: `${progressCountdown} 5s linear forwards`,
-    }),
-  };
-};
-
-// ============================================================================
-// STREAK INDICATOR STYLES
-// ============================================================================
-
-export const getStreakIndicatorStyles = (theme: GrafanaTheme2) => {
-  const colors = getColorPalette(theme);
-
-  return {
-    container: css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(0.5),
-      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-      borderRadius: theme.shape.radius.pill,
-      backgroundColor: colors.streakFireLight,
-      border: `1px solid ${colors.streakFire}`,
-    }),
-    fireIcon: css({
-      color: colors.streakFire,
-      animation: `${fireBounce} 1.5s ease-in-out infinite`,
-    }),
-    fireIconInactive: css({
-      color: theme.colors.text.disabled,
-      animation: 'none',
-    }),
-    text: css({
-      fontSize: theme.typography.bodySmall.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      color: theme.colors.text.primary,
-      fontVariantNumeric: 'tabular-nums',
-    }),
-    textAtRisk: css({
-      color: colors.streakFire,
-    }),
-  };
-};
-
-// ============================================================================
-// LEARNING PATHS PANEL STYLES
-// ============================================================================
-
-export const getLearningPathsPanelStyles = (theme: GrafanaTheme2) => {
-  const colors = getColorPalette(theme);
-
-  return {
-    container: css({
-      display: 'flex',
-      flexDirection: 'column',
-      gap: theme.spacing(1.5),
-      marginBottom: theme.spacing(2),
-    }),
-    header: css({
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingBottom: theme.spacing(1),
-      borderBottom: `1px solid ${theme.colors.border.weak}`,
-    }),
-    headerLeft: css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(1),
-    }),
-    headerIcon: css({
-      color: colors.pathAccent,
-    }),
-    headerTitle: css({
-      margin: 0,
-      fontSize: theme.typography.h6.fontSize,
-      fontWeight: theme.typography.fontWeightMedium,
-      color: theme.colors.text.primary,
-    }),
-    pathsGrid: css({
-      display: 'flex',
-      flexDirection: 'column',
-      gap: theme.spacing(1.5),
-    }),
-    viewBadgesLink: css({
-      display: 'flex',
-      alignItems: 'center',
-      gap: theme.spacing(0.5),
-      padding: `${theme.spacing(0.5)} ${theme.spacing(1)}`,
-      borderRadius: theme.shape.radius.default,
-      backgroundColor: 'transparent',
-      color: theme.colors.text.secondary,
-      fontSize: theme.typography.bodySmall.fontSize,
-      border: 'none',
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
-
-      '&:hover': {
-        backgroundColor: theme.colors.action.hover,
-        color: theme.colors.text.primary,
-      },
     }),
   };
 };

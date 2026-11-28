@@ -67,7 +67,10 @@ it('never displays an old organization response after the scope changes', async 
   rerender();
   await waitFor(() => expect(result.current.loading).toBe(false));
   await act(async () => {
-    finish({ available: true, entries: [{ id: 'old-private-guide', status: 'published', title: 'Private title' }] });
+    finish({
+      available: true,
+      entries: [{ id: 'old-private-guide', name: 'old-private-guide', status: 'published', title: 'Private title' }],
+    });
   });
   expect(result.current.items.some((item) => item.id === 'old-private-guide')).toBe(false);
   expect(result.current.scope).toMatch(/^org-b:/);
@@ -98,7 +101,7 @@ it('uses only eligible official IDs for discovery, preserving private guides', a
   });
   jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({
     available: true,
-    entries: [{ id: 'private-guide', title: 'Private guide', status: 'published' }],
+    entries: [{ id: 'private-guide', name: 'private-guide', title: 'Private guide', status: 'published' }],
   });
   jest.clearAllMocks();
   const { result } = renderHook(() =>
@@ -113,7 +116,7 @@ it('uses only eligible official IDs for discovery, preserving private guides', a
 it('keeps private content visible when public discovery is disabled, without calling either public catalog', async () => {
   jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({
     available: true,
-    entries: [{ id: 'private-guide', title: 'Private guide', status: 'published' }],
+    entries: [{ id: 'private-guide', name: 'private-guide', title: 'Private guide', status: 'published' }],
   });
   jest.clearAllMocks();
   const { result } = renderHook(() =>
@@ -141,7 +144,7 @@ it('hides public content immediately on consent revocation without dropping priv
   });
   jest.mocked(fetchCustomGuideCatalogue).mockResolvedValue({
     available: true,
-    entries: [{ id: 'private-guide', title: 'Private guide', status: 'published' }],
+    entries: [{ id: 'private-guide', name: 'private-guide', title: 'Private guide', status: 'published' }],
   });
   const { result, rerender } = renderHook(
     ({ consent }) =>

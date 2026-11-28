@@ -45,7 +45,11 @@ let pathProgress = 0;
 
 jest.mock('../../learning-paths', () => ({
   catalogIdentity: jest.requireActual('../../learning-paths/catalog-learning-core').catalogIdentity,
+  selectGuideAssignmentEntries: jest.requireActual('../../learning-paths/guide-assignment-entries')
+    .selectGuideAssignmentEntries,
   selectLearningPathEntries: jest.requireActual('../../learning-paths/learning-path-entries').selectLearningPathEntries,
+  selectPathAssignmentEntries: jest.requireActual('../../learning-paths/learning-path-entries')
+    .selectPathAssignmentEntries,
   BADGES: [],
   pathCatalogIdentities: jest.requireActual('../../learning-paths/catalog-learning-core').pathCatalogIdentities,
   selectContinueLearning: jest.requireActual('../../learning-paths/catalog-learning-core').selectContinueLearning,
@@ -78,6 +82,7 @@ jest.mock('../../learning-paths', () => ({
   daysUntilDue: jest.requireActual('../../learning-paths/assignments-core').daysUntilDue,
   compareResolvedAssignments: jest.requireActual('../../learning-paths/assignments-core').compareResolvedAssignments,
   getAssignmentGuideState: jest.requireActual('../../learning-paths/assignments-core').getAssignmentGuideState,
+  getPathAssignment: jest.requireActual('../../learning-paths/assignments-core').getPathAssignment,
   markCurrentGuide: jest.requireActual('../../learning-paths/mark-current-guide').markCurrentGuide,
 }));
 

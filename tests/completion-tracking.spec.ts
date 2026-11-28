@@ -15,9 +15,11 @@
  * read — see `stubCompletionWriteRoute`.
  */
 
-import { test, expect } from './fixtures';
+// The plugin-e2e boot-data tab also drains shared storage. These cases exercise a single reader.
+import { test, expect } from '@playwright/test';
 import { testIds } from '../src/constants/testIds';
 import { TIMEOUTS } from './constants';
+import { dismissWhatsNewOnInteraction } from './helpers/grafana.helpers';
 import {
   ALL_FIXTURES,
   APP_PLATFORM_GUIDE,
@@ -67,6 +69,10 @@ const DEFAULT_GUIDE_SOURCE = 'interactive-tutorials';
 // `TIMEOUTS.UI_READY` panel waits plus a `waitForWriteAttemptAfter` that
 // budgets past the drain lease's TTL, which alone sums close to two minutes.
 test.describe.configure({ timeout: 180_000 });
+
+test.beforeEach(async ({ page }) => {
+  await dismissWhatsNewOnInteraction(page);
+});
 
 test.describe('completion tracking', () => {
   /**
@@ -419,6 +425,76 @@ test.describe('completion tracking', () => {
         expect(factsFor(facts, DEFAULT_GUIDE_SOURCE, milestoneId)).toHaveLength(1);
       }
     });
+  });
+
+  test('a PR preview completion leaves its real guide uncredited', async ({ page }) => {
+    const recorder = await primeCompletionSession(page);
+    const real = fixtureContentUrl(STANDALONE_GUIDE);
+    const preview = real + '#pf-pr-e2e2454';
+    await launchDoc(page, real);
+    expect(await footerPercentage(page)).toBe(0);
+
+    await launchDoc(page, preview);
+    await markComplete(page);
+    await expect.poll(async () => (await readStoredProgress(page)).interactiveCompletion[preview]).toBe(100);
+
+    expect((await readStoredProgress(page)).interactiveCompletion[real] ?? 0).toBe(0);
+    expect(await readQueuedFacts(page)).toEqual([]);
+    expect(recorder.requests).toEqual([]);
+  });
+
+  test('reopening after a UI reset mints no new completion fact', async ({ page }) => {
+    const recorder = await primeCompletionSession(page);
+    const guide = fixtureContentUrl(STANDALONE_GUIDE);
+    await launchDoc(page, guide);
+    await completeInteractiveStep(page);
+    await markComplete(page);
+    const earned = await waitForQueuedFacts(page, 1);
+    expect(earned).toHaveLength(1);
+    expect(earned[0]!.body.guideId).toBe(STANDALONE_GUIDE.id);
+    const checkpoint = earned[0]!.id;
+    await waitForWriteAttemptAfter(recorder, 0);
+
+    await page.getByTestId(testIds.docsPanel.resetGuideButton).click();
+    await expect.poll(() => footerPercentage(page), { timeout: TIMEOUTS.UI_READY }).toBe(0);
+    const attemptsBeforeReopen = recorder.requests.length;
+    await launchDoc(page, guide);
+    expect(await footerPercentage(page)).toBe(0);
+    await waitForWriteAttemptAfter(recorder, attemptsBeforeReopen);
+
+    expect((await readQueuedFacts(page)).map((fact) => fact.id)).toEqual([checkpoint]);
+    expect(new Set(recorder.requests.map((request) => request.idempotencyKey))).toEqual(new Set([checkpoint]));
+  });
+
+  test('switching guide tabs mid-progress leaves the second guide uncredited', async ({ page }) => {
+    const recorder = await primeCompletionSession(page);
+    const guideA = fixtureContentUrl(STANDALONE_GUIDE);
+    const second = PATH_MILESTONES[0]!;
+    const guideB = fixtureContentUrl(second);
+    await launchDoc(page, guideB);
+    await waitForFooterHydrated(page);
+    await launchDoc(page, guideA);
+    await expect(page.getByText('Guide step 1', { exact: true })).toBeVisible();
+    await completeInteractiveStep(page);
+    const earned = expectedPercentAtPosition(STANDALONE_GUIDE, fixtureCompletablePosition(STANDALONE_GUIDE, 1));
+    expect(earned).toBeGreaterThan(0);
+    expect(earned).toBeLessThan(100);
+    await expect.poll(async () => (await readStoredProgress(page)).interactiveCompletion[guideA]).toBe(earned);
+
+    const visibleTab = page.getByTestId(testIds.docsPanel.tabList).getByTitle(second.title, { exact: true });
+    if (await visibleTab.isVisible()) {
+      await visibleTab.click();
+    } else {
+      await page.getByTestId(testIds.docsPanel.tabOverflowButton).click();
+      await page.getByRole('menuitem', { name: `Switch to ${second.title}`, exact: true }).click();
+    }
+    await expect(page.getByText('Milestone 1 step 1', { exact: true })).toBeVisible();
+    expect(await footerPercentage(page)).toBe(0);
+    const stored = (await readStoredProgress(page)).interactiveCompletion;
+    expect(stored[guideA]).toBe(earned);
+    expect(stored[guideB] ?? 0).toBe(0);
+    expect(await readQueuedFacts(page)).toEqual([]);
+    expect(recorder.requests).toEqual([]);
   });
 
   /**

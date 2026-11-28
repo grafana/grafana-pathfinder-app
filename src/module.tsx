@@ -1,6 +1,7 @@
 import { AppPlugin, type AppRootProps, PluginExtensionPoints } from '@grafana/data';
 import { config } from '@grafana/runtime';
 import React, { useEffect } from 'react';
+import { closeEchoSubscriptions, installEchoSubscriptions } from './lib/achievement-echo';
 import { reportAppInteraction, UserInteraction } from './lib/analytics';
 import { toAnalyticsValue } from './lib/analytics-values';
 import { logger } from './lib/logging';
@@ -36,12 +37,15 @@ import {
   onPathfinderSurfaceChange,
 } from './lib/telemetry/surface';
 
+// Echo events are never replayed, so the subscription must exist before any await (RFC §5.6).
+installEchoSubscriptions();
+
 // Buffer pathfinder-suggest events that arrive before async init completes.
 // Registered synchronously (before any await) so events from faster-loading
 // apps are never lost. Replayed or discarded after experiment state is known.
-const pendingSuggestEvents: CustomEvent[] = [];
+const pendingSuggestEvents: Array<{ event: CustomEvent; pathname: string }> = [];
 const earlySuggestListener = ((event: CustomEvent) => {
-  pendingSuggestEvents.push(event);
+  pendingSuggestEvents.push({ event, pathname: window.location.pathname });
 }) as EventListener;
 document.addEventListener('pathfinder-suggest', earlySuggestListener);
 
@@ -87,10 +91,13 @@ const [
   { resolvePathfinderAvailability, getPathfinderStartupDecision, isImageRendererSession },
 ] = await enablementModules;
 
-const pathfinderAvailability = await resolvePathfinderAvailability(
-  getFeatureFlagValue('pathfinder.enabled', true) && !isImageRendererSession(config.bootData.user?.authenticatedBy),
-  readPathfinderStartupPreference
-);
+const remotelyEnabled =
+  getFeatureFlagValue('pathfinder.enabled', true) && !isImageRendererSession(config.bootData.user?.authenticatedBy);
+if (remotelyEnabled) {
+  const { discoverSdkBackend } = await import('./lib/backend-routes');
+  await discoverSdkBackend();
+}
+const pathfinderAvailability = await resolvePathfinderAvailability(remotelyEnabled, readPathfinderStartupPreference);
 const pathfinderEnabled = pathfinderAvailability === 'enabled';
 const SIDEBAR_COMPONENT_TITLE = 'Interactive learning';
 
@@ -187,13 +194,37 @@ const plugin = new AppPlugin<{}>()
 
 plugin.init = function () {
   if (!pathfinderEnabled) {
+    closeEchoSubscriptions();
     return;
   }
 
+  const achievementsEnabled = getFeatureFlagValue('pathfinder.achievements', false);
+  if (!achievementsEnabled) {
+    closeEchoSubscriptions();
+  }
   // Grafana does not await init; navigation listeners must register synchronously.
-  void retryChunkImport(() => import('./completion-records/completion-write-hook'))
-    .then(({ armCompletionWriteHook }) => armCompletionWriteHook())
+  // The achievements observer arms first so the recorder's startup replay reaches it as well.
+  void Promise.all([
+    achievementsEnabled
+      ? retryChunkImport(() => import('./completion-records/achievements/achievement-events-hook')).catch((err) => {
+          logger.error('[Pathfinder] Failed to arm achievement events', { error: err });
+          return null;
+        })
+      : null,
+    retryChunkImport(() => import('./completion-records/completion-write-hook')),
+  ])
+    .then(([achievements, { armCompletionWriteHook }]) => {
+      achievements?.armAchievementEvents();
+      armCompletionWriteHook();
+    })
     .catch((err) => logger.error('[Pathfinder] Failed to arm completion-write hook', { error: err }));
+
+  if (achievementsEnabled) {
+    void ensurePluginTranslations()
+      .then(() => retryChunkImport(() => import('./components/Achievements/mount-announcement-host')))
+      .then(({ mountAchievementAnnouncementHost }) => mountAchievementAnnouncementHost())
+      .catch((err) => logger.error('[Pathfinder] Failed to mount achievement announcements', { error: err }));
+  }
 
   setPackageResolverFactory(async () => {
     const config = await waitForPathfinderPluginConfig();
@@ -453,11 +484,11 @@ if (pathfinderEnabled) {
   document.removeEventListener('pathfinder-suggest', earlySuggestListener);
   document.addEventListener('pathfinder-suggest', realSuggestHandler);
 
-  for (const buffered of pendingSuggestEvents) {
+  for (const { event: buffered, pathname } of pendingSuggestEvents) {
     if (buffered.detail) {
       buffered.detail._buffered = true;
     }
-    handlePathfinderSuggest(buffered);
+    handlePathfinderSuggest(buffered, pathname);
   }
   pendingSuggestEvents.length = 0;
 } else {
@@ -469,7 +500,7 @@ if (pathfinderEnabled) {
   }) as EventListener;
   document.removeEventListener('pathfinder-suggest', earlySuggestListener);
   document.addEventListener('pathfinder-suggest', rejectSuggestion);
-  pendingSuggestEvents.forEach(rejectSuggestion);
+  pendingSuggestEvents.forEach(({ event }) => rejectSuggestion(event));
   pendingSuggestEvents.length = 0;
 }
 
@@ -486,7 +517,7 @@ if (pathfinderEnabled) {
  * (via the pathfinder-sidebar-mounted event) so the flag is never burned
  * if the sidebar fails to open for any reason.
  */
-function handlePathfinderSuggest(event: CustomEvent): void {
+function handlePathfinderSuggest(event: CustomEvent, pathname = window.location.pathname): void {
   const detail = event.detail;
   if (!detail) {
     logger.warn('[Pathfinder] pathfinder-suggest event missing detail');
@@ -525,7 +556,8 @@ function handlePathfinderSuggest(event: CustomEvent): void {
 
   const buffered = detail._buffered === true;
 
-  suggestionState.setSuggestions(valid);
+  const groupTitle = typeof detail.groupTitle === 'string' ? detail.groupTitle.trim() : '';
+  suggestionState.setSuggestions(valid, groupTitle ? { groupTitle, pathname } : undefined);
 
   const suggestedTitles = valid.map((s: Record<string, unknown>) => s.title).join(', ');
   const suggestedUrls = valid.map((s: Record<string, unknown>) => s.url).join(', ');

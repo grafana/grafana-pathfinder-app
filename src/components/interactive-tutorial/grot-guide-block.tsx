@@ -171,10 +171,17 @@ interface QuestionScreenProps {
 const QuestionScreen: React.FC<QuestionScreenProps> = ({ screen, sub, onNavigate, onBack, styles }) => (
   <div>
     {onBack && (
-      <button className={styles.backButton} onClick={onBack}>
-        <Icon name="arrow-left" size="sm" />
+      <Button
+        variant="secondary"
+        fill="text"
+        size="sm"
+        icon="arrow-left"
+        type="submit"
+        className={styles.backButton}
+        onClick={onBack}
+      >
         Back
-      </button>
+      </Button>
     )}
     <h3 className={styles.title}>{sub(screen.title)}</h3>
     <div className={styles.options}>
@@ -200,10 +207,17 @@ interface ResultScreenProps {
 const ResultScreen: React.FC<ResultScreenProps> = ({ screen, sub, subHtml, onBack, onStartOver, styles }) => (
   <div>
     {onBack && (
-      <button className={styles.backButton} onClick={onBack}>
-        <Icon name="arrow-left" size="sm" />
+      <Button
+        variant="secondary"
+        fill="text"
+        size="sm"
+        icon="arrow-left"
+        type="submit"
+        className={styles.backButton}
+        onClick={onBack}
+      >
         Back
-      </button>
+      </Button>
     )}
     <h3 className={styles.title}>{sub(screen.title)}</h3>
     {/* eslint-disable-next-line no-restricted-syntax -- bodyHtml is pre-sanitized at parse time via DOMPurify + sanitizeDocumentationHTML, and variable values are HTML-escaped */}
@@ -305,19 +319,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
   }),
 
   backButton: css({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: theme.spacing(0.5),
-    background: 'none',
-    border: 'none',
-    color: theme.colors.text.secondary,
-    cursor: 'pointer',
-    padding: `${theme.spacing(0.5)} 0`,
     marginBottom: theme.spacing(1),
-    fontSize: theme.typography.bodySmall.fontSize,
-    '&:hover': {
-      color: theme.colors.text.primary,
-    },
   }),
 
   options: css({

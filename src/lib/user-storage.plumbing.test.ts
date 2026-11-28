@@ -25,6 +25,7 @@ import {
   wrapEnvelope,
 } from './user-storage';
 import { StorageKeys } from './storage-keys';
+import { LEGACY_RESTORE_KEYS } from './storage/legacy-mirror-policy';
 
 // user-storage.ts statically imports from `@grafana/runtime`; provide a mock so
 // the module loads under jsdom.
@@ -126,6 +127,21 @@ describe('createHybridStorage — debounced write queue', () => {
     expect(unwrapEnvelope(writtenValue)?.v).toBe(JSON.stringify('c'));
   });
 
+  it('rechecks the stored envelope on each versioned write attempt', async () => {
+    const grafana = makeGrafanaStorage();
+    const updateItem = jest.fn(async (_key: string, _update: (current: string | null) => string | undefined) => {});
+    const hybrid = createHybridStorage({ ...grafana, updateItem });
+    await hybrid.setItem('k', 'queued');
+    await jest.advanceTimersByTimeAsync(500);
+    expect(updateItem).toHaveBeenCalledTimes(1);
+    const [, update] = updateItem.mock.calls[0]!;
+    const proposed = update(null);
+    expect(unwrapEnvelope(proposed)?.v).toBe(JSON.stringify('queued'));
+    expect(update(proposed!)).toBeUndefined();
+    expect(update(wrapEnvelope('', Date.now() + 1))).toBeUndefined();
+    expect(grafana.setItem).not.toHaveBeenCalled();
+  });
+
   it('flushes distinct keys in a single drain', async () => {
     const grafana = makeGrafanaStorage();
     const hybrid = createHybridStorage(grafana);
@@ -212,6 +228,22 @@ describe('syncFromGrafanaStorage', () => {
     await syncFromGrafanaStorage(grafana);
     // Second call is a no-op: the guard short-circuits before any reads.
     expect(grafana.getItem.mock.calls.length).toBe(callsAfterFirst);
+  });
+
+  it('reads the exact legacy restore policy in order', async () => {
+    const grafana = makeGrafanaStorage(
+      Object.fromEntries(LEGACY_RESTORE_KEYS.map((key) => [key, wrapEnvelope('null', 1)]))
+    );
+
+    await syncFromGrafanaStorage(grafana);
+
+    expect(grafana.getItem.mock.calls.map(([key]) => key)).toEqual([
+      StorageKeys.JOURNEY_COMPLETION,
+      StorageKeys.TABS,
+      StorageKeys.ACTIVE_TAB,
+      StorageKeys.LEARNING_PROGRESS,
+      StorageKeys.GUIDE_RESPONSES,
+    ]);
   });
 
   it('applies Grafana value to localStorage when Grafana is newer', async () => {

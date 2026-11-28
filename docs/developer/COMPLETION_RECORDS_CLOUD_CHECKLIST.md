@@ -2,22 +2,24 @@
 
 A manual checklist for one operator, run against a real Grafana Cloud stack, to confirm that a reader's completion becomes a durable completion record.
 
-It is deliberately not automated and there is no CI job for it. The round trip needs a real stack, a real forwarded identity, and an App Platform namespace that serves the record kind; a local Docker stack has none of those. The browser suite under `tests/` covers everything up to the network boundary — the percentage, the fact, and the identity it is keyed on — and stops there. This checklist covers the rest.
-
-Work through the steps in order. Step 1 is a gate: if it fails, nothing after it can tell you anything useful.
+This checklist exercises the registered SDK provider on a Cloud stack using your signed-in identity. The local SDK browser suite also tests completion writes against real Grafana storage.
 
 ## Before you start
 
 You need:
 
 - A Grafana Cloud stack you are authorized to use, signed in as yourself.
-- A local `dist/` build of this plugin served into that stack (see [serving a local build into a cloud stack](#serving-a-local-build-into-a-cloud-stack)).
+- The SDK frontend and backend builds you intend to test. For a local frontend change, see [serving a local build into a Cloud stack](#serving-a-local-build-into-a-cloud-stack).
 - The stack open in a browser with devtools. Every request below is issued from the devtools console on a Grafana tab, not with `curl`: the routes ride the caller's own identity, and a console request carries the session the browser already holds.
 
-Throughout, `PF` is the plugin's resources prefix:
+Build the SDK route prefix from the current stack’s namespace:
 
 ```js
-var PF = '/api/plugins/grafana-pathfinder-app/resources';
+var namespace = window.grafanaBootData.settings.namespace;
+if (!/^stacks-[0-9]+$/.test(namespace)) {
+  throw new Error('Expected a concrete Cloud stack namespace');
+}
+var PF = `/apis/pathfinderbackend.ext.grafana.app/v1alpha1/namespaces/${encodeURIComponent(namespace)}/backend`;
 ```
 
 ### 0. Check the installed plugin version first
@@ -28,9 +30,7 @@ await fetch('/api/plugins/grafana-pathfinder-app/settings')
   .then((s) => s.info.version);
 ```
 
-**Require 2.17.0 or newer.** Every route below is served by the plugin's **installed** server component, and Graft serves reader-facing files only — it cannot replace that, so whatever version the stack has installed is what answers. On anything older the routes do not exist and Grafana answers a plain **HTTP 404**, not a capability envelope: the `completionCount` helper below would then throw on `body.capability?.available` with a message about capability that has nothing to do with the real problem.
-
-So if step 1 returns a 404 rather than JSON with a `capability` field, the installed plugin predates the route. That is a release problem, not a capability problem. Stop and report the installed version.
+Record the installed frontend version. Check the backend separately with the capability request in step 1. For a 404, verify that this stack serves the intended SDK build and that Grafana registered its routes.
 
 ## Every assertion is a count delta, never an absolute count
 
@@ -61,9 +61,9 @@ async function completionCount(guideSource, guideId, options) {
 }
 
 // Polls a pair's count until it has risen by `expected`. The read route answers
-// from a per-namespace cache with a five-minute TTL, so a single read will often
+// from a per-caller, per-namespace cache with a five-minute TTL, so a single read will often
 // miss a completion that did land; `?refresh=1` forces an upstream read and is
-// itself rate-limited to one per namespace per 30 seconds, which is why the poll
+// itself rate-limited to one per caller and namespace per 30 seconds, which is why the poll
 // spacing is 30 seconds and not tighter.
 async function waitForDelta(guideSource, guideId, baselineCount, expected, timeoutMs = 180_000) {
   const deadline = Date.now() + timeoutMs;
@@ -100,23 +100,7 @@ await fetch(`${PF}/completion-records/capability`).then((r) => r.json());
 // → { available: true }
 ```
 
-**Require `available: true` before you do anything else.** If it is `false`, stop here and report the `reason` token — it names which part of the layer is missing, and each one needs a different person to fix it:
-
-| `reason`                   | What it means                                                                                                        |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `identity-unavailable`     | No acceptable caller token: absent, expired, or issued for another stack. Re-authenticate and retry.                 |
-| `identity-unverifiable`    | The stack supplies nothing to verify a token against — no app URL, or no server-derived namespace.                   |
-| `signing-keys-unreachable` | No signing-keys endpoint answered at all. Points at the configured address, not at you.                              |
-| `obo-unavailable`          | No provisioned on-behalf-of credential, so the proxy cannot call upstream as you. Check this first on a new stack.   |
-| `backend-unavailable`      | The structural gate failed. It collapses five causes — see below; check the aggregation toggle before anything else. |
-
-`backend-unavailable` is the one token that does not name its own cause. It is returned for any of: the aggregation feature toggle **`aggregation.pathfinderbackend-ext-grafana-app.enabled`** being off, no app URL configured, no server-derived namespace, an unusable Grafana config, or an upstream LIST that did not answer.
-
-**On a stack that has never served this before, the toggle is much the most likely of the five** — start there rather than hunting a missing record kind.
-
-A `503` rather than a capability envelope is a transient hiccup, not an unavailable capability: wait for the `Retry-After` hint and try again.
-
-Do not continue past a `false`. Every later step reads through the same gate, and would report the same failure less clearly.
+Continue when the response contains `available: true`. For `identity-unavailable`, check the signed-in caller and namespace. For `obo-unavailable`, verify that the provider can use caller-delegated credentials. For `backend-unavailable`, inspect the diagnostics for the upstream completion-record list request and its status. For HTTP 503, record the diagnostics and retry after the interval in `Retry-After`.
 
 ## 2. A completion becomes a durable record
 
@@ -188,7 +172,7 @@ location.reload();
 
 7. **Re-paste two things before you run anything else in this step**, because the reload cleared them:
 
-   - the `const PF = ...` line from [before you start](#before-you-start), and
+   - the SDK route prefix snippet from [before you start](#before-you-start), and
    - the whole [helper block](#paste-these-helpers-into-the-console-first).
 
    Skip this and every snippet below fails with a `ReferenceError`, at exactly the moment this step is trying to tell you something. Re-declaring them is safe here: the reload gave you a fresh context.
@@ -225,7 +209,7 @@ async function waitForResend(key, timeoutMs = 120_000) {
 await waitForResend(savedKey);
 ```
 
-Cross-check it visually if you like: a second `POST .../resources/completion-records` in the Network panel.
+Cross-check it visually if you like: a second `POST .../backend/completion-records` in the Network panel.
 
 **Expect this to take around half a minute.** Only one tab drains at a time, under a 30-second lease, and a page that navigates away strands its lease to expire rather than releasing it — so the first send after a reload commonly waits out the full lease. The browser suite measures this at a consistent ~34 seconds. Do not shorten the timeout to under a minute, and do not conclude anything from a count read before `waitForResend` returns.
 
@@ -291,19 +275,13 @@ Each milestone also records separately, keyed on its own slug. Those are worth s
 
 **Cross-reader privacy is not tested here.** The guarantee is that one reader's `/completion-records/my` never returns another reader's records, and checking it needs two real identities on the same stack signed in at the same time — which is more setup than this checklist is worth, and easy to get subtly wrong (two tabs under one identity would pass while proving nothing).
 
-It is covered by inspection instead: the read path serves only `idx.byUser[caller]`, keyed on the caller's verified ID-token subject, so a cache hit is structurally incapable of returning another reader's rows. See the identity trust boundary in [`../design/BACKEND_PROXY_PATTERN.md`](../design/BACKEND_PROXY_PATTERN.md) and `deriveCompletionUserID` in `pkg/plugin/completion_records.go`.
+It is covered by inspection instead: the read path serves only `CompletionIndex.ByUser[caller]` (`pkg/services/completion_cache.go`), and the cache entry is keyed on the caller's verified namespace and subject, so a cache hit is structurally incapable of returning another reader's rows. See the identity trust boundary in [`../design/BACKEND_PROXY_PATTERN.md`](../design/BACKEND_PROXY_PATTERN.md) and the namespace and subject checks in `pkg/provider/completions.go`.
 
 If you do want to exercise it, do it as a separate, deliberate two-identity session — not as a sixth step here.
 
 ## Serving a local build into a cloud stack
 
-The reason this checklist needs a local build at all: the reader-facing half of completion tracking — earned progress and the universal **Mark complete** control — is on `main` and in no tagged release, while the server half shipped in 2.17.0. So a released plugin on a Cloud stack cannot produce the completions this checklist wants to read.
-
-[Graft](https://github.com/grafana/plugin-graft) (`grafana/plugin-graft`, Grafanista-only) closes that gap: it serves a locally built `dist/` into a real Cloud stack. Build with `npm run build` (or leave `npm run dev` running) and point Graft at this repo's `dist/`.
-
-**Graft's limit matters here.** It serves reader-facing files only. It cannot replace a plugin's server component, so the routes in step 1 onwards are the ones the stack's _installed_ plugin version serves — not yours. That is fine for this checklist, because the server half is already released and unchanged; it is not fine if you ever need to test a `pkg/` change, which needs a real plugin release instead.
-
-For install, setup, and feature detail, use plugin-graft's own docs — [`GRAFT_TESTING.md`](GRAFT_TESTING.md) links them and is the place that owns this repo's Graft notes. Do not restate its setup here.
+[Graft](GRAFT_TESTING.md) can serve a local frontend build into the test stack. Use the normal Cloud deployment process for backend changes and verify the SDK capability on the same stack.
 
 ## Related
 

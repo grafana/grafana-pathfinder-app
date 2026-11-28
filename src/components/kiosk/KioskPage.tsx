@@ -6,11 +6,11 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { Button, Field, Input, Combobox, Icon, useStyles2 } from '@grafana/ui';
 import { css } from '@emotion/css';
 import type { GrafanaTheme2 } from '@grafana/data';
-import type { KioskPage as Page, KioskPageBlock, KioskMode } from '../../types/kiosk-page.schema';
+import type { KioskPageV1 as Page, KioskPageBlock, KioskMode } from '../../types/kiosk-page.schema';
 import { reportKioskInteraction } from '../../lib/kiosk-analytics';
 import { assertExhaustive } from '../../lib/assert-exhaustive';
 import { KioskFormError, MAX_INPUT_LENGTH, describeHttpInput } from '../../lib/input-value';
-import { filterDatasourcesByType, toDatasourceOptions } from '../interactive-tutorial/datasource-options';
+import { useDatasourceOptions } from '../interactive-tutorial/use-datasource-options';
 import type { KioskRule } from './kiosk-rules';
 import { launchKioskGuide } from './launch-kiosk-guide';
 import { KioskTile } from './KioskTile';
@@ -118,7 +118,7 @@ interface Props {
   onLaunch?: () => void;
 }
 
-function Command({
+export function Command({
   command,
   language = 'bash',
   mode,
@@ -186,7 +186,33 @@ function Command({
   );
 }
 
-function LaunchForm({
+function KioskDatasourcePicker({
+  id,
+  filter,
+  disabled,
+  value,
+  onChange,
+}: {
+  id: string;
+  filter: string | undefined;
+  disabled: boolean;
+  value: string | null;
+  onChange: (name: string) => void;
+}) {
+  const { options, loading } = useDatasourceOptions(filter);
+  return (
+    <Combobox
+      id={id}
+      disabled={disabled || loading}
+      loading={loading}
+      options={options}
+      value={value}
+      onChange={(option) => onChange(option?.value ?? '')}
+    />
+  );
+}
+
+export function LaunchForm({
   block,
   blockIndex,
   rule,
@@ -287,14 +313,14 @@ function LaunchForm({
             required={input.required}
           >
             {input.inputType === 'datasource' ? (
-              <Combobox
+              <KioskDatasourcePicker
                 id={`${id}-${input.variableName}`}
+                filter={input.datasourceFilter}
                 disabled={busy}
-                options={toDatasourceOptions(filterDatasourcesByType(input.datasourceFilter))}
                 value={draft[input.variableName] ?? null}
-                onChange={(option) => {
+                onChange={(name) => {
                   reportChange(inputIndex, 'datasource');
-                  setDraft((previous) => ({ ...previous, [input.variableName]: option?.value ?? '' }));
+                  setDraft((previous) => ({ ...previous, [input.variableName]: name }));
                 }}
               />
             ) : (

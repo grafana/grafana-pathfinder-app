@@ -131,6 +131,33 @@ describe('module bootstrap arms the durable completion-write hook', () => {
   });
 });
 
+describe('module bootstrap arms achievement events with the completion-write hook', () => {
+  const ACHIEVEMENTS_MODULE = './completion-records/achievements/achievement-events-hook';
+
+  it('arms the achievements observer in the same statement, before the write hook, so both see the startup replay', () => {
+    const statement = findPluginInitBody().find(isArmCall)!;
+    const text = statement.getText(sourceFile);
+    expect(text).toContain(`import('${ACHIEVEMENTS_MODULE}')`);
+    expect(text.indexOf('armAchievementEvents()')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('armAchievementEvents()')).toBeLessThan(text.indexOf('armCompletionWriteHook()'));
+  });
+});
+
+describe('module bootstrap subscribes to Echo before any await', () => {
+  it('installs the subscriptions in the first statement after the imports, since Echo never replays an event', () => {
+    const first = sourceFile.statements.find((statement) => !ts.isImportDeclaration(statement));
+    expect(first?.getText(sourceFile)).toBe('installEchoSubscriptions();');
+  });
+
+  it('closes them in plugin.init when Pathfinder or achievements are off', () => {
+    const closing = findPluginInitBody()
+      .filter((statement) => ts.isIfStatement(statement))
+      .filter((statement) => statement.getText(sourceFile).includes('closeEchoSubscriptions()'))
+      .map((statement) => (statement as ts.IfStatement).expression.getText(sourceFile));
+    expect(closing).toEqual(['!pathfinderEnabled', '!achievementsEnabled']);
+  });
+});
+
 describe('module bootstrap loads deep-link handling outside the entry bundle', () => {
   const handlerModule = './utils/pathfinder-deep-link-handler';
 

@@ -12,6 +12,7 @@ let versionString = 'Grafana Cloud v11.0.0';
 jest.mock('@grafana/runtime', () => ({
   getBackendSrv: () => ({ fetch: fetchMock }),
   config: {
+    namespace: 'stacks-123',
     get bootData() {
       return { settings: { buildInfo: { versionString } } };
     },

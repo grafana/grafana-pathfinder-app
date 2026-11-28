@@ -1,4 +1,6 @@
 import { bundledTutorialCompletionSource } from '../lib/bundled-tutorial-identity';
+import { classifyDocsUrl } from '../lib/docs-url-family';
+import { CANONICAL_CONTENT_FILE, stripContentFile } from '../lib/guide-content-file';
 /**
  * Resolve a `(guideSource, guideId)` completion key from the resolved package
  * manifest — never from a loader URL.
@@ -20,32 +22,15 @@ import type { CompletionFact, CompletionKey, PathAnalyticsIdentity } from './typ
 import { toAnalyticsValue } from '../lib/analytics-values';
 
 /**
- * The package launch shape appends this to a bundled guide's id (the package
- * resolver hands the context panel `bundled:<id>/content.json`). Named to mirror
- * `PACKAGE_CONTENT_SUFFIX` in `global-state/path-member-join.ts`, which groups the
- * same two shapes for local progress.
- *
- * THIS IS THE SINGLE PLACE that knows about the suffix for completion identity.
- * Every path that turns a bundled content key into a guide id — the journey
- * percentage writer and the reset path — goes through `normalizeGuideId`; do not
- * reintroduce a second inline `/content.json` strip elsewhere.
- */
-const PACKAGE_CONTENT_SUFFIX = '/content.json';
-
-/**
  * Normalize a guide id to its bare, canonical form by stripping a trailing
- * `/content.json`. Both `bundled:<id>` and `bundled:<id>/content.json` are valid
- * launch shapes for the same bundled guide and must record ONE identity.
+ * content file — `content.json` or a localized `content.<locale>.json`. Both
+ * `bundled:<id>` and `bundled:<id>/content.json` are valid launch shapes for
+ * the same bundled guide and must record ONE identity. Every path that turns a
+ * bundled content key into a guide id goes through here.
  * Edge cases: returns the input unchanged if empty or exactly `/content.json`.
  */
 export function normalizeGuideId(guideId: string): string {
-  if (!guideId || guideId === PACKAGE_CONTENT_SUFFIX) {
-    return guideId;
-  }
-  if (guideId.endsWith(PACKAGE_CONTENT_SUFFIX)) {
-    return guideId.slice(0, -PACKAGE_CONTENT_SUFFIX.length);
-  }
-  return guideId;
+  return stripContentFile(guideId);
 }
 
 /**
@@ -58,7 +43,7 @@ export function normalizeGuideId(guideId: string): string {
  */
 export function bundledGuideIdReadVariants(guideId: string): [canonical: string, legacySuffixed: string] {
   const normalized = normalizeGuideId(guideId);
-  return [normalized, `${normalized}${PACKAGE_CONTENT_SUFFIX}`];
+  return [normalized, `${normalized}/${CANONICAL_CONTENT_FILE}`];
 }
 
 /** Default repository when neither an explicit source nor a manifest resolves one. */
@@ -105,17 +90,54 @@ export function resolveCompletionIdentity(input: ResolveCompletionIdentityInput)
   return { guideSource: bundledTutorialCompletionSource(guideSource, guideId), guideId };
 }
 
+/** Grafana Learn completion records. Design: `docs/design/GRAFANA_LEARN.md`, section 7. */
+export const GRAFANA_LEARN_GUIDE_SOURCE = 'grafana-learn';
+
+export interface LearnStepCompletionIdentity extends CompletionKey {
+  /** The journey slug, written as the record's `pathId`. */
+  pathId: string;
+}
+
+/** `true` for any URL the classifier puts in the Grafana Learn family, whatever its depth. */
+export function isGrafanaLearnUrl(url: string): boolean {
+  return classifyDocsUrl(url).family === 'learn';
+}
+
+/** A Learn step's durable identity, keyed on its path below the Learn root; `undefined` for any other URL. */
+export function resolveLearnStepCompletionIdentity(stepUrl: string): LearnStepCompletionIdentity | undefined {
+  const { learn } = classifyDocsUrl(stepUrl);
+  if (learn?.kind !== 'step' || !learn.relativePath || !learn.journeySlug) {
+    return undefined;
+  }
+  return { guideSource: GRAFANA_LEARN_GUIDE_SOURCE, guideId: learn.relativePath, pathId: learn.journeySlug };
+}
+
+/** A Learn journey's durable identity, keyed on its slug; `undefined` unless the URL is a Learn journey page. */
+export function resolveLearnJourneyCompletionIdentity(journeyUrl: string): CompletionKey | undefined {
+  const { learn } = classifyDocsUrl(journeyUrl);
+  if (learn?.kind !== 'journey' || !learn.journeySlug) {
+    return undefined;
+  }
+  return { guideSource: GRAFANA_LEARN_GUIDE_SOURCE, guideId: learn.journeySlug };
+}
+
 export interface ResolveMilestoneCompletionIdentityInput {
   /** The milestone's own manifest, consulted for `guideSource` ONLY — never for `guideId`. */
   packageManifest?: Record<string, unknown>;
   /** Explicit/resolved repository; wins over the manifest value, same precedence as {@link resolveCompletionIdentity}. */
   repository?: string;
-  /** The milestone's URL slug — the only identity a milestone-as-guide record is ever keyed on. */
+  /** The milestone's URL slug — the identity every non-Learn milestone-as-guide record is keyed on. */
   milestoneSlug: string;
+  /** The milestone's URL. A Grafana Learn step keys on its path instead, since step slugs repeat across journeys. */
+  milestoneUrl?: string;
 }
 
 // Milestones use their own slug, even when the manifest belongs to the enclosing path.
 export function resolveMilestoneCompletionIdentity(input: ResolveMilestoneCompletionIdentityInput): CompletionKey {
+  const learnStep = input.milestoneUrl ? resolveLearnStepCompletionIdentity(input.milestoneUrl) : undefined;
+  if (learnStep) {
+    return { guideSource: learnStep.guideSource, guideId: learnStep.guideId };
+  }
   const guideSource =
     asNonEmptyString(input.repository) ?? asNonEmptyString(input.packageManifest?.repository) ?? 'bundled';
 

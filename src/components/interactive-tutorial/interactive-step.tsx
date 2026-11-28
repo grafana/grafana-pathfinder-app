@@ -22,6 +22,7 @@ import { useAiFixEnabled } from '../../integrations/assistant-integration/use-ai
 import { CodeBlock } from '../../docs-retrieval';
 import { resolveWithRetry } from '../../lib/dom/selector-retry';
 import { revealStep } from '../../lib/dom/reveal-step';
+import { readTargetState } from '../../lib/dom/target-state-read';
 import { isGrafanaDrivingHandoffNeeded } from '../../global-state/panel-mode';
 import { STEP_STATES, type StepStateValue } from './step-states';
 import { AiFixButton } from './ai-fix-button';
@@ -237,7 +238,7 @@ export const InteractiveStep = forwardRef<
     const controllerChannel = useControllerChannel();
     const [isShowRunning, setIsShowRunning] = useState(false);
     const [isDoRunning, setIsDoRunning] = useState(false);
-    useReportExecuting(isShowRunning || isDoRunning, onExecutingChange);
+    useReportExecuting(isShowRunning || isDoRunning || isCurrentlyExecuting, onExecutingChange);
     const [postVerifyError, setPostVerifyError] = useState<string | null>(null);
     const [lazyScrollError, setLazyScrollError] = useState<string | null>(null);
     const [lastAttemptedAction, setLastAttemptedAction] = useState<'show' | 'do' | null>(null);
@@ -276,11 +277,24 @@ export const InteractiveStep = forwardRef<
       setCurrentTargetValue(newValue);
     }, []);
 
+    const isPartOfSection = renderedStepId.includes('section-') && renderedStepId.includes('-step-');
+
     const observation = useObservedCompletion({
       stepId: renderedStepId,
       sectionId,
       objectives,
       verify: postVerify,
+      readTargetState:
+        !isPartOfSection &&
+        mode !== 'controller' &&
+        (targetAction === 'button' || targetAction === 'highlight') &&
+        refTarget &&
+        targetState !== undefined
+          ? async () => {
+              const { state } = await readTargetState(refTarget, targetAction, targetState);
+              return state === 'blocked' ? undefined : state === 'satisfied';
+            }
+          : undefined,
       actions: [{ targetAction, refTarget, targetValue: currentTargetValue }],
       eligible: isEligibleForChecking && !disabled,
       executing: isShowRunning || isDoRunning || isCurrentlyExecuting,
@@ -313,8 +327,6 @@ export const InteractiveStep = forwardRef<
 
     // For section steps, use a simplified checker that respects section authority
     // For standalone steps, use the full global checker
-    const isPartOfSection = renderedStepId.includes('section-') && renderedStepId.includes('-step-');
-
     const rawChecker = useStepChecker({
       observedCompletion: observation.completion,
       requirements,

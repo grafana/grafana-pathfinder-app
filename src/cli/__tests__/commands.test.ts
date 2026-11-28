@@ -5,7 +5,7 @@ import { Readable } from 'stream';
 
 import { Command } from 'commander';
 
-import { runAddBlock } from '../commands/add-block';
+import { addBlockGroup, runAddBlock } from '../commands/add-block';
 import { runAddChoice } from '../commands/add-choice';
 import { runAddHint } from '../commands/add-hint';
 import { runAddStep } from '../commands/add-step';
@@ -18,6 +18,7 @@ import { runSetManifest, setManifestSpec } from '../commands/set-manifest';
 import { runValidate, runValidateCli } from '../commands/validate';
 import { collectCommanderInput, mountCommander, parseCommandInput } from '../contracts';
 import { readPackage } from '../utils/package-io';
+import { placeholderSelectorWarnings } from '../utils/warnings';
 import { validateGuide } from '../../validation/validate-guide';
 import type { ContentJson } from '../../types/package.types';
 
@@ -276,6 +277,150 @@ describe('runAddBlock', () => {
     if (result.status === 'error') {
       expect(result.code).toBe('CONTAINER_NOT_FOUND');
     }
+  });
+
+  describe('placeholder selector warnings', () => {
+    it('reads the camelCase refTarget alias at the same path as reftarget', () => {
+      const step = { action: 'highlight', refTarget: '[data-testid="TODO-x"]' };
+      const warnings = placeholderSelectorWarnings([{ type: 'multistep', steps: [step] }]);
+      expect(warnings.map((w) => w.path)).toEqual(['blocks[0].steps[0]/reftarget']);
+    });
+  });
+
+  describe('section step list warning', () => {
+    const list = '1. Open the menu\n2. Click **Save**';
+    const mkSection = async () => {
+      const dir = await bootstrap();
+      await runAddBlock({ dir, type: 'section', fields: { id: 'sec' } });
+      return dir;
+    };
+
+    it('warns when a markdown block with a list is added under a section', async () => {
+      const dir = await mkSection();
+      const result = await runAddBlock({ dir, type: 'markdown', parent: 'sec', fields: { content: list } });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings?.some((w) => w.code === 'SECTION_STEP_LIST')).toBe(true);
+    });
+
+    it('does not warn for the same content at top level', async () => {
+      const dir = await bootstrap();
+      const result = await runAddBlock({ dir, type: 'markdown', fields: { content: list } });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings?.some((w) => w.code === 'SECTION_STEP_LIST')).toBeFalsy();
+    });
+
+    it('warns when edit-block turns a section child into a list', async () => {
+      const dir = await mkSection();
+      await runAddBlock({ dir, type: 'markdown', parent: 'sec', fields: { id: 'step', content: 'Open the menu' } });
+      const result = await runEditBlock({ dir, id: 'step', content: list });
+      expect(result.status).toBe('ok');
+      if (result.status !== 'ok') {
+        return;
+      }
+      expect(result.warnings?.some((w) => w.code === 'SECTION_STEP_LIST')).toBe(true);
+    });
+  });
+
+  describe('collapsible', () => {
+    async function withCollapsible(): Promise<string> {
+      const dir = await bootstrap();
+      const created = await runAddBlock({ dir, type: 'collapsible', id: 'details', fields: { title: 'Details' } });
+      expect(created).toMatchObject({ status: 'ok', data: { id: 'details', position: 'blocks[0]' } });
+      return dir;
+    }
+
+    it('creates a collapsible with its id and title and appends content blocks inside it', async () => {
+      const dir = await withCollapsible();
+      const markdown = await runAddBlock({ dir, type: 'markdown', parent: 'details', fields: { content: 'Hidden' } });
+      expect(markdown).toMatchObject({ status: 'ok', data: { position: 'blocks[0].blocks[0]' } });
+      const image = await runAddBlock({
+        dir,
+        type: 'image',
+        parent: 'details',
+        fields: { src: 'https://example.com/x.png' },
+      });
+      expect(image).toMatchObject({ status: 'ok', data: { position: 'blocks[0].blocks[1]' } });
+      expect(readContent(dir).blocks).toMatchObject([
+        { type: 'collapsible', id: 'details', title: 'Details', blocks: [{ type: 'markdown' }, { type: 'image' }] },
+      ]);
+    });
+
+    it('requires an id and a title', async () => {
+      const dir = await bootstrap();
+      const noId = await runAddBlock({ dir, type: 'collapsible', fields: { title: 'Details' } });
+      expect(noId).toMatchObject({ status: 'error', code: 'CONTAINER_REQUIRES_ID' });
+      const noTitle = parseCommandInput(addBlockGroup.variants.get('collapsible')!, { dir, id: 'details' });
+      expect(noTitle.ok).toBe(false);
+      if (!noTitle.ok) {
+        expect(noTitle.outcome.message).toContain('title');
+      }
+      expect(readContent(dir).blocks).toHaveLength(0);
+    });
+
+    it('tells authors which blocks to add inside it', async () => {
+      const allowed = 'markdown, divider, html, image, video, callout';
+      expect(addBlockGroup.variants.get('collapsible')!.summary).toContain(allowed);
+      const dir = await bootstrap();
+      const created = await runAddBlock({ dir, type: 'collapsible', id: 'details', fields: { title: 'Details' } });
+      expect(created.status === 'ok' && created.hints).toEqual([
+        `Add ${allowed} blocks with: pathfinder-cli add-block <type> <dir> --parent details`,
+      ]);
+    });
+
+    it.each([
+      ['interactive', undefined, { action: 'noop', content: 'Look here' }],
+      ['section', 'inner-section', { title: 'Inner' }],
+      ['conditional', 'inner-conditional', { conditions: ['is-admin'] }],
+      ['collapsible', 'inner-collapsible', { title: 'Inner' }],
+      ['multistep', 'inner-steps', { content: 'Steps' }],
+    ] as const)('rejects a %s child without writing', async (type, id, fields) => {
+      const dir = await withCollapsible();
+      const contentPath = path.join(dir, 'content.json');
+      const before = fs.readFileSync(contentPath, 'utf8');
+      const result = await runAddBlock({ dir, type, id, parent: 'details', fields });
+      expect(result).toMatchObject({ status: 'error', code: 'WRONG_PARENT_KIND' });
+      expect(fs.readFileSync(contentPath, 'utf8')).toBe(before);
+    });
+
+    it('applies the same rule to move-block --into', async () => {
+      const dir = await withCollapsible();
+      await runAddBlock({ dir, type: 'markdown', id: 'note', fields: { content: 'Moved in' } });
+      await runAddBlock({ dir, type: 'interactive', id: 'step', fields: { action: 'noop', content: 'Look here' } });
+      expect(await runMoveBlock({ dir, id: 'note', into: 'details' })).toMatchObject({ status: 'ok' });
+      const contentPath = path.join(dir, 'content.json');
+      const before = fs.readFileSync(contentPath, 'utf8');
+      const rejected = await runMoveBlock({ dir, id: 'step', into: 'details' });
+      expect(rejected).toMatchObject({ status: 'error', code: 'WRONG_PARENT_KIND' });
+      expect(fs.readFileSync(contentPath, 'utf8')).toBe(before);
+    });
+
+    it('inspect counts and locates the blocks inside a collapsible', async () => {
+      const dir = await withCollapsible();
+      await runAddBlock({ dir, type: 'markdown', id: 'note', parent: 'details', fields: { content: 'Hidden' } });
+      const summary = runInspect({ dir });
+      expect(summary).toMatchObject({
+        status: 'ok',
+        data: { containers: [{ id: 'details', type: 'collapsible', childCount: 1 }] },
+      });
+      expect(runInspect({ dir, block: 'note' })).toMatchObject({
+        status: 'ok',
+        data: { position: 'blocks[0].blocks[0]' },
+      });
+    });
+
+    it('unwraps a collapsible with remove-block --orphan-children', async () => {
+      const dir = await withCollapsible();
+      await runAddBlock({ dir, type: 'markdown', id: 'note', parent: 'details', fields: { content: 'Hidden' } });
+      const result = await runRemoveBlock({ dir, id: 'details', cascade: false, orphanChildren: true });
+      expect(result).toMatchObject({ status: 'ok', data: { childrenOrphaned: 1 } });
+      expect(readContent(dir).blocks).toMatchObject([{ type: 'markdown', id: 'note' }]);
+    });
   });
 
   describe('selector warnings (issue #3)', () => {
@@ -893,6 +1038,32 @@ describe('runValidate', () => {
     expect(result.status).toBe('ok');
   });
 
+  it('warns about placeholder selectors, including a conditional reftarget', () => {
+    const content = {
+      id: 'placeholder-guide',
+      schemaVersion: '1.1.0',
+      title: 'X',
+      type: 'guide',
+      blocks: [
+        { type: 'interactive', action: 'button', reftarget: '[data-testid="TODO-save"]', content: 'Save' },
+        {
+          type: 'conditional',
+          conditions: ['is-admin'],
+          whenTrue: [{ type: 'markdown', content: 'Admin' }],
+          whenFalse: [],
+          display: 'inline',
+          reftarget: '[data-testid="TODO-admin"]',
+        },
+      ],
+    } as unknown as ContentJson;
+    const result = runValidate({ content });
+    expect(result.status).toBe('ok');
+    expect(result.status === 'ok' && result.warnings?.map((w) => [w.code, w.path])).toEqual([
+      ['PLACEHOLDER_SELECTOR', 'blocks[0]/reftarget'],
+      ['PLACEHOLDER_SELECTOR', 'blocks[1]/reftarget'],
+    ]);
+  });
+
   it("reports a file's independent warnings even when the file is invalid", async () => {
     const dir = tempDir();
     const file = path.join(dir, 'guide.json');
@@ -916,6 +1087,7 @@ describe('runValidate', () => {
         bundled: false,
         stdin: false,
         strict: false,
+        allowStaleTranslations: false,
         format: 'json',
         verbose: false,
       });
@@ -955,6 +1127,7 @@ describe('runValidate', () => {
         bundled: false,
         stdin: true,
         strict: false,
+        allowStaleTranslations: false,
         format: 'text',
         verbose: false,
       });

@@ -48,7 +48,7 @@ function resolveSpecifier(fromFile: string, specifier: string): string | undefin
   const base = path.resolve(path.dirname(path.join(REPO_ROOT, fromFile)), specifier);
   const candidates = [`${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts'), path.join(base, 'index.tsx')];
   const hit = candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
-  return hit ? path.relative(REPO_ROOT, hit) : undefined;
+  return hit ? path.relative(REPO_ROOT, hit).split(path.sep).join('/') : undefined;
 }
 
 function importsUnscopedChecker(file: string): boolean {

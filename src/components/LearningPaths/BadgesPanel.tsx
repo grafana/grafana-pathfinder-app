@@ -16,6 +16,8 @@ import { BadgeDetailCard } from './BadgeDetailCard';
 import { getBadgeProgress } from './badge-utils';
 import { getMyLearningStyles } from './MyLearningTab.styles';
 import { BadgesSection } from './sections/BadgesSection';
+import { AchievementsList } from '../Achievements/AchievementsSection';
+import { useLegacyBadgesHidden } from '../Achievements/useLegacyBadgesHidden';
 
 export class BadgesPanel extends SceneObjectBase<SceneObjectState> {
   public static Component = BadgesPanelRenderer;
@@ -29,6 +31,7 @@ function BadgesPanelRenderer() {
   const styles = useStyles2(getMyLearningStyles);
   const { badgesWithStatus, progress, paths, isLoading } = useLearningPaths();
   const [selectedBadge, setSelectedBadge] = useState<EarnedBadge | null>(null);
+  const legacyBadgesHidden = useLegacyBadgesHidden();
   const badges = [...badgesWithStatus].sort((a, b) => (b.earnedAt ?? 0) - (a.earnedAt ?? 0));
   const baseBadge = selectedBadge ? BADGES.find((badge) => badge.id === selectedBadge.id) : undefined;
   const selectedProgress = baseBadge
@@ -58,7 +61,9 @@ function BadgesPanelRenderer() {
               </p>
             </div>
           </div>
-          {isLoading ? (
+          {legacyBadgesHidden ? (
+            <AchievementsList styles={styles} />
+          ) : isLoading ? (
             <SkeletonLoader type="recommendations" />
           ) : (
             <BadgesSection
@@ -75,7 +80,7 @@ function BadgesPanelRenderer() {
           )}
         </div>
       </main>
-      {selectedBadge && (
+      {selectedBadge && !legacyBadgesHidden && (
         <BadgeDetailCard badge={selectedBadge} progress={selectedProgress} onClose={() => setSelectedBadge(null)} />
       )}
     </div>
