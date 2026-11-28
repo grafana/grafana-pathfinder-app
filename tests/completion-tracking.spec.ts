@@ -482,10 +482,12 @@ test.describe('completion tracking', () => {
     await expect.poll(async () => (await readStoredProgress(page)).interactiveCompletion[guideA]).toBe(earned);
 
     const visibleTab = page.getByTestId(testIds.docsPanel.tabList).getByTitle(second.title, { exact: true });
+    const overflowButton = page.getByTestId(testIds.docsPanel.tabOverflowButton);
+    await expect(visibleTab.or(overflowButton)).toBeVisible({ timeout: 15_000 });
     if (await visibleTab.isVisible()) {
       await visibleTab.click();
     } else {
-      await page.getByTestId(testIds.docsPanel.tabOverflowButton).click();
+      await overflowButton.click();
       await page.getByRole('menuitem', { name: `Switch to ${second.title}`, exact: true }).click();
     }
     await expect(page.getByText('Milestone 1 step 1', { exact: true })).toBeVisible();

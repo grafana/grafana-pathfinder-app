@@ -887,3 +887,74 @@ describe('restored track navigation', () => {
     expect(mockResolvePackageMilestones).not.toHaveBeenCalled();
   });
 });
+
+describe('deep-link launch during in-flight tab restore (#2577)', () => {
+  const storedTabB = {
+    id: 'tab-b',
+    title: 'Guide B',
+    baseUrl: 'https://example.com/guide-b',
+    currentUrl: 'https://example.com/guide-b',
+    content: null,
+    isLoading: false,
+    error: null,
+    type: 'docs' as const,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRestoreActiveTabFromStorage.mockResolvedValue('tab-b');
+  });
+
+  it('keeps restored tab B and opens deep-linked Guide A when openDocsPage fires before restore finishes', async () => {
+    let resolveRestore!: (tabs: Array<typeof storedTabB>) => void;
+    mockRestoreTabsFromStorage.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRestore = resolve;
+      })
+    );
+
+    const panel = new CombinedLearningJourneyPanel();
+    jest.spyOn(panel, 'loadTab').mockResolvedValue();
+
+    const restoreTask = panel.restoreTabsAsync();
+    const openTask = panel.openDocsPage('https://example.com/guide-a', 'Guide A', { source: 'url_param' });
+
+    resolveRestore([storedTabB]);
+    await Promise.all([restoreTask, openTask]);
+
+    const urls = panel.state.tabs.map((t) => t.baseUrl);
+    expect(urls).toContain('https://example.com/guide-b');
+    expect(urls).toContain('https://example.com/guide-a');
+
+    const persistedUrlsCalls = (tabStorage.setTabs as jest.Mock).mock.calls.map((call) =>
+      (call[0] as Array<{ baseUrl: string }>).map((t) => t.baseUrl)
+    );
+    expect(persistedUrlsCalls.length).toBeGreaterThan(0);
+    for (const savedUrls of persistedUrlsCalls) {
+      expect(savedUrls).toContain('https://example.com/guide-b');
+    }
+    expect(persistedUrlsCalls[persistedUrlsCalls.length - 1]).toContain('https://example.com/guide-a');
+  });
+
+  it('keeps restored tab B and opens deep-linked Journey A when openLearningJourney fires before restore finishes', async () => {
+    let resolveRestore!: (tabs: Array<typeof storedTabB>) => void;
+    mockRestoreTabsFromStorage.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRestore = resolve;
+      })
+    );
+
+    const panel = new CombinedLearningJourneyPanel();
+    jest.spyOn(panel, 'loadTab').mockResolvedValue();
+
+    const restoreTask = panel.restoreTabsAsync();
+    const openTask = panel.openLearningJourney('https://example.com/journey-a', 'Journey A', { source: 'url_param' });
+
+    resolveRestore([storedTabB]);
+    await Promise.all([restoreTask, openTask]);
+
+    const urls = panel.state.tabs.map((t) => t.baseUrl);
+    expect(urls).toContain('https://example.com/guide-b');
+    expect(urls).toContain('https://example.com/journey-a');
+  });
+});

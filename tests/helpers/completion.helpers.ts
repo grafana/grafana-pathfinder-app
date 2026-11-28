@@ -312,6 +312,30 @@ export async function openDocsPanel(page: Page): Promise<void> {
   await container.waitFor({ state: 'visible', timeout: 15_000 });
 }
 
+async function stubPluginUserStorage(page: Page): Promise<void> {
+  const store = new Map<string, string>();
+  await page.route('**/api/user/storage/**', async (route) => {
+    const request = route.request();
+    const key = new URL(request.url()).pathname;
+    if (request.method() === 'GET') {
+      const value = store.get(key);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: value ?? '{}',
+      });
+      return;
+    }
+    if (request.method() === 'DELETE') {
+      store.delete(key);
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      return;
+    }
+    store.set(key, request.postData() ?? '{}');
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+  });
+}
+
 /**
  * Arm every stub and the one-shot storage reset, ready for the case's own
  * first navigation. Navigates nothing itself.
@@ -325,6 +349,7 @@ export async function primeCompletionSession(
   options: { writeStatus?: number } = {}
 ): Promise<WriteRouteRecorder> {
   await armPathfinderStorageReset(page);
+  await stubPluginUserStorage(page);
   const recorder = await stubCompletionWriteRoute(page, options.writeStatus);
   await stubPackageCatalogue(page);
   return recorder;
