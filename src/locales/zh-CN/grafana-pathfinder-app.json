@@ -22,18 +22,13 @@
     "categoryInteractiveGuide": "交互式指南",
     "categoryLearningJourney": "学习路径",
     "failedToLoad": "加载推荐失败：{{error}}",
-    "giveFeedback": "提供反馈",
     "items_one": "{{count}} 项",
     "items_other": "{{count}} 项",
-    "menuAriaLabel": "更多选项",
-    "menuTooltip": "更多选项",
     "milestones": "里程碑：",
     "noRecommendations": "当前上下文没有可用的推荐",
     "otherDocumentation": "其他文档",
     "percentComplete": "{{percent}}% 完成",
-    "recommendedLearning": "推荐文档",
     "resume": "继续",
-    "settings": "设置",
     "start": "开始",
     "startInteractiveGuide": "开始交互式指南",
     "startLearningJourney": "开始学习之旅",
@@ -75,7 +70,16 @@
     "showMoreTabs_other": "显示更多 {{count}} 个标签页",
     "switchToTab": "切换到 {{title}}",
     "beta": "Beta",
-    "classicHelpMenuSettings": "Classic Help menu settings"
+    "classicHelpMenuSettings": "Classic Help menu settings",
+    "copyLinkToGuide": "",
+    "dock": "",
+    "fullScreen": "",
+    "linkCopied": "",
+    "linkCopyFailed": "",
+    "moreActions": "",
+    "popOut": "",
+    "refreshGuideErrorTitle": "",
+    "milestoneEstimatedMinutes_other": ""
   },
   "feedbackButton": {
     "ariaLabel": "对此插件反馈",
@@ -112,8 +116,7 @@
   "markComplete": {
     "completed": "",
     "guideButton": "",
-    "milestoneButton": "",
-    "percentComplete": ""
+    "milestoneButton": ""
   },
   "sidebarHub": {
     "actionLabel": "",
@@ -133,7 +136,8 @@
     "start": "",
     "subtitle": "",
     "welcomeBack": "",
-    "welcomeBackName": ""
+    "welcomeBackName": "",
+    "track": ""
   },
   "appConfig": {
     "beta": "Beta",
@@ -154,5 +158,86 @@
     "message": "试试交互式学习",
     "dismiss": "关闭学习提示",
     "learn": "学习"
+  },
+  "coverPage": {
+    "tableOfContents": "",
+    "getStarted": "",
+    "resume": "",
+    "earnsBadge": "",
+    "upNext": "",
+    "locked": "",
+    "foundationsTab": "",
+    "moduleCount_other": "",
+    "estimatedMinutes_other": "",
+    "totalMinutes_other": "",
+    "totalHours_other": ""
+  },
+  "guideProgress": {
+    "label": "",
+    "percentComplete": ""
+  },
+  "guideVersionNotice": {
+    "body": "",
+    "title": ""
+  },
+  "myLearning": {
+    "welcome": "",
+    "welcomeName": "",
+    "assignedBadge": "",
+    "assignedBy": "",
+    "assignedTrack": "",
+    "assignmentResetBody": "",
+    "assignmentResetCancel": "",
+    "assignmentResetConfirm": "",
+    "assignmentResetTitle": "",
+    "badges": "",
+    "badgesDescription": "",
+    "badgesEarned": "",
+    "yourBadges": "",
+    "collapse": "",
+    "completed": "",
+    "completedDescription": "",
+    "completedDone": "",
+    "completedEmpty": "",
+    "dayStreak": "",
+    "discoverMore": "",
+    "discoverMoreDescription": "",
+    "discoverMoreEmpty": "",
+    "discoverMoreOpening": "",
+    "discoverMoreStart": "",
+    "dueDetail": "",
+    "dueLeft": "",
+    "dueOverdue": "",
+    "dueRelativeToday": "",
+    "expand": "",
+    "fundamentals": "",
+    "guidesCompleted": "",
+    "launchErrorMessage": "",
+    "launchErrorTitle": "",
+    "learningAltitude": "",
+    "learningPaths": "",
+    "loadingGuides": "",
+    "myCourses": "",
+    "myCoursesDescription": "",
+    "myCoursesEmpty": "",
+    "pathsDescription": "",
+    "privatePaths": "",
+    "privatePathsDescription": "",
+    "resetPathErrorMessage": "",
+    "resetPathErrorTitle": "",
+    "subtitle": "",
+    "summaryOneGuide": "",
+    "summaryGuides": "",
+    "summaryOnePath": "",
+    "summaryPaths": "",
+    "summaryOneBadge": "",
+    "summaryBadges": "",
+    "loadingAssignments": "",
+    "assignmentsLoadError": "",
+    "discoverMoreMilestones_other": "",
+    "dueDayCount_other": ""
+  },
+  "common": {
+    "retry": ""
   }
 }
